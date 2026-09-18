@@ -140,7 +140,8 @@ class DownloadRepositoryImpl(
                 DownloadState.Cancelled -> GuiState.FAILED
             },
             addedAt = createdAt.toEpochMilli(),
-            savePath = request.destination.toString()
+            savePath = request.destination.toString(),
+            error = error
         )
     }
 }

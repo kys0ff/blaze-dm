@@ -1,5 +1,7 @@
 package org.blaze.domain.models
 
+import org.blaze.engine.api.DownloadError
+
 data class Download(
     val id: String,
     val name: String,
@@ -10,6 +12,7 @@ data class Download(
     val state: DownloadState,
     val addedAt: Long,
     val savePath: String,
+    val error: DownloadError? = null,
     val progress: Float = if (totalSize != null && totalSize > 0) {
         downloadedSize.toFloat() / totalSize
     } else if (state == DownloadState.COMPLETED) {

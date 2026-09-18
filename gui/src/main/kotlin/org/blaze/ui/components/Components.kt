@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.engine.api.DownloadError
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -190,6 +191,14 @@ fun DownloadRow(
                     Text(
                         text = "• " + formatSpeed(download.speed),
                         style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = JewelTheme.globalColors.text.info)
+                    )
+                }
+                
+                if (download.state == DownloadState.FAILED && download.error != null) {
+                    Text(
+                        text = "• " + download.error.toFriendlyMessage(),
+                        style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = Color(0xFFF44336)),
+                        maxLines = 1
                     )
                 }
             }
@@ -362,4 +371,19 @@ private fun formatSize(bytes: Long?): String {
 
 private fun formatSpeed(bytesPerSec: Long): String {
     return formatSize(bytesPerSec) + "/s"
+}
+
+private fun DownloadError.toFriendlyMessage(): String = when (this) {
+    DownloadError.NetworkUnavailable -> "Network unavailable"
+    DownloadError.Timeout -> "Connection timed out"
+    DownloadError.Unauthorized -> "Unauthorized access"
+    DownloadError.NotFound -> "File not found"
+    DownloadError.DiskFull -> "Disk full"
+    DownloadError.RangeUnsupported -> "Resuming not supported"
+    DownloadError.InvalidTorrent -> "Invalid torrent file"
+    DownloadError.MetadataTimeout -> "Failed to fetch metadata"
+    DownloadError.Cancelled -> "Download cancelled"
+    is DownloadError.NetworkFailure -> "Network failure: $message"
+    is DownloadError.FileSystemError -> "Disk error: $message"
+    is DownloadError.Unknown -> "Unknown error: $message"
 }
