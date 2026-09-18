@@ -8,18 +8,26 @@ import bt.runtime.BtClient
 import bt.runtime.BtRuntime
 import bt.runtime.Config
 import bt.torrent.TorrentSessionState
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import org.blaze.engine.api.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.launch
+import org.blaze.engine.api.DownloadError
+import org.blaze.engine.api.DownloadId
+import org.blaze.engine.api.DownloadRequest
+import org.blaze.engine.api.DownloadState
+import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.core.Downloader
-import java.nio.file.Path
 import java.time.Instant
 import kotlinx.coroutines.CancellationException as KotlinCancellationException
 
 class TorrentDownloader(
     private val request: DownloadRequest.Torrent
 ) : Downloader {
-    
+
     private var client: BtClient? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -28,7 +36,7 @@ class TorrentDownloader(
         val config = Config().apply {
             maxPeerConnections = 50
         }
-        
+
         val dhtModule = DHTModule(object : DHTConfig() {
             override fun shouldUseRouterBootstrap(): Boolean = true
         })
@@ -45,6 +53,7 @@ class TorrentDownloader(
             is TorrentSource.File -> {
                 clientBuilder.torrent(source.path.toUri().toURL())
             }
+
             is TorrentSource.Magnet -> {
                 clientBuilder.magnet(source.uri)
             }
@@ -66,7 +75,12 @@ class TorrentDownloader(
             if (e is KotlinCancellationException || future.isCancelled) {
                 send(mapStateToTask(null, isCancelled = true))
             } else {
-                send(mapStateToTask(null, error = DownloadError.NetworkFailure(e.message ?: "Torrent error")))
+                send(
+                    mapStateToTask(
+                        null,
+                        error = DownloadError.NetworkFailure(e.message ?: "Torrent error")
+                    )
+                )
             }
         } finally {
             btClient.stop()
@@ -85,9 +99,9 @@ class TorrentDownloader(
         val downloaded = state?.downloaded ?: 0L
         val piecesTotal = state?.piecesTotal ?: 0
         val piecesComplete = state?.piecesComplete ?: 0
-        
+
         val progress = if (piecesTotal > 0) piecesComplete.toFloat() / piecesTotal else 0f
-        
+
         val downloadState = when {
             error != null -> DownloadState.Failed
             isCancelled -> DownloadState.Cancelled

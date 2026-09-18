@@ -1,7 +1,6 @@
 package org.blaze.engine.persistence
 
 import kotlinx.serialization.Serializable
-import org.blaze.engine.api.*
 
 @Serializable
 data class DownloadRecord(
