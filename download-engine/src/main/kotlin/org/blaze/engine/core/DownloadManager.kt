@@ -68,10 +68,12 @@ class DownloadManager(
                     else -> throw IllegalArgumentException("Unknown type")
                 }
                 
-                val state = when (record.state) {
+                val state = when (record.state.uppercase()) {
                     "COMPLETED" -> DownloadState.Completed
                     "PAUSED" -> DownloadState.Paused
                     "FAILED" -> DownloadState.Failed
+                    "CANCELLED" -> DownloadState.Cancelled
+                    "SEEDING" -> DownloadState.Seeding
                     else -> DownloadState.Queued
                 }
 

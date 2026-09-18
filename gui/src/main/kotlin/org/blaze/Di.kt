@@ -3,7 +3,7 @@ package org.blaze
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import org.blaze.data.RealDownloadRepository
+import org.blaze.data.DownloadRepositoryImpl
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.engine.core.DownloadManager
 import org.blaze.engine.http.KtorHttpDownloader
@@ -29,6 +29,6 @@ object Di {
     }
 
     val downloadRepository: DownloadRepository by lazy {
-        RealDownloadRepository(engine, scope)
+        DownloadRepositoryImpl(engine, scope)
     }
 }
