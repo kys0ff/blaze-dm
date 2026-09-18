@@ -2,11 +2,16 @@ package org.blaze.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,8 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,9 +31,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -35,11 +52,13 @@ import org.blaze.engine.api.DownloadError
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
+import org.jetbrains.jewel.ui.Outline
 import org.jetbrains.jewel.ui.component.ActionButton
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.HorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Icon
+import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
@@ -49,6 +68,51 @@ import org.jetbrains.jewel.ui.theme.simpleListItemStyle
 import kotlin.math.ln
 import kotlin.math.pow
 
+// ---------------------------------------------------------------------------
+// IDE palette
+//
+// Neutral colors come from the Jewel theme so they follow the active IDE theme.
+// Semantic colors (accent / success / warning) aren't exposed by GlobalColors,
+// so they use the IntelliJ Platform light/dark values, picked by panel luminance.
+// ---------------------------------------------------------------------------
+
+private object IdeColors {
+    val isDark: Boolean
+        @Composable get() = JewelTheme.globalColors.panelBackground.luminance() < 0.5f
+
+    val accent: Color
+        @Composable get() = if (isDark) Color(0xFF548AF7) else Color(0xFF3574F0)
+
+    val success: Color
+        @Composable get() = if (isDark) Color(0xFF5FB865) else Color(0xFF208A3C)
+
+    val warning: Color
+        @Composable get() = if (isDark) Color(0xFFF2C55C) else Color(0xFFA46704)
+
+    val error: Color
+        @Composable get() = JewelTheme.globalColors.text.error
+
+    /** Subtle row hover: a translucent overlay of the text color works in both themes. */
+    val hover: Color
+        @Composable get() = JewelTheme.globalColors.text.normal.copy(alpha = 0.07f)
+}
+
+private val ListItemShape = RoundedCornerShape(6.dp)
+
+@Composable
+private fun DownloadState.indicatorColor(): Color = when (this) {
+    DownloadState.QUEUED -> JewelTheme.globalColors.text.info
+    DownloadState.DOWNLOADING -> IdeColors.accent
+    DownloadState.PAUSED -> IdeColors.warning
+    DownloadState.COMPLETED -> IdeColors.success
+    DownloadState.FAILED -> IdeColors.error
+    DownloadState.REMOVING -> JewelTheme.globalColors.text.disabled
+}
+
+// ---------------------------------------------------------------------------
+// Dialog
+// ---------------------------------------------------------------------------
+
 @OptIn(ExperimentalJewelApi::class)
 @Composable
 fun AddDownloadDialog(
@@ -56,79 +120,133 @@ fun AddDownloadDialog(
     onAdd: (url: String) -> Unit
 ) {
     var url by remember { mutableStateOf(TextFieldValue("")) }
+    val focusRequester = remember { FocusRequester() }
+
+    val source = url.text.trim()
+    val canAdd = source.isNotEmpty()
+    val looksSupported = source.isEmpty() || source.isSupportedSource()
+
+    fun submit() {
+        if (canAdd) {
+            onAdd(source)
+            onDismiss()
+        }
+    }
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    val shape = RoundedCornerShape(8.dp)
 
     Dialog(onDismissRequest = onDismiss) {
-        Box(
+        Column(
             modifier = Modifier
-                .width(450.dp)
+                .width(460.dp)
+                .clip(shape)
                 .background(JewelTheme.globalColors.panelBackground)
-                .padding(20.dp)
+                .border(1.dp, JewelTheme.globalColors.borders.normal, shape)
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                        onDismiss()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(
-                    text = "Add New Download",
-                    style = JewelTheme.defaultTextStyle.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = "Add download",
+                style = JewelTheme.defaultTextStyle.copy(
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(text = "Download source:")
 
                 TextField(
                     value = url,
                     onValueChange = { url = it },
-                    placeholder = { Text("Enter download URL (HTTP, Magnet, Torrent)") },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("https://…  or  magnet:?xt=…") },
+                    outline = if (looksSupported) Outline.None else Outline.Warning,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown &&
+                                (event.key == Key.Enter || event.key == Key.NumPadEnter)
+                            ) {
+                                submit()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(onClick = onDismiss) {
-                        Text("Cancel")
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    DefaultButton(
-                        onClick = {
-                            if (url.text.isNotBlank()) {
-                                onAdd(url.text)
-                                onDismiss()
-                            }
-                        },
-                        enabled = url.text.isNotBlank()
-                    ) {
-                        Text("Add")
-                    }
+                // Context help sits under the field, like IDE form hints.
+                if (looksSupported) {
+                    Text(
+                        text = "Supports HTTP(S) links, magnet links and .torrent files.",
+                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                        color = JewelTheme.globalColors.text.info
+                    )
+                } else {
+                    Text(
+                        text = "Not an HTTP(S) link, magnet link or .torrent file. It may fail to download.",
+                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                        color = IdeColors.warning
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+                Spacer(Modifier.width(8.dp))
+                DefaultButton(onClick = ::submit, enabled = canAdd) {
+                    Text("Add")
                 }
             }
         }
     }
 }
 
-@Composable
-fun StatusBadge(state: DownloadState) {
-    val color = when (state) {
-        DownloadState.QUEUED -> Color.Gray
-        DownloadState.DOWNLOADING -> Color(0xFF4CAF50)
-        DownloadState.PAUSED -> Color(0xFFFFA000)
-        DownloadState.COMPLETED -> Color(0xFF2196F3)
-        DownloadState.FAILED -> Color(0xFFF44336)
-        DownloadState.REMOVING -> Color.DarkGray
-    }
+// ---------------------------------------------------------------------------
+// Download list
+// ---------------------------------------------------------------------------
 
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 6.dp, vertical = 1.dp)
+/** IDE-style status: a small colored dot followed by the state name. */
+@Composable
+fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(state.indicatorColor())
+        )
         Text(
             text = state.name.lowercase().replaceFirstChar { it.uppercase() },
-            style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
-            color = color
+            style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
         )
     }
 }
 
-@OptIn(ExperimentalJewelApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalJewelApi::class)
 @Composable
 fun DownloadRow(
     download: Download,
@@ -136,104 +254,175 @@ fun DownloadRow(
     onResume: () -> Unit,
     onRemove: () -> Unit,
     onRetry: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    onSelect: () -> Unit = {}
 ) {
-    Row(
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val listColors = JewelTheme.simpleListItemStyle.colors
+
+    val background = when {
+        isSelected -> listColors.backgroundSelectedActive
+        hovered -> IdeColors.hover
+        else -> Color.Transparent
+    }
+    val primary = if (isSelected) listColors.contentSelectedActive else Color.Unspecified
+    val secondary =
+        if (isSelected) listColors.contentSelectedActive else JewelTheme.globalColors.text.info
+
+    // Like IDE lists, row actions appear on hover/selection. Failed rows keep Retry visible.
+    val showActions = hovered || isSelected || download.state == DownloadState.FAILED
+
+    // Total size unknown and nothing received yet: fetching metadata / connecting.
+    val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
+            download.totalSize == null && download.progress <= 0f
+
+    val meta = buildString {
+        append(formatSize(download.downloadedSize))
+        if (download.totalSize != null) append(" of ").append(formatSize(download.totalSize))
+        if (download.state == DownloadState.DOWNLOADING) append(", ").append(formatSpeed(download.speed))
+        if (download.peers > 0) {
+            append(", ").append(download.peers).append(if (download.peers == 1) " peer" else " peers")
+        }
+    }
+
+    val smallText = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 6.dp, vertical = 1.dp)
     ) {
-        Icon(
-            key = if (download.state == DownloadState.COMPLETED) AllIconsKeys.FileTypes.Archive else AllIconsKeys.Actions.Download,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = if (download.state == DownloadState.COMPLETED) Color.Unspecified else JewelTheme.globalColors.text.info
-        )
-
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = download.name,
-                    style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.Medium),
-                    maxLines = 1
-                )
-                Text(
-                    text = "${(download.progress * 100).toInt()}%",
-                    style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = JewelTheme.globalColors.text.disabled)
-                )
-            }
-            
-            Spacer(Modifier.height(4.dp))
-            HorizontalProgressBar(
-                progress = download.progress,
-                modifier = Modifier.fillMaxWidth().height(4.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(ListItemShape)
+                .background(background)
+                .hoverable(interaction)
+                .clickable(interactionSource = interaction, indication = null, onClick = onSelect)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                key = if (download.state == DownloadState.COMPLETED) {
+                    AllIconsKeys.FileTypes.Archive
+                } else {
+                    AllIconsKeys.Actions.Download
+                },
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
             )
-            Spacer(Modifier.height(4.dp))
-            
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = download.name,
+                        color = primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${(download.progress * 100).toInt()}%",
+                        style = smallText,
+                        color = secondary
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+                if (isIndeterminate) {
+                    IndeterminateHorizontalProgressBar(modifier = Modifier.fillMaxWidth())
+                } else {
+                    HorizontalProgressBar(
+                        progress = download.progress.coerceIn(0f, 1f),
+                        modifier = Modifier.fillMaxWidth().height(4.dp)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StatusBadge(download.state)
+                    Text(
+                        text = meta,
+                        style = smallText,
+                        color = secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (download.state == DownloadState.FAILED) {
+                        download.error?.let { error ->
+                            Text(
+                                text = error.toFriendlyMessage(),
+                                style = smallText,
+                                color = if (isSelected) primary else IdeColors.error,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Reserve space so the row content doesn't shift when actions appear.
+            Box(
+                modifier = Modifier.widthIn(min = 56.dp),
+                contentAlignment = Alignment.CenterEnd
             ) {
-                StatusBadge(download.state)
-                val totalSizeText = if (download.totalSize != null) " / " + formatSize(download.totalSize) else ""
-                Text(
-                    text = formatSize(download.downloadedSize) + totalSizeText,
-                    style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = JewelTheme.globalColors.text.disabled)
-                )
-                if (download.state == DownloadState.DOWNLOADING) {
-                    Text(
-                        text = "• " + formatSpeed(download.speed),
-                        style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = JewelTheme.globalColors.text.info)
-                    )
-                }
+                if (showActions) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        when (download.state) {
+                            DownloadState.DOWNLOADING ->
+                                ToolbarIconButton(AllIconsKeys.Actions.Pause, "Pause", onPause)
 
-                if (download.peers > 0) {
-                    Text(
-                        text = "• ${download.peers} peers",
-                        style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = JewelTheme.globalColors.text.disabled)
-                    )
-                }
-                
-                if (download.state == DownloadState.FAILED && download.error != null) {
-                    Text(
-                        text = "• " + download.error.toFriendlyMessage(),
-                        style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = Color(0xFFF44336)),
-                        maxLines = 1
-                    )
+                            DownloadState.PAUSED, DownloadState.QUEUED ->
+                                ToolbarIconButton(AllIconsKeys.Actions.Resume, "Resume", onResume)
+
+                            DownloadState.FAILED ->
+                                ToolbarIconButton(AllIconsKeys.Actions.Restart, "Retry", onRetry)
+
+                            else -> {}
+                        }
+                        ToolbarIconButton(AllIconsKeys.Actions.GC, "Remove", onRemove)
+                    }
                 }
             }
         }
+    }
+}
 
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            when (download.state) {
-                DownloadState.DOWNLOADING -> {
-                    ActionButton(onClick = onPause, tooltip = { Text("Pause") }) {
-                        Icon(AllIconsKeys.Actions.Pause, null)
-                    }
-                }
-                DownloadState.PAUSED, DownloadState.QUEUED -> {
-                    ActionButton(onClick = onResume, tooltip = { Text("Resume") }) {
-                        Icon(AllIconsKeys.Actions.Resume, null)
-                    }
-                }
-                DownloadState.FAILED -> {
-                    ActionButton(onClick = onRetry, tooltip = { Text("Retry") }) {
-                        Icon(AllIconsKeys.Actions.Restart, null)
-                    }
-                }
-                else -> {}
-            }
-            ActionButton(onClick = onRemove, tooltip = { Text("Remove") }) {
-                Icon(AllIconsKeys.Actions.GC, null)
-            }
-        }
+// ---------------------------------------------------------------------------
+// Tool window chrome
+// ---------------------------------------------------------------------------
+
+/** Icon-only toolbar button with a tooltip, as used in tool window headers and row actions. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ToolbarIconButton(
+    key: IconKey,
+    tooltip: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    ActionButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        tooltip = { Text(tooltip) }
+    ) {
+        Icon(key, tooltip)
     }
 }
 
@@ -241,25 +430,33 @@ fun DownloadRow(
 fun Sidebar(
     items: List<SidebarItem>,
     selectedItem: SidebarItem,
-    onItemSelected: (SidebarItem) -> Unit
+    onItemSelected: (SidebarItem) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = Modifier
+    Row(
+        modifier = modifier
             .width(200.dp)
             .fillMaxHeight()
             .background(JewelTheme.globalColors.panelBackground)
     ) {
-        ToolWindowHeader(title = "Views")
-        
-        Column(modifier = Modifier.padding(vertical = 8.dp)) {
-            items.forEach { item ->
-                SidebarRow(
-                    item = item,
-                    isSelected = item == selectedItem,
-                    onClick = { onItemSelected(item) }
-                )
+        Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            ToolWindowHeader(title = "Views")
+
+            Column(
+                modifier = Modifier.padding(vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                items.forEach { item ->
+                    SidebarRow(
+                        item = item,
+                        // Compare by id: `count` changes would break data class equality.
+                        isSelected = item.id == selectedItem.id,
+                        onClick = { onItemSelected(item) }
+                    )
+                }
             }
         }
+        Divider(Orientation.Vertical, Modifier.fillMaxHeight())
     }
 }
 
@@ -270,30 +467,55 @@ private fun SidebarRow(
     onClick: () -> Unit
 ) {
     val style = JewelTheme.simpleListItemStyle
-    val background = if (isSelected) style.colors.backgroundSelectedActive else Color.Transparent
-    val contentColor = if (isSelected) style.colors.contentSelectedActive else Color.Unspecified
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
 
-    Row(
+    val background = when {
+        isSelected -> style.colors.backgroundSelectedActive
+        hovered -> IdeColors.hover
+        else -> Color.Transparent
+    }
+    val contentColor = if (isSelected) style.colors.contentSelectedActive else Color.Unspecified
+    val countColor = if (isSelected) style.colors.contentSelectedActive else JewelTheme.globalColors.text.info
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(30.dp)
-            .clickable(onClick = onClick)
-            .background(background)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 6.dp)
     ) {
-        Icon(
-            key = item.icon,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = contentColor
-        )
-        Text(
-            text = item.label,
-            style = JewelTheme.defaultTextStyle.copy(fontSize = 13.sp),
-            color = contentColor
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .clip(ListItemShape)
+                .background(background)
+                .hoverable(interaction)
+                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                key = item.icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = contentColor
+            )
+            Text(
+                text = item.label,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            item.count?.let { count ->
+                Text(
+                    text = count.toString(),
+                    style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                    color = countColor
+                )
+            }
+        }
     }
 }
 
@@ -306,21 +528,22 @@ fun ToolWindowHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
+                .height(32.dp)
                 .background(JewelTheme.globalColors.panelBackground)
-                .padding(horizontal = 8.dp),
+                .padding(start = 12.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = title.uppercase(),
-                style = JewelTheme.defaultTextStyle.copy(
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = JewelTheme.globalColors.text.disabled
-                )
+                text = title,
+                style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 actions()
             }
         }
@@ -330,33 +553,48 @@ fun ToolWindowHeader(
 
 @Composable
 fun StatusBar(
-    info: String
+    info: String,
+    modifier: Modifier = Modifier,
+    isConnected: Boolean = true,
+    trailing: @Composable RowScope.() -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    val small = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+
+    Column(modifier = modifier.fillMaxWidth()) {
         Divider(Orientation.Horizontal)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp)
                 .background(JewelTheme.globalColors.panelBackground)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Icon(AllIconsKeys.General.Information, null, modifier = Modifier.size(14.dp))
             Text(
                 text = info,
-                style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp)
+                style = small,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "UTF-8",
-                style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp)
-            )
-            Text(
-                text = "Connected",
-                style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = Color(0xFF4CAF50))
-            )
+            trailing()
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(if (isConnected) IdeColors.success else IdeColors.error)
+                )
+                Text(
+                    text = if (isConnected) "Connected" else "Offline",
+                    style = small,
+                    color = JewelTheme.globalColors.text.info
+                )
+            }
         }
     }
 }
@@ -364,8 +602,22 @@ fun StatusBar(
 data class SidebarItem(
     val label: String,
     val icon: IconKey,
-    val id: String
+    val id: String,
+    /** Optional trailing count, e.g. number of downloads in this view. */
+    val count: Int? = null
 )
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+private fun String.isSupportedSource(): Boolean {
+    val s = trim().lowercase()
+    return s.startsWith("http://") ||
+            s.startsWith("https://") ||
+            s.startsWith("magnet:") ||
+            s.endsWith(".torrent")
+}
 
 private fun formatSize(bytes: Long?): String {
     if (bytes == null || bytes < 0) return "Unknown"

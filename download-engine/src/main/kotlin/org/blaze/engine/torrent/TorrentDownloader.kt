@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
@@ -262,12 +263,12 @@ class TorrentDownloader(
                     }
                 }, 1000)
 
-                // FIX #3 — a swarm that never materialises is now an error, not a hang.
+                // FIX #3 — a swarm that never materializes is now an error, not a hang.
                 // Previously a torrent with 0 peers sat at 0% indefinitely with no way out
                 // except user cancellation.
                 val watchdog = launch {
                     while (isActive) {
-                        delay(2_000)
+                        delay(2_000.milliseconds)
                         if (stopRequested || stopReason.get() != null) break
 
                         val idleMillis = System.currentTimeMillis() - lastProgressAt.get()
