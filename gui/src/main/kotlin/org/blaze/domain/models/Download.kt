@@ -9,6 +9,7 @@ data class Download(
     val totalSize: Long?, // Nullable for unknown size
     val downloadedSize: Long,
     val speed: Long, // bytes per second
+    val peers: Int = 0,
     val state: DownloadState,
     val addedAt: Long,
     val savePath: String,

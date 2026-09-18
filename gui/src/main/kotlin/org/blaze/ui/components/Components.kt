@@ -193,6 +193,13 @@ fun DownloadRow(
                         style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = JewelTheme.globalColors.text.info)
                     )
                 }
+
+                if (download.peers > 0) {
+                    Text(
+                        text = "• ${download.peers} peers",
+                        style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = JewelTheme.globalColors.text.disabled)
+                    )
+                }
                 
                 if (download.state == DownloadState.FAILED && download.error != null) {
                     Text(

@@ -121,6 +121,7 @@ class DownloadRepositoryImpl(
             totalSize = totalBytes,
             downloadedSize = downloadedBytes,
             speed = downloadSpeed,
+            peers = peers,
             state = when (state) {
                 DownloadState.Queued -> GuiState.QUEUED
 

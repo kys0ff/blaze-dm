@@ -12,6 +12,7 @@ data class DownloadTask(
     val downloadedBytes: Long,
     val downloadSpeed: Long, // bytes per second
     val uploadSpeed: Long = 0,
+    val peers: Int = 0,
     val eta: Duration? = null,
     val progress: Float? = null,
     val error: DownloadError? = null,
