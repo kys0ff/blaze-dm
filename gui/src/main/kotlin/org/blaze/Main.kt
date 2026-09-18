@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.application
 import cafe.adriel.voyager.navigator.Navigator
+import kotlinx.coroutines.runBlocking
 import org.blaze.ui.screens.MainScreen
 import org.jetbrains.jewel.foundation.DisabledAppearanceValues
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -72,7 +73,10 @@ fun main() = application {
         ),
     ) {
         DecoratedWindow(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = {
+                runBlocking { Di.engine.shutdown() }
+                exitApplication()
+            },
         ) {
             BlazeTitleBar(
                 isDark = isDark,

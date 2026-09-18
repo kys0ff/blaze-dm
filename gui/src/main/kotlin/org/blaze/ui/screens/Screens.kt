@@ -1,13 +1,10 @@
 package org.blaze.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,7 +24,6 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.Navigator
 import kotlinx.coroutines.launch
-import org.blaze.data.MockDownloadRepository
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.ui.components.AddDownloadDialog
 import org.blaze.ui.components.DownloadRow
@@ -42,6 +38,7 @@ import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import java.nio.file.Path
 
 class MainScreen : Screen {
     @Composable
@@ -91,8 +88,11 @@ class DownloadsScreenModel(
     val downloads = repository.downloads
 
     fun addDownload(url: String) {
+        if (url.isBlank()) return
         screenModelScope.launch {
-            repository.addDownload(url, "/home/user/Downloads")
+            val userHome = System.getProperty("user.home")
+            val defaultPath = Path.of(userHome, "Downloads").toString()
+            repository.addDownload(url.trim(), defaultPath)
         }
     }
 
@@ -117,7 +117,7 @@ class DownloadsScreen : Screen {
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
     override fun Content() {
-        val repository = remember { MockDownloadRepository() }
+        val repository = remember { org.blaze.Di.downloadRepository }
         val screenModel = rememberScreenModel { DownloadsScreenModel(repository) }
         val downloads by screenModel.downloads.collectAsState(initial = emptyList())
         var showAddDialog by remember { mutableStateOf(false) }

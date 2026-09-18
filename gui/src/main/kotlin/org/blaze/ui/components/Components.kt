@@ -181,8 +181,9 @@ fun DownloadRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StatusBadge(download.state)
+                val totalSizeText = if (download.totalSize != null) " / " + formatSize(download.totalSize) else ""
                 Text(
-                    text = formatSize(download.downloadedSize) + " / " + formatSize(download.totalSize),
+                    text = formatSize(download.downloadedSize) + totalSizeText,
                     style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, color = JewelTheme.globalColors.text.disabled)
                 )
                 if (download.state == DownloadState.DOWNLOADING) {
@@ -350,9 +351,11 @@ data class SidebarItem(
     val id: String
 )
 
-private fun formatSize(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
+private fun formatSize(bytes: Long?): String {
+    if (bytes == null || bytes < 0) return "Unknown"
+    if (bytes == 0L) return "0 B"
     val exp = (ln(bytes.toDouble()) / ln(1024.0)).toInt()
+    if (exp == 0) return "$bytes B"
     val pre = "KMGTPE"[exp - 1]
     return String.format("%.1f %sB", bytes / 1024.0.pow(exp.toDouble()), pre)
 }
