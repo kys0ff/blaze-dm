@@ -1,12 +1,15 @@
 package org.blaze.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -30,9 +33,13 @@ import org.blaze.ui.components.AddDownloadDialog
 import org.blaze.ui.components.DownloadRow
 import org.blaze.ui.components.Sidebar
 import org.blaze.ui.components.SidebarItem
+import org.blaze.ui.components.StatusBar
+import org.blaze.ui.components.ToolWindowHeader
 import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.Orientation
+import org.jetbrains.jewel.ui.component.ActionButton
+import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
-import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
@@ -40,33 +47,39 @@ class MainScreen : Screen {
     @Composable
     override fun Content() {
         Navigator(DownloadsScreen()) { navigator ->
-            Row(modifier = Modifier.fillMaxSize()) {
-                val sidebarItems = listOf(
-                    SidebarItem("Downloads", AllIconsKeys.Actions.Download, "downloads"),
-                    SidebarItem("Settings", AllIconsKeys.General.Settings, "settings")
-                )
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(modifier = Modifier.weight(1f)) {
+                    val sidebarItems = listOf(
+                        SidebarItem("Downloads", AllIconsKeys.Actions.Download, "downloads"),
+                        SidebarItem("Settings", AllIconsKeys.General.Settings, "settings")
+                    )
 
-                val currentScreen = navigator.lastItem
-                val selectedItem = when (currentScreen) {
-                    is DownloadsScreen -> sidebarItems[0]
-                    is SettingsScreen -> sidebarItems[1]
-                    else -> sidebarItems[0]
-                }
-
-                Sidebar(
-                    items = sidebarItems,
-                    selectedItem = selectedItem,
-                    onItemSelected = { item ->
-                        when (item.id) {
-                            "downloads" -> if (currentScreen !is DownloadsScreen) navigator.replaceAll(DownloadsScreen())
-                            "settings" -> if (currentScreen !is SettingsScreen) navigator.replaceAll(SettingsScreen())
-                        }
+                    val currentScreen = navigator.lastItem
+                    val selectedItem = when (currentScreen) {
+                        is DownloadsScreen -> sidebarItems[0]
+                        is SettingsScreen -> sidebarItems[1]
+                        else -> sidebarItems[0]
                     }
-                )
 
-                Box(modifier = Modifier.weight(1f)) {
-                    navigator.lastItem.Content()
+                    Sidebar(
+                        items = sidebarItems,
+                        selectedItem = selectedItem,
+                        onItemSelected = { item ->
+                            when (item.id) {
+                                "downloads" -> if (currentScreen !is DownloadsScreen) navigator.replaceAll(DownloadsScreen())
+                                "settings" -> if (currentScreen !is SettingsScreen) navigator.replaceAll(SettingsScreen())
+                            }
+                        }
+                    )
+
+                    Divider(Orientation.Vertical)
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        navigator.lastItem.Content()
+                    }
                 }
+                
+                StatusBar(info = "Ready")
             }
         }
     }
@@ -101,9 +114,9 @@ class DownloadsScreenModel(
 }
 
 class DownloadsScreen : Screen {
+    @OptIn(ExperimentalFoundationApi::class)
     @Composable
     override fun Content() {
-        // In a real app, we'd use DI (like Hilt or Koin)
         val repository = remember { MockDownloadRepository() }
         val screenModel = rememberScreenModel { DownloadsScreenModel(repository) }
         val downloads by screenModel.downloads.collectAsState(initial = emptyList())
@@ -117,24 +130,31 @@ class DownloadsScreen : Screen {
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Downloads",
-                    style = JewelTheme.defaultTextStyle
-                )
-
-                IconButton(onClick = { showAddDialog = true }) {
-                    Icon(AllIconsKeys.General.Add, contentDescription = "Add Download")
+            ToolWindowHeader(
+                title = "Downloads",
+                actions = {
+                    ActionButton(onClick = { showAddDialog = true }, tooltip = { Text("Add Download") }) {
+                        Icon(AllIconsKeys.General.Add, null, modifier = Modifier.size(16.dp))
+                    }
+                    ActionButton(onClick = { /* TODO */ }, tooltip = { Text("Resume All") }) {
+                        Icon(AllIconsKeys.Actions.Resume, null, modifier = Modifier.size(16.dp))
+                    }
+                    ActionButton(onClick = { /* TODO */ }, tooltip = { Text("Pause All") }) {
+                        Icon(AllIconsKeys.Actions.Pause, null, modifier = Modifier.size(16.dp))
+                    }
+                    Divider(Orientation.Vertical, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp))
+                    ActionButton(onClick = { /* TODO */ }, tooltip = { Text("Clear Completed") }) {
+                        Icon(AllIconsKeys.Actions.GC, null, modifier = Modifier.size(16.dp))
+                    }
                 }
-            }
+            )
 
             if (downloads.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No downloads yet")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(AllIconsKeys.General.Balloon, null, modifier = Modifier.size(64.dp), tint = JewelTheme.globalColors.text.disabled)
+                        Text("No downloads yet", color = JewelTheme.globalColors.text.disabled)
+                    }
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -146,6 +166,7 @@ class DownloadsScreen : Screen {
                             onRemove = { screenModel.removeDownload(download.id) },
                             onRetry = { screenModel.retryDownload(download.id) }
                         )
+                        Divider(Orientation.Horizontal)
                     }
                 }
             }
@@ -156,15 +177,15 @@ class DownloadsScreen : Screen {
 class SettingsScreen : Screen {
     @Composable
     override fun Content() {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            Text(
-                text = "Settings",
-                style = JewelTheme.defaultTextStyle
-            )
-            Text(
-                text = "App configuration will appear here.",
-                modifier = Modifier.padding(top = 8.dp)
-            )
+        Column(modifier = Modifier.fillMaxSize()) {
+            ToolWindowHeader(title = "Settings")
+            
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "App configuration will appear here.",
+                    style = JewelTheme.defaultTextStyle
+                )
+            }
         }
     }
 }

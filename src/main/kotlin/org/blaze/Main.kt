@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,6 +35,8 @@ import org.jetbrains.jewel.intui.window.decoratedWindow
 import org.jetbrains.jewel.intui.window.styling.dark
 import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
 import org.jetbrains.jewel.ui.ComponentStyling
+import org.jetbrains.jewel.ui.Orientation
+import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
@@ -113,6 +116,8 @@ private fun DecoratedWindowScope.BlazeTitleBar(
                 modifier = Modifier.size(20.dp)
             )
             Text("Blaze", style = JewelTheme.defaultTextStyle)
+            Spacer(Modifier.width(8.dp))
+            Divider(Orientation.Vertical, modifier = Modifier.height(20.dp))
         }
 
         TextField(
