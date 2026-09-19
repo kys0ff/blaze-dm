@@ -29,9 +29,11 @@ import kotlinx.coroutines.launch
 import org.blaze.Di
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.ui.components.AddDownloadDialog
 import org.blaze.ui.components.DownloadRow
+import org.blaze.ui.components.RemoveDownloadDialog
 import org.blaze.ui.components.Sidebar
 import org.blaze.ui.components.SidebarItem
 import org.blaze.ui.components.StatusBar
@@ -45,7 +47,6 @@ import org.jetbrains.jewel.ui.component.Link
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import java.nio.file.Path
 
 class MainScreen : Screen {
     @Composable
@@ -125,12 +126,14 @@ class DownloadsScreenModel(
 ) : ScreenModel {
     val downloads = repository.downloads
 
-    fun addDownload(url: String) {
+    suspend fun fetchMetadata(url: String): DownloadMetadata? {
+        return repository.fetchMetadata(url)
+    }
+
+    fun addDownload(url: String, savePath: String, name: String? = null) {
         if (url.isBlank()) return
         screenModelScope.launch {
-            val userHome = System.getProperty("user.home")
-            val defaultPath = Path.of(userHome, "Downloads").toString()
-            repository.addDownload(url.trim(), defaultPath)
+            repository.addDownload(url.trim(), savePath, name)
         }
     }
 
@@ -142,8 +145,8 @@ class DownloadsScreenModel(
         screenModelScope.launch { repository.resumeDownload(id) }
     }
 
-    fun removeDownload(id: String) {
-        screenModelScope.launch { repository.removeDownload(id) }
+    fun removeDownload(id: String, deleteFile: Boolean) {
+        screenModelScope.launch { repository.removeDownload(id, deleteFile) }
     }
 
     fun retryDownload(id: String) {
@@ -171,8 +174,13 @@ class DownloadsScreen : Screen {
         val screenModel = rememberScreenModel { DownloadsScreenModel(repository) }
         val downloads by screenModel.downloads.collectAsState(initial = emptyList())
         var showAddDialog by remember { mutableStateOf(false) }
+        var downloadToRemove by remember { mutableStateOf<Download?>(null) }
         var selectedId by remember { mutableStateOf<String?>(null) }
         val listState = rememberLazyListState()
+
+        // Shared preferences simulation or simple persistence logic for deletion behavior could be added here
+        // or stored statically / via remembered state. Let's use standard remember/state or simple backing.
+        var defaultDeleteBehavior by remember { mutableStateOf<Boolean?>(null) } // null = ask, true = delete disk, false = list only
 
         // Toolbar actions are only enabled when there is something for them to act on.
         val hasActive = downloads.any { it.state == DownloadState.DOWNLOADING }
@@ -182,8 +190,33 @@ class DownloadsScreen : Screen {
         if (showAddDialog) {
             AddDownloadDialog(
                 onDismiss = { showAddDialog = false },
-                onAdd = { url -> screenModel.addDownload(url) }
+                onAdd = { url, destination, name ->
+                    screenModel.addDownload(url, destination, name)
+                },
+                onFetchMetadata = { url ->
+                    screenModel.fetchMetadata(url)
+                }
             )
+        }
+
+        downloadToRemove?.let { download ->
+            val currentBehavior = defaultDeleteBehavior
+            if (currentBehavior != null) {
+                screenModel.removeDownload(download.id, currentBehavior)
+                downloadToRemove = null
+            } else {
+                RemoveDownloadDialog(
+                    downloadName = download.name,
+                    onDismiss = { downloadToRemove = null },
+                    onConfirm = { deleteFile, setAsDefault ->
+                        if (setAsDefault) {
+                            defaultDeleteBehavior = deleteFile
+                        }
+                        screenModel.removeDownload(download.id, deleteFile)
+                        downloadToRemove = null
+                    }
+                )
+            }
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
@@ -247,7 +280,7 @@ class DownloadsScreen : Screen {
                                 download = download,
                                 onPause = { screenModel.pauseDownload(download.id) },
                                 onResume = { screenModel.resumeDownload(download.id) },
-                                onRemove = { screenModel.removeDownload(download.id) },
+                                onRemove = { downloadToRemove = download },
                                 onRetry = { screenModel.retryDownload(download.id) },
                                 isSelected = download.id == selectedId,
                                 onSelect = { selectedId = download.id }

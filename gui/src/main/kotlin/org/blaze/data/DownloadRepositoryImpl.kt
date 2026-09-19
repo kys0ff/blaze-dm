@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.withContext
 import org.blaze.domain.models.Download
+import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.api.DownloadId
@@ -35,26 +36,28 @@ class DownloadRepositoryImpl(
                 replay = 1
             )
 
-    override suspend fun addDownload(url: String, savePath: String, name: String?) {
-        val destinationDir = Path.of(savePath)
-
-        withContext(Dispatchers.IO) {
-            if (Files.notExists(destinationDir)) {
-                Files.createDirectories(destinationDir)
-            }
+    override suspend fun fetchMetadata(url: String): DownloadMetadata? {
+        val request = createRequest(url, Path.of(System.getProperty("java.io.tmpdir")), null)
+        return engine.fetchMetadata(request)?.let {
+            DownloadMetadata(it.name, it.totalSize)
         }
+    }
 
-        val request = if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
+    private suspend fun createRequest(url: String, destinationDir: Path, name: String?): DownloadRequest {
+        return if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
             val source = if (url.startsWith("magnet:")) {
                 TorrentSource.Magnet(url)
             } else {
                 TorrentSource.File(Path.of(url))
             }
 
+            val torrentName = name?.takeIf { it.isNotBlank() } ?: "Torrent"
+            val folderName = name?.takeIf { it.isNotBlank() } ?: "download"
+
             DownloadRequest.Torrent(
-                name ?: "Torrent",
+                torrentName,
                 source,
-                destinationDir.resolve(name ?: "download")
+                destinationDir.resolve(folderName)
             )
         } else {
             val trimmedUrl = url.trim()
@@ -84,6 +87,18 @@ class DownloadRepositoryImpl(
                 destinationDir.resolve(fileName)
             )
         }
+    }
+
+    override suspend fun addDownload(url: String, savePath: String, name: String?) {
+        val destinationDir = Path.of(savePath)
+
+        withContext(Dispatchers.IO) {
+            if (Files.notExists(destinationDir)) {
+                Files.createDirectories(destinationDir)
+            }
+        }
+
+        val request = createRequest(url, destinationDir, name)
 
         val id = engine.enqueue(request)
         engine.start(id)

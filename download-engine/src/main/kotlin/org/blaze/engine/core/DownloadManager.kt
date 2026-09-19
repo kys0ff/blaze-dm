@@ -12,23 +12,28 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.api.DownloadId
+import org.blaze.engine.api.DownloadMetadata
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.persistence.DownloadRecord
 import org.blaze.engine.persistence.DownloadRepository
+import java.io.File
 import java.nio.file.Path
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Fixes applied relative to the original:
@@ -182,6 +187,24 @@ class DownloadManager(
         }
     }
 
+    override suspend fun fetchMetadata(request: DownloadRequest): DownloadMetadata? = withContext(Dispatchers.IO) {
+        val downloader = when (request) {
+            is DownloadRequest.Http -> httpDownloaderFactory(request)
+            is DownloadRequest.Torrent -> torrentDownloaderFactory(request)
+        }
+
+        val task = withTimeoutOrNull(30.seconds) {
+            downloader.download().firstOrNull { it.totalBytes != null && it.totalBytes > 0 }
+        }
+
+        try {
+            downloader.cancel()
+        } catch (_: Exception) {
+        }
+
+        task?.let { DownloadMetadata(it.name, it.totalBytes) }
+    }
+
     override suspend fun enqueue(request: DownloadRequest): DownloadId {
         println("Enqueuing download: ${request.name} -> ${request.destination}")
         val id = DownloadId.generate()
@@ -296,13 +319,31 @@ class DownloadManager(
         if (deleteFiles && task != null) {
             try {
                 val destination = task.request.destination.toFile()
-                if (destination.isDirectory) {
-                    // Multi-file torrents land in a directory; File.delete() silently
-                    // no-ops on a non-empty one, so nothing was ever actually removed.
-                    destination.deleteRecursively()
+                if (task.request is DownloadRequest.Torrent) {
+                    val torrentFileOrDir = File(destination, task.name)
+                    if (torrentFileOrDir.exists()) {
+                        if (torrentFileOrDir.isDirectory) {
+                            torrentFileOrDir.deleteRecursively()
+                        } else {
+                            torrentFileOrDir.delete()
+                        }
+                    }
+                    if (destination.name == task.name) {
+                        destination.deleteRecursively()
+                    } else if (destination.isDirectory && destination.list()?.isEmpty() == true) {
+                        if (destination.name == "download") {
+                            destination.delete()
+                        }
+                    }
                 } else {
-                    destination.delete()
-                    destination.resolveSibling("${destination.name}.part").delete()
+                    if (destination.isDirectory) {
+                        // Multi-file torrents land in a directory; File.delete() silently
+                        // no-ops on a non-empty one, so nothing was ever actually removed.
+                        destination.deleteRecursively()
+                    } else {
+                        destination.delete()
+                        destination.resolveSibling("${destination.name}.part").delete()
+                    }
                 }
             } catch (e: Exception) {
                 println("Failed to delete files for ${task.name}: ${e.message}")

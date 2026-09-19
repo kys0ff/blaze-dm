@@ -6,6 +6,8 @@ import org.blaze.domain.models.Download
 interface DownloadRepository {
     val downloads: Flow<List<Download>>
 
+    suspend fun fetchMetadata(url: String): DownloadMetadata?
+
     suspend fun addDownload(url: String, savePath: String, name: String? = null)
     suspend fun pauseDownload(id: String)
     suspend fun resumeDownload(id: String)
@@ -16,3 +18,8 @@ interface DownloadRepository {
     suspend fun resumeAll()
     suspend fun clearCompleted()
 }
+
+data class DownloadMetadata(
+    val name: String,
+    val totalSize: Long?
+)
