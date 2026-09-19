@@ -21,6 +21,7 @@ repositories {
 // for newer releases.
 val jewelVersion = "0.41.0-262.10968.63"
 val voyagerVersion = "2.2.21-1.10.3"
+val koinVersion = "4.2.2"
 
 dependencies {
     implementation(project(":download-engine"))
@@ -45,6 +46,11 @@ dependencies {
     implementation("cafe.adriel.voyager:voyager-navigator:$voyagerVersion")
     implementation("cafe.adriel.voyager:voyager-screenmodel:$voyagerVersion")
     implementation("cafe.adriel.voyager:voyager-transitions:$voyagerVersion")
+    implementation("cafe.adriel.voyager:voyager-koin:$voyagerVersion")
+
+    // Koin
+    implementation("io.insert-koin:koin-core:$koinVersion")
+    implementation("io.insert-koin:koin-compose:$koinVersion")
 
     // Coroutines Swing for Dispatchers.Main on Desktop
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.1")

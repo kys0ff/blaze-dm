@@ -43,8 +43,8 @@ class DownloadRepositoryImpl(
         }
     }
 
-    private suspend fun createRequest(url: String, destinationDir: Path, name: String?): DownloadRequest {
-        return if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
+    private suspend fun createRequest(url: String, destinationDir: Path, name: String?): DownloadRequest =
+        if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
             val source = if (url.startsWith("magnet:")) {
                 TorrentSource.Magnet(url)
             } else {
@@ -87,7 +87,6 @@ class DownloadRepositoryImpl(
                 destinationDir.resolve(fileName)
             )
         }
-    }
 
     override suspend fun addDownload(url: String, savePath: String, name: String?) {
         val destinationDir = Path.of(savePath)

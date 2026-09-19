@@ -1,5 +1,6 @@
 package org.blaze.engine.torrent
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -11,6 +12,7 @@ import org.blaze.engine.api.TorrentSource
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 class TorrentDownloaderTest {
 
@@ -58,7 +60,7 @@ class TorrentDownloaderTest {
 
         var attempts = 0
         while (tasks.isEmpty() && attempts < 50) {
-            kotlinx.coroutines.delay(20)
+            delay(20.milliseconds)
             attempts++
         }
         job.cancel()

@@ -1,4 +1,4 @@
-package org.blaze.ui.components
+package org.blaze.presentation.screens.downloads.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,8 +58,6 @@ fun RemoveDownloadDialog(
     val secondary = JewelTheme.globalColors.text.info
     val hintStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-    // Key events only reach onPreviewKeyEvent once focus is inside the dialog, so take
-    // focus on open; otherwise Esc does nothing until the user clicks something.
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -101,9 +99,6 @@ fun RemoveDownloadDialog(
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // RadioButtonRow (unlike the bare RadioButton, which has no label) makes the
-                // whole row the click target. With a separate Text next to a bare RadioButton,
-                // only the small circle responds, which reads as "the radio doesn't change".
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     RadioButtonRow(
                         text = "Remove from list only",
@@ -135,7 +130,6 @@ fun RemoveDownloadDialog(
                 }
             }
 
-            // IDE pattern: "don't ask again" on the left of the button bar.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

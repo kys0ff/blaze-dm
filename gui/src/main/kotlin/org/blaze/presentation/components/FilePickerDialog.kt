@@ -1,4 +1,4 @@
-package org.blaze.ui.components
+package org.blaze.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -245,7 +245,7 @@ fun FilePickerDialog(
                 )
             )
             if (description != null) {
-                Text(text = description, style = small, color = secondary)
+                Text(text = description, style = small, color = JewelTheme.globalColors.text.info)
             }
         }
 
@@ -363,7 +363,7 @@ fun FilePickerDialog(
                     "Select a file in the tree, or type a path above."
                 },
             style = small,
-            color = if (input.problem != null) errorColor else secondary,
+            color = if (input.problem != null) JewelTheme.globalColors.text.error else JewelTheme.globalColors.text.info,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -398,15 +398,6 @@ fun FilePickerDialog(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Shared dialog chrome (also usable by the other dialogs)
-// ---------------------------------------------------------------------------
-
-/**
- * Rounded, bordered IDE-style dialog surface with Esc-to-close.
- * Key events only arrive once focus is inside, so by default it grabs focus on open;
- * pass `requestFocus = false` if the content focuses something itself.
- */
 @Composable
 internal fun IdeDialogSurface(
     onDismiss: () -> Unit,
@@ -445,10 +436,6 @@ internal fun IdeDialogSurface(
         )
     }
 }
-
-// ---------------------------------------------------------------------------
-// New folder prompt
-// ---------------------------------------------------------------------------
 
 @OptIn(ExperimentalJewelApi::class)
 @Composable
@@ -541,10 +528,6 @@ private fun NewFolderDialog(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tree row
-// ---------------------------------------------------------------------------
-
 @Composable
 private fun TreeRowItem(
     row: TreeRow,
@@ -562,14 +545,12 @@ private fun TreeRowItem(
     val activeSelection = isSelected && treeFocused
     val background = when {
         activeSelection -> colors.backgroundSelectedActive
-        // Selection in an unfocused tree is shown dimmed, as in the IDE.
         isSelected -> colors.backgroundSelectedActive.copy(alpha = 0.45f)
         hovered -> JewelTheme.globalColors.text.normal.copy(alpha = 0.07f)
         else -> Color.Transparent
     }
     val contentColor = if (activeSelection) colors.contentSelectedActive else Color.Unspecified
 
-    // Pointer handlers read the latest callbacks even though pointerInput is keyed on the path.
     val select by rememberUpdatedState(onSelect)
     val toggle by rememberUpdatedState(onToggle)
     val doubleClick by rememberUpdatedState(onDoubleClick)
@@ -586,8 +567,6 @@ private fun TreeRowItem(
                 .clip(RoundedCornerShape(4.dp))
                 .background(background)
                 .hoverable(interaction)
-                // Selecting on press (not on release) matches IDE trees. Not using `clickable`
-                // keeps rows non-focusable, so recycled LazyColumn rows can't hold tree focus.
                 .pointerInput(row.node.path) {
                     detectTapGestures(
                         onPress = { select() },
@@ -629,10 +608,6 @@ private fun TreeRowItem(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tree model
-// ---------------------------------------------------------------------------
-
 private data class FsNode(val path: Path, val isDirectory: Boolean, val isHidden: Boolean) {
     val displayName: String get() = path.fileName?.toString() ?: path.toString()
 }
@@ -662,7 +637,6 @@ private class FileTreeModel(
         }
     }
 
-    /** Flattens the expanded tree into the rows currently visible. Reads state, so callers recompose. */
     fun visibleRows(): List<TreeRow> {
         val out = ArrayList<TreeRow>()
         fun visit(node: FsNode, depth: Int) {
@@ -698,7 +672,6 @@ private class FileTreeModel(
         }
     }
 
-    /** Expands every ancestor of [target] and selects it. Returns false if it isn't listed. */
     suspend fun reveal(target: Path): Boolean {
         val abs = target.toAbsolutePath().normalize()
         val chain = generateSequence(abs) { it.parent }.toList().asReversed()
@@ -718,7 +691,6 @@ private class FileTreeModel(
         val listed = parent == null || children[parent]?.any { it.path == abs } == true
         if (!listed) return false
 
-        // If the target lives in or under a hidden entry, show hidden files so it is visible.
         val hiddenInChain = chain.drop(1).any { p ->
             children[p.parent]?.firstOrNull { it.path == p }?.isHidden == true
         }
@@ -728,7 +700,6 @@ private class FileTreeModel(
         return true
     }
 
-    /** Re-reads every directory that has been loaded so far. */
     suspend fun refreshNow() {
         val loaded = children.keys.toList()
         val fresh = withContext(Dispatchers.IO) {
@@ -742,10 +713,6 @@ private class FileTreeModel(
         scope.launch { refreshNow() }
     }
 }
-
-// ---------------------------------------------------------------------------
-// File system helpers
-// ---------------------------------------------------------------------------
 
 private fun listChildren(
     dir: Path,
@@ -764,7 +731,7 @@ private fun listChildren(
             }
         }.sortedWith(compareBy({ !it.isDirectory }, { it.displayName.lowercase() }))
     } catch (_: IOException) {
-        emptyList() // unreadable directory
+        emptyList()
     } catch (_: SecurityException) {
         emptyList()
     }
@@ -781,9 +748,7 @@ private fun Path.nearestExisting(): Path =
 private data class InputState(
     val path: Path?,
     val exists: Boolean,
-    /** Shown in red under the tree. Null for empty input or merely "not pickable yet" states. */
     val problem: String?,
-    /** Whether OK is allowed for this input. */
     val isValid: Boolean
 )
 
@@ -819,7 +784,6 @@ private fun analyzeInput(
             else InputState(path, true, "Not a folder", false)
 
         FilePickerMode.File -> when {
-            // Selecting a folder while browsing is normal in file mode: not an error, just not pickable.
             isDirectory -> InputState(path, true, null, false)
             !fileFilter(path) -> InputState(path, true, "This file type isn't supported", false)
             else -> InputState(path, true, null, true)
