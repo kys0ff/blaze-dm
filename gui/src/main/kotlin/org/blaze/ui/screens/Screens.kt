@@ -1,14 +1,16 @@
 package org.blaze.ui.screens
 
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,6 +26,9 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.Navigator
 import kotlinx.coroutines.launch
+import org.blaze.Di
+import org.blaze.domain.models.Download
+import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.ui.components.AddDownloadDialog
 import org.blaze.ui.components.DownloadRow
@@ -31,23 +36,34 @@ import org.blaze.ui.components.Sidebar
 import org.blaze.ui.components.SidebarItem
 import org.blaze.ui.components.StatusBar
 import org.blaze.ui.components.ToolWindowHeader
+import org.blaze.ui.components.ToolbarIconButton
+import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
-import org.jetbrains.jewel.ui.component.ActionButton
 import org.jetbrains.jewel.ui.component.Divider
-import org.jetbrains.jewel.ui.component.Icon
+import org.jetbrains.jewel.ui.component.Link
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import java.nio.file.Path
 
 class MainScreen : Screen {
     @Composable
     override fun Content() {
+        // Only used for the sidebar count and the status bar summary.
+        val downloads by remember { Di.downloadRepository.downloads }
+            .collectAsState(initial = emptyList())
+
         Navigator(DownloadsScreen()) { navigator ->
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.weight(1f)) {
                     val sidebarItems = listOf(
-                        SidebarItem("Downloads", AllIconsKeys.Actions.Download, "downloads"),
+                        SidebarItem(
+                            label = "Downloads",
+                            icon = AllIconsKeys.Actions.Download,
+                            id = "downloads",
+                            count = downloads.size.takeIf { it > 0 }
+                        ),
                         SidebarItem("Settings", AllIconsKeys.General.Settings, "settings")
                     )
 
@@ -58,6 +74,7 @@ class MainScreen : Screen {
                         else -> sidebarItems[0]
                     }
 
+                    // The sidebar draws its own trailing border.
                     Sidebar(
                         items = sidebarItems,
                         selectedItem = selectedItem,
@@ -69,17 +86,33 @@ class MainScreen : Screen {
                         }
                     )
 
-                    Divider(Orientation.Vertical)
-
                     Box(modifier = Modifier.weight(1f)) {
                         navigator.lastItem.Content()
                     }
                 }
-                
-                StatusBar(info = "Ready")
+
+                StatusBar(info = downloads.toStatusSummary())
             }
         }
     }
+}
+
+/** IDE-style status text, e.g. "2 downloading, 1 paused". */
+fun List<Download>.toStatusSummary(): String {
+    val list = this
+    val parts = buildList {
+        val downloading = list.count { it.state == DownloadState.DOWNLOADING }
+        val queued = list.count { it.state == DownloadState.QUEUED }
+        val paused = list.count { it.state == DownloadState.PAUSED }
+        val failed = list.count { it.state == DownloadState.FAILED }
+
+        if (downloading > 0) add("$downloading downloading")
+        if (queued > 0) add("$queued queued")
+        if (paused > 0) add("$paused paused")
+        if (failed > 0) add("$failed failed")
+    }
+
+    return if (parts.isEmpty()) "Ready" else parts.joinToString(", ")
 }
 
 class DownloadsScreenModel(
@@ -114,13 +147,20 @@ class DownloadsScreenModel(
 }
 
 class DownloadsScreen : Screen {
-    @OptIn(ExperimentalFoundationApi::class)
+    @OptIn(ExperimentalJewelApi::class)
     @Composable
     override fun Content() {
-        val repository = remember { org.blaze.Di.downloadRepository }
+        val repository = remember { Di.downloadRepository }
         val screenModel = rememberScreenModel { DownloadsScreenModel(repository) }
         val downloads by screenModel.downloads.collectAsState(initial = emptyList())
         var showAddDialog by remember { mutableStateOf(false) }
+        var selectedId by remember { mutableStateOf<String?>(null) }
+        val listState = rememberLazyListState()
+
+        // Toolbar actions are only enabled when there is something for them to act on.
+        val hasActive = downloads.any { it.state == DownloadState.DOWNLOADING }
+        val hasPaused = downloads.any { it.state == DownloadState.PAUSED }
+        val hasCompleted = downloads.any { it.state == DownloadState.COMPLETED }
 
         if (showAddDialog) {
             AddDownloadDialog(
@@ -133,40 +173,69 @@ class DownloadsScreen : Screen {
             ToolWindowHeader(
                 title = "Downloads",
                 actions = {
-                    ActionButton(onClick = { showAddDialog = true }, tooltip = { Text("Add Download") }) {
-                        Icon(AllIconsKeys.General.Add, null, modifier = Modifier.size(16.dp))
-                    }
-                    ActionButton(onClick = { /* TODO */ }, tooltip = { Text("Resume All") }) {
-                        Icon(AllIconsKeys.Actions.Resume, null, modifier = Modifier.size(16.dp))
-                    }
-                    ActionButton(onClick = { /* TODO */ }, tooltip = { Text("Pause All") }) {
-                        Icon(AllIconsKeys.Actions.Pause, null, modifier = Modifier.size(16.dp))
-                    }
-                    Divider(Orientation.Vertical, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp))
-                    ActionButton(onClick = { /* TODO */ }, tooltip = { Text("Clear Completed") }) {
-                        Icon(AllIconsKeys.Actions.GC, null, modifier = Modifier.size(16.dp))
-                    }
+                    ToolbarIconButton(
+                        key = AllIconsKeys.General.Add,
+                        tooltip = "Add download",
+                        onClick = { showAddDialog = true }
+                    )
+                    ToolbarIconButton(
+                        key = AllIconsKeys.Actions.Resume,
+                        tooltip = "Resume all",
+                        enabled = hasPaused,
+                        onClick = { /* TODO */ }
+                    )
+                    ToolbarIconButton(
+                        key = AllIconsKeys.Actions.Pause,
+                        tooltip = "Pause all",
+                        enabled = hasActive,
+                        onClick = { /* TODO */ }
+                    )
+                    Divider(
+                        Orientation.Vertical,
+                        modifier = Modifier.height(16.dp).padding(horizontal = 4.dp)
+                    )
+                    ToolbarIconButton(
+                        key = AllIconsKeys.Actions.GC,
+                        tooltip = "Clear completed",
+                        enabled = hasCompleted,
+                        onClick = { /* TODO */ }
+                    )
                 }
             )
 
             if (downloads.isEmpty()) {
+                // IDE-style empty text: muted message plus an inline action link.
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(AllIconsKeys.General.Balloon, null, modifier = Modifier.size(64.dp), tint = JewelTheme.globalColors.text.disabled)
-                        Text("No downloads yet", color = JewelTheme.globalColors.text.disabled)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "No downloads yet",
+                            color = JewelTheme.globalColors.text.info
+                        )
+                        Link(text = "Add a download", onClick = { showAddDialog = true })
                     }
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(downloads, key = { it.id }) { download ->
-                        DownloadRow(
-                            download = download,
-                            onPause = { screenModel.pauseDownload(download.id) },
-                            onResume = { screenModel.resumeDownload(download.id) },
-                            onRemove = { screenModel.removeDownload(download.id) },
-                            onRetry = { screenModel.retryDownload(download.id) }
-                        )
-                        Divider(Orientation.Horizontal)
+                // Rows draw their own hover/selection, so no dividers between them.
+                VerticallyScrollableContainer(listState, modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        items(downloads, key = { it.id }) { download ->
+                            DownloadRow(
+                                download = download,
+                                onPause = { screenModel.pauseDownload(download.id) },
+                                onResume = { screenModel.resumeDownload(download.id) },
+                                onRemove = { screenModel.removeDownload(download.id) },
+                                onRetry = { screenModel.retryDownload(download.id) },
+                                isSelected = download.id == selectedId,
+                                onSelect = { selectedId = download.id }
+                            )
+                        }
                     }
                 }
             }
@@ -179,11 +248,11 @@ class SettingsScreen : Screen {
     override fun Content() {
         Column(modifier = Modifier.fillMaxSize()) {
             ToolWindowHeader(title = "Settings")
-            
+
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = "App configuration will appear here.",
-                    style = JewelTheme.defaultTextStyle
+                    color = JewelTheme.globalColors.text.info
                 )
             }
         }
