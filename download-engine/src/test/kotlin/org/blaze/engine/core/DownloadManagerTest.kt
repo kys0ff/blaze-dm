@@ -8,6 +8,7 @@ import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.persistence.DownloadRepository
+import org.blaze.engine.settings.EngineSettingsRepository
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -25,11 +26,13 @@ class DownloadManagerTest {
         Files.createDirectories(downloadsDir)
 
         val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
         val manager = DownloadManager(
             scope = backgroundScope,
             repository = repository,
             httpDownloaderFactory = { DummyDownloader() },
-            torrentDownloaderFactory = { DummyDownloader() }
+            torrentDownloaderFactory = { DummyDownloader() },
+            settingsRepository = settingsRepo
         )
 
         // Scenario: destination is the shared downloads folder itself or a shared subfolder,

@@ -127,6 +127,35 @@ interface BlazeStrings {
     interface Settings {
         val title: String
         val placeholder: String
+        val generalCategory: String
+        val downloadsCategory: String
+        val filesCategory: String
+        val concurrencyHeader: String
+        val maxConcurrentDownloadsLabel: String
+        val maxConcurrentDownloadsDesc: String
+        val maxConnectionsLabel: String
+        val maxConnectionsDesc: String
+        val bandwidthHeader: String
+        val speedLimitEnabledLabel: String
+        val speedLimitLabel: String
+        val retryHeader: String
+        val autoRetryLabel: String
+        val maxRetriesLabel: String
+        val retryDelayLabel: String
+        val startupHeader: String
+        val resumeOnStartupLabel: String
+        val startQueuedOnStartupLabel: String
+        val destinationHeader: String
+        val defaultDownloadDirLabel: String
+        val askWhereToSaveLabel: String
+        val fileConflictsHeader: String
+        val fileConflictBehaviorLabel: String
+        val askOption: String
+        val overwriteOption: String
+        val skipOption: String
+        val renameOption: String
+        val validationPositiveNumber: String
+        val validationNonNegativeNumber: String
     }
     
     interface Errors {

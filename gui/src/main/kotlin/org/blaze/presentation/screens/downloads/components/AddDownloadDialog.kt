@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import org.blaze.domain.repository.DownloadMetadata
+import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
@@ -48,6 +49,7 @@ import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
+import org.koin.compose.koinInject
 import java.nio.file.Path
 
 @OptIn(ExperimentalJewelApi::class)
@@ -58,7 +60,8 @@ fun AddDownloadDialog(
     onFetchMetadata: suspend (url: String) -> DownloadMetadata?
 ) {
     var url by remember { mutableStateOf(TextFieldValue("")) }
-    val defaultPath = remember { Path.of(System.getProperty("user.home"), "Downloads").toString() }
+    val settingsRepository = koinInject<EngineSettingsRepository>()
+    val defaultPath = remember { settingsRepository.settings.value.defaultDownloadDir }
     var destination by remember { mutableStateOf(TextFieldValue(defaultPath)) }
     var showFolderPicker by remember { mutableStateOf(false) }
 
@@ -156,19 +159,21 @@ fun AddDownloadDialog(
                         }
                     }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(text = strings.downloads.dialogs.saveTo)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextField(
-                                value = destination,
-                                onValueChange = { destination = it },
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedButton(onClick = { showFolderPicker = true }) {
-                                Text(strings.common.browse)
+                    if (settingsRepository.settings.value.askWhereToSave) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(text = strings.downloads.dialogs.saveTo)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextField(
+                                    value = destination,
+                                    onValueChange = { destination = it },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedButton(onClick = { showFolderPicker = true }) {
+                                    Text(strings.common.browse)
+                                }
                             }
                         }
                     }

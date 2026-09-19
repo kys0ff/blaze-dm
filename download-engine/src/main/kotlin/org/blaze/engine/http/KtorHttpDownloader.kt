@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.withContext
@@ -25,6 +26,9 @@ import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.core.Downloader
+import org.blaze.engine.settings.DownloadSettings
+import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.engine.settings.FileConflictBehavior
 import java.io.File
 import java.io.RandomAccessFile
 import java.net.URI
@@ -32,12 +36,14 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException as KotlinCancellationException
 
 class KtorHttpDownloader(
     private val request: DownloadRequest.Http,
-    private val httpClient: HttpClient? = null
+    private val httpClient: HttpClient? = null,
+    private val settingsRepository: EngineSettingsRepository? = null
 ) : Downloader {
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -58,10 +64,43 @@ class KtorHttpDownloader(
         job = currentCoroutineContext()[Job]
         cancelRequested = false
 
-        val destinationFile = request.destination.toFile()
-        val partialFile = request.destination.resolveSibling("${request.destination.fileName}.part").toFile()
+        val settings = settingsRepository?.settings?.value ?: DownloadSettings()
+        var destinationFile = request.destination.toFile()
+        var partialFile = request.destination.resolveSibling("${request.destination.fileName}.part").toFile()
+
+        if (destinationFile.exists()) {
+            when (settings.fileConflictBehavior) {
+                FileConflictBehavior.SKIP -> {
+                    send(createTask(DownloadState.Completed, totalBytes = destinationFile.length(), downloadedBytes = destinationFile.length(), progress = 1f))
+                    return@channelFlow
+                }
+                FileConflictBehavior.OVERWRITE -> {
+                    withContext(Dispatchers.IO) {
+                        destinationFile.delete()
+                        partialFile.delete()
+                    }
+                }
+                FileConflictBehavior.RENAME, FileConflictBehavior.ASK -> {
+                    val fullStr = request.destination.fileName.toString()
+                    val baseName = fullStr.substringBeforeLast(".")
+                    val extension = if (fullStr.contains(".")) fullStr.substringAfterLast(".") else ""
+                    val extStr = if (extension.isNotEmpty()) ".$extension" else ""
+                    var count = 1
+                    var newFile = request.destination.resolveSibling("$baseName ($count)$extStr").toFile()
+                    while (newFile.exists()) {
+                        count++
+                        newFile = request.destination.resolveSibling("$baseName ($count)$extStr").toFile()
+                    }
+                    destinationFile = newFile
+                    partialFile = newFile.resolveSibling("${newFile.name}.part")
+                }
+            }
+        }
 
         val client = httpClient ?: HttpClient(CIO) {
+            engine {
+                maxConnectionsCount = settings.maxConnectionsPerDownload
+            }
             install(HttpTimeout) {
                 requestTimeoutMillis = 60_000
                 connectTimeoutMillis = 15_000
@@ -76,7 +115,6 @@ class KtorHttpDownloader(
             var currentUrl = if (!request.url.contains("://")) "http://${request.url}" else request.url
             var redirectCount = 0
             
-            // Explicit redirect loop to handle redirects robustly and capture the final state.
             while (true) {
                 val statement = client.prepareGet(currentUrl) {
                     header(HttpHeaders.UserAgent, userAgent)
@@ -194,6 +232,21 @@ class KtorHttpDownloader(
                     downloaded += read
                     bytesSinceLastUpdate += read
 
+                    val liveSettings = settingsRepository?.settings?.value
+                    if (liveSettings?.globalSpeedLimitEnabled == true) {
+                        val limitBytesPerMs = (liveSettings.globalSpeedLimitKbps * 1024) / 1000.0
+                        if (limitBytesPerMs > 0) {
+                            val elapsedFromStart = System.currentTimeMillis() - lastUpdate + 1
+                            val maxAllowedBytes = elapsedFromStart * limitBytesPerMs
+                            if (bytesSinceLastUpdate > maxAllowedBytes) {
+                                val sleepMs = ((bytesSinceLastUpdate / limitBytesPerMs) - elapsedFromStart).toLong()
+                                if (sleepMs > 0) {
+                                    delay(sleepMs.milliseconds)
+                                }
+                            }
+                        }
+                    }
+
                     val now = System.currentTimeMillis()
                     val elapsed = now - lastUpdate
                     if (elapsed >= 500) {
@@ -278,10 +331,8 @@ class KtorHttpDownloader(
         job?.cancel()
     }
 
-    private companion object {
-        val RETRYABLE_STATUSES = setOf(
-            HttpStatusCode.RequestTimeout,
-            HttpStatusCode.TooManyRequests,
+    companion object {
+        private val RETRYABLE_STATUSES = setOf(
             HttpStatusCode.InternalServerError,
             HttpStatusCode.BadGateway,
             HttpStatusCode.ServiceUnavailable,
