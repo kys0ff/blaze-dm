@@ -36,8 +36,8 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.FilePickerDialog
-import org.blaze.presentation.components.FilePickerMode
+import org.blaze.presentation.screens.filepicker.FilePickerDialog
+import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.theme.IdeColors
 import org.blaze.presentation.util.formatSize
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi

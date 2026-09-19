@@ -26,6 +26,7 @@ val koinVersion = "4.2.2"
 dependencies {
     implementation(project(":download-engine"))
     implementation(project(":i18n"))
+    implementation(project(":filepicker"))
     
     // Compose Desktop, without Compose Material — Jewel replaces it entirely.
     implementation(compose.desktop.currentOs) {
@@ -55,6 +56,8 @@ dependencies {
 
     // Coroutines Swing for Dispatchers.Main on Desktop
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.1")
+
+    testImplementation(kotlin("test"))
 }
 
 repositories {
