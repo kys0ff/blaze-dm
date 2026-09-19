@@ -245,7 +245,7 @@ fun FilePickerDialog(
                 )
             )
             if (description != null) {
-                Text(text = description, style = small, color = JewelTheme.globalColors.text.info)
+                Text(text = description, style = small, color = secondary)
             }
         }
 
@@ -363,7 +363,7 @@ fun FilePickerDialog(
                     "Select a file in the tree, or type a path above."
                 },
             style = small,
-            color = if (input.problem != null) JewelTheme.globalColors.text.error else JewelTheme.globalColors.text.info,
+            color = if (input.problem != null) errorColor else secondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

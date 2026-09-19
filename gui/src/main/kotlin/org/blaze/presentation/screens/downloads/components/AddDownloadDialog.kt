@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -36,8 +35,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import org.blaze.domain.repository.DownloadMetadata
-import org.blaze.presentation.components.FilePickerMode
 import org.blaze.presentation.components.FilePickerDialog
+import org.blaze.presentation.components.FilePickerMode
 import org.blaze.presentation.theme.IdeColors
 import org.blaze.presentation.util.formatSize
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
