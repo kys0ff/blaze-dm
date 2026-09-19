@@ -103,6 +103,10 @@ class DownloadRepositoryImpl(
         engine.start(id)
     }
 
+    override suspend fun getDestinationPath(url: String, savePath: String, name: String?): String {
+        return createRequest(url, Path.of(savePath), name).destination.toAbsolutePath().toString()
+    }
+
     override suspend fun pauseDownload(id: String) {
         engine.pause(DownloadId(id))
     }

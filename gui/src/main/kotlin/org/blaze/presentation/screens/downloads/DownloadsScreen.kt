@@ -25,10 +25,14 @@ class DownloadsScreen : Screen {
             }
         }
 
+        val settings by screenModel.settingsRepository.settings.collectAsState()
+
         DownloadsScreenContent(
             state = state,
             onEvent = screenModel::onEvent,
-            onFetchMetadata = { url -> screenModel.fetchMetadata(url) }
+            onFetchMetadata = { url -> screenModel.fetchMetadata(url) },
+            onResolveDestinationPath = { url, savePath, name -> screenModel.resolveDestinationPath(url, savePath, name) },
+            fileConflictBehavior = settings.fileConflictBehavior,
         )
     }
 }

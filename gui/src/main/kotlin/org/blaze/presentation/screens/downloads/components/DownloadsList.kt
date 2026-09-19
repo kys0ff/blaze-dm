@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
+import org.blaze.domain.models.DownloadState
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 
@@ -20,6 +21,7 @@ fun DownloadsList(
     onEvent: (DownloadsEvent) -> Unit,
     onRemoveRequested: (Download) -> Unit,
     onSelect: (String) -> Unit,
+    hideResumeForQueued: Boolean,
     modifier: Modifier = Modifier
 ) {
     VerticallyScrollableContainer(listState, modifier = modifier.fillMaxSize()) {
@@ -37,7 +39,8 @@ fun DownloadsList(
                     onRetry = { onEvent(DownloadsEvent.Retry(download.id)) },
                     onCancel = { onEvent(DownloadsEvent.Cancel(download.id)) },
                     isSelected = download.id == selectedId,
-                    onSelect = { onSelect(download.id) }
+                    onSelect = { onSelect(download.id) },
+                    hideResume = hideResumeForQueued && (download.state == DownloadState.QUEUED)
                 )
             }
         }

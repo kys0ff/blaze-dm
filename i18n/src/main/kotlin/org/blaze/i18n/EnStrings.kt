@@ -51,6 +51,12 @@ object EnStrings : BlazeStrings {
             override val dontAskAgain = "Don't ask again"
             override val removeAction = "Remove"
             override val deleteAction = "Delete"
+
+            override val conflictTitle = "File Conflict"
+            override fun conflictMessage(name: String) = "The file '$name' already exists at the destination."
+            override val overwriteAction = "Overwrite"
+            override val renameAction = "Rename"
+            override val skipAction = "Skip"
         }
 
         override val status = object : BlazeStrings.Downloads.Status {

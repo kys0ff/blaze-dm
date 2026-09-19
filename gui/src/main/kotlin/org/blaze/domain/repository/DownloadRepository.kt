@@ -9,6 +9,7 @@ interface DownloadRepository {
     suspend fun fetchMetadata(url: String): DownloadMetadata?
 
     suspend fun addDownload(url: String, savePath: String, name: String? = null)
+    suspend fun getDestinationPath(url: String, savePath: String, name: String? = null): String
     suspend fun pauseDownload(id: String)
     suspend fun resumeDownload(id: String)
     suspend fun cancelDownload(id: String)

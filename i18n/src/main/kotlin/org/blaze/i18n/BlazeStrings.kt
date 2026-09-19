@@ -60,6 +60,12 @@ interface BlazeStrings {
             val dontAskAgain: String
             val removeAction: String
             val deleteAction: String
+
+            val conflictTitle: String
+            fun conflictMessage(name: String): String
+            val overwriteAction: String
+            val renameAction: String
+            val skipAction: String
         }
 
         val status: Status

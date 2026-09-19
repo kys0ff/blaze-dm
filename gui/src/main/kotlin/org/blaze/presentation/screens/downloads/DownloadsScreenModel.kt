@@ -15,6 +15,7 @@ import org.blaze.domain.usecase.AddDownloadUseCase
 import org.blaze.domain.usecase.CancelDownloadUseCase
 import org.blaze.domain.usecase.ClearCompletedDownloadsUseCase
 import org.blaze.domain.usecase.FetchMetadataUseCase
+import org.blaze.domain.usecase.GetDestinationPathUseCase
 import org.blaze.domain.usecase.GetDownloadsUseCase
 import org.blaze.domain.usecase.PauseAllDownloadsUseCase
 import org.blaze.domain.usecase.PauseDownloadUseCase
@@ -22,11 +23,14 @@ import org.blaze.domain.usecase.RemoveDownloadUseCase
 import org.blaze.domain.usecase.ResumeAllDownloadsUseCase
 import org.blaze.domain.usecase.ResumeDownloadUseCase
 import org.blaze.domain.usecase.RetryDownloadUseCase
+import org.blaze.engine.settings.EngineSettingsRepository
 
 class DownloadsScreenModel(
     getDownloads: GetDownloadsUseCase,
     private val fetchMetadataUseCase: FetchMetadataUseCase,
     private val addDownload: AddDownloadUseCase,
+    private val getDestinationPath: GetDestinationPathUseCase,
+    val settingsRepository: EngineSettingsRepository,
     private val pauseDownload: PauseDownloadUseCase,
     private val resumeDownload: ResumeDownloadUseCase,
     private val cancelDownload: CancelDownloadUseCase,
@@ -41,11 +45,13 @@ class DownloadsScreenModel(
 
     val state: StateFlow<DownloadsState> = combine(
         getDownloads(),
-        _searchQuery
-    ) { downloads, query ->
+        _searchQuery,
+        settingsRepository.settings
+    ) { downloads, query, settings ->
         DownloadsState(
             downloads = downloads,
             searchQuery = query,
+            maxConcurrentDownloads = settings.maxConcurrentDownloads,
             filteredDownloads = if (query.isBlank()) {
                 downloads
             } else {
@@ -144,4 +150,7 @@ class DownloadsScreenModel(
     }
 
     suspend fun fetchMetadata(url: String): DownloadMetadata? = fetchMetadataUseCase(url)
+
+    suspend fun resolveDestinationPath(url: String, savePath: String, name: String?): String =
+        getDestinationPath(url, savePath, name)
 }

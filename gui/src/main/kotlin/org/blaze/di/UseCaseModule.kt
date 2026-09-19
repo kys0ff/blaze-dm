@@ -7,6 +7,7 @@ val useCaseModule = module {
     factory { GetDownloadsUseCase(get()) }
     factory { FetchMetadataUseCase(get()) }
     factory { AddDownloadUseCase(get()) }
+    factory { GetDestinationPathUseCase(get()) }
     factory { PauseDownloadUseCase(get()) }
     factory { ResumeDownloadUseCase(get()) }
     factory { CancelDownloadUseCase(get()) }

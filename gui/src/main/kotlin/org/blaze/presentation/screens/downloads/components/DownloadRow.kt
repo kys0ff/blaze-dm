@@ -56,7 +56,8 @@ fun DownloadRow(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
-    onSelect: () -> Unit = {}
+    onSelect: () -> Unit = {},
+    hideResume: Boolean = false
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -192,8 +193,11 @@ fun DownloadRow(
                             DownloadState.DOWNLOADING ->
                                 ToolbarIconButton(AllIconsKeys.Actions.Pause, strings.downloads.actions.pause, onPause)
 
-                            DownloadState.PAUSED, DownloadState.QUEUED ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Resume, strings.downloads.actions.resume, onResume)
+                            DownloadState.PAUSED, DownloadState.QUEUED -> {
+                                if (!hideResume || download.state != DownloadState.QUEUED) {
+                                    ToolbarIconButton(AllIconsKeys.Actions.Resume, strings.downloads.actions.resume, onResume)
+                                }
+                            }
 
                             DownloadState.FAILED ->
                                 ToolbarIconButton(AllIconsKeys.Actions.Restart, strings.downloads.actions.retry, onRetry)

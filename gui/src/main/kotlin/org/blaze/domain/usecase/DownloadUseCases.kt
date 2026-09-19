@@ -18,6 +18,11 @@ class AddDownloadUseCase(private val repository: DownloadRepository) {
         repository.addDownload(url, savePath, name)
 }
 
+class GetDestinationPathUseCase(private val repository: DownloadRepository) {
+    suspend operator fun invoke(url: String, savePath: String, name: String? = null): String =
+        repository.getDestinationPath(url, savePath, name)
+}
+
 class PauseDownloadUseCase(private val repository: DownloadRepository) {
     suspend operator fun invoke(id: String) = repository.pauseDownload(id)
 }
