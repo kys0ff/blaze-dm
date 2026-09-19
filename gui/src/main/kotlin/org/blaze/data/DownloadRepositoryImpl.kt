@@ -109,6 +109,36 @@ class DownloadRepositoryImpl(
         engine.retry(DownloadId(id))
     }
 
+    override suspend fun pauseAll() {
+        engine.observeAllTasks().value.forEach { task ->
+            if (task.state is DownloadState.Downloading ||
+                task.state is DownloadState.Queued ||
+                task.state is DownloadState.Starting ||
+                task.state is DownloadState.Resuming ||
+                task.state is DownloadState.Verifying ||
+                task.state is DownloadState.ResolvingMetadata
+            ) {
+                engine.pause(task.id)
+            }
+        }
+    }
+
+    override suspend fun resumeAll() {
+        engine.observeAllTasks().value.forEach { task ->
+            if (task.state is DownloadState.Paused || task.state is DownloadState.Pausing) {
+                engine.resume(task.id)
+            }
+        }
+    }
+
+    override suspend fun clearCompleted() {
+        engine.observeAllTasks().value.forEach { task ->
+            if (task.state is DownloadState.Completed || task.state is DownloadState.Seeding) {
+                engine.remove(task.id, deleteFiles = false)
+            }
+        }
+    }
+
     private fun DownloadTask.toGuiDownload(): Download {
         return Download(
             id = id.value,

@@ -80,8 +80,13 @@ class MainScreen : Screen {
                         selectedItem = selectedItem,
                         onItemSelected = { item ->
                             when (item.id) {
-                                "downloads" -> if (currentScreen !is DownloadsScreen) navigator.replaceAll(DownloadsScreen())
-                                "settings" -> if (currentScreen !is SettingsScreen) navigator.replaceAll(SettingsScreen())
+                                "downloads" -> if (currentScreen !is DownloadsScreen) navigator.replaceAll(
+                                    DownloadsScreen()
+                                )
+
+                                "settings" -> if (currentScreen !is SettingsScreen) navigator.replaceAll(
+                                    SettingsScreen()
+                                )
                             }
                         }
                     )
@@ -144,6 +149,18 @@ class DownloadsScreenModel(
     fun retryDownload(id: String) {
         screenModelScope.launch { repository.retryDownload(id) }
     }
+
+    fun pauseAll() {
+        screenModelScope.launch { repository.pauseAll() }
+    }
+
+    fun resumeAll() {
+        screenModelScope.launch { repository.resumeAll() }
+    }
+
+    fun clearCompleted() {
+        screenModelScope.launch { repository.clearCompleted() }
+    }
 }
 
 class DownloadsScreen : Screen {
@@ -182,13 +199,13 @@ class DownloadsScreen : Screen {
                         key = AllIconsKeys.Actions.Resume,
                         tooltip = "Resume all",
                         enabled = hasPaused,
-                        onClick = { /* TODO */ }
+                        onClick = { screenModel.resumeAll() }
                     )
                     ToolbarIconButton(
                         key = AllIconsKeys.Actions.Pause,
                         tooltip = "Pause all",
                         enabled = hasActive,
-                        onClick = { /* TODO */ }
+                        onClick = { screenModel.pauseAll() }
                     )
                     Divider(
                         Orientation.Vertical,
@@ -198,7 +215,7 @@ class DownloadsScreen : Screen {
                         key = AllIconsKeys.Actions.GC,
                         tooltip = "Clear completed",
                         enabled = hasCompleted,
-                        onClick = { /* TODO */ }
+                        onClick = { screenModel.clearCompleted() }
                     )
                 }
             )

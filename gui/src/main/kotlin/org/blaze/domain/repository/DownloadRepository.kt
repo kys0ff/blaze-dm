@@ -12,4 +12,7 @@ interface DownloadRepository {
     suspend fun cancelDownload(id: String)
     suspend fun removeDownload(id: String, deleteFile: Boolean = false)
     suspend fun retryDownload(id: String)
+    suspend fun pauseAll()
+    suspend fun resumeAll()
+    suspend fun clearCompleted()
 }
