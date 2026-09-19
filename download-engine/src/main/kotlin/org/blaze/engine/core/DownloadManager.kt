@@ -7,6 +7,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,7 +63,7 @@ class DownloadManager(
 
     init {
         scope.launch(Dispatchers.IO) {
-            for (unused in persistSignal) {
+            persistSignal.consumeEach {
                 writeSnapshot()
             }
         }

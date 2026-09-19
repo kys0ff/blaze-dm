@@ -15,6 +15,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadSchedulerTest {
@@ -81,7 +82,7 @@ class DownloadSchedulerTest {
         manager.start(id3)
 
         // Wait a small moment for coroutines to process the queue
-        advanceTimeBy(100)
+        advanceTimeBy(100.milliseconds)
 
         // Only 1 should be active, others queued
         assertEquals(DownloadState.Downloading, manager.getTask(id1)?.state)
@@ -90,7 +91,7 @@ class DownloadSchedulerTest {
 
         // Complete the first download
         downloaders.firstOrNull { it.flow.value.name == "File1" }?.complete()
-        advanceTimeBy(100)
+        advanceTimeBy(100.milliseconds)
 
         // Now File2 should be started automatically
         assertEquals(DownloadState.Completed, manager.getTask(id1)?.state)
@@ -99,7 +100,7 @@ class DownloadSchedulerTest {
 
         // Dynamically increase max concurrency to 2
         settingsRepo.updateSettings { it.copy(maxConcurrentDownloads = 2) }
-        advanceTimeBy(100)
+        advanceTimeBy(100.milliseconds)
 
         // File3 should now start as well because a slot opened up
         assertEquals(DownloadState.Downloading, manager.getTask(id3)?.state)

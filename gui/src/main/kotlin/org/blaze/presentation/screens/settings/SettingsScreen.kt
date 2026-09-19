@@ -1,21 +1,29 @@
 package org.blaze.presentation.screens.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,11 +31,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolWindowHeader
@@ -36,34 +51,58 @@ import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.theme.IdeColors
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.Outline
 import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.DefaultButton
+import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.RadioButtonRow
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
+import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
+import org.jetbrains.jewel.ui.theme.simpleListItemStyle
+import java.nio.file.Path
+
+/** Settings content is indented to line up with the label of a checkbox/radio (icon + gap). */
+private val DependentIndent = 27.dp
 
 class SettingsScreen : Screen {
     @OptIn(ExperimentalJewelApi::class)
     @Composable
     override fun Content() {
+        val navigator = LocalNavigator.currentOrThrow
         val screenModel = koinScreenModel<SettingsScreenModel>()
         val state by screenModel.state.collectAsState()
         val strings = blazeStrings
+
+        var showDirPicker by remember { mutableStateOf(false) }
+        val scrollState = rememberScrollState()
+
+        val speedLimitEnabled = state.settings.globalSpeedLimitEnabled
+        val autoRetryEnabled = state.settings.autoRetryFailed
+
+        // Errors on fields that are disabled don't count: the user can't see or fix them.
+        val downloadsHasError = state.maxConcurrentDownloadsError != null ||
+                state.maxConnectionsPerDownloadError != null ||
+                (speedLimitEnabled && state.globalSpeedLimitKbpsError != null) ||
+                (autoRetryEnabled && (state.maxRetriesError != null || state.retryDelaySecondsError != null))
+
+        // All categories share one scroll state, so start each one at the top.
+        LaunchedEffect(state.currentCategory) { scrollState.scrollTo(0) }
 
         Column(modifier = Modifier.fillMaxSize()) {
             ToolWindowHeader(title = strings.settings.title)
 
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                // Left Navigation Sidebar
+                // Category list
                 Column(
                     modifier = Modifier
                         .width(180.dp)
                         .fillMaxHeight()
                         .background(JewelTheme.globalColors.panelBackground)
-                        .border(1.dp, JewelTheme.globalColors.borders.normal)
-                        .padding(vertical = 8.dp)
+                        .padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
                 ) {
                     val categories = listOf(
                         SettingsCategory.GENERAL to strings.settings.generalCategory,
@@ -71,237 +110,230 @@ class SettingsScreen : Screen {
                         SettingsCategory.FILES to strings.settings.filesCategory
                     )
 
-                    categories.forEach { (cat, label) ->
-                        val isSelected = state.currentCategory == cat
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (isSelected) JewelTheme.globalColors.borders.normal.copy(alpha = 0.4f) else JewelTheme.globalColors.panelBackground)
-                                .clickable { screenModel.onEvent(SettingsEvent.ChangeCategory(cat)) }
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = label,
-                                style = JewelTheme.defaultTextStyle.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 13.sp
-                                )
-                            )
-                        }
+                    categories.forEach { (category, label) ->
+                        SettingsNavItem(
+                            label = label,
+                            isSelected = state.currentCategory == category,
+                            hasError = category == SettingsCategory.DOWNLOADS && downloadsHasError,
+                            onClick = { screenModel.onEvent(SettingsEvent.ChangeCategory(category)) }
+                        )
                     }
                 }
 
-                // Right Panel Content
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(24.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                Divider(Orientation.Vertical, Modifier.fillMaxHeight())
+
+                // Content. verticalScroll must come before padding, otherwise content is
+                // clipped 24dp inside the panel edge instead of at the edge.
+                VerticallyScrollableContainer(
+                    scrollState,
+                    modifier = Modifier.weight(1f).fillMaxHeight()
                 ) {
-                    when (state.currentCategory) {
-                        SettingsCategory.GENERAL -> {
-                            Text(
-                                text = strings.settings.startupHeader,
-                                style = JewelTheme.defaultTextStyle.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            )
-                            CheckboxRow(
-                                text = strings.settings.resumeOnStartupLabel,
-                                checked = state.settings.resumeDownloadsOnStartup,
-                                onCheckedChange = { screenModel.onEvent(SettingsEvent.UpdateResumeDownloadsOnStartup(it)) }
-                            )
-                            CheckboxRow(
-                                text = strings.settings.startQueuedOnStartupLabel,
-                                checked = state.settings.startQueuedOnStartup,
-                                onCheckedChange = { screenModel.onEvent(SettingsEvent.UpdateStartQueuedOnStartup(it)) }
-                            )
-                        }
-
-                        SettingsCategory.DOWNLOADS -> {
-                            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text(
-                                    text = strings.settings.concurrencyHeader,
-                                    style = JewelTheme.defaultTextStyle.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                )
-
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(text = strings.settings.maxConcurrentDownloadsLabel)
-                                    TextField(
-                                        value = state.maxConcurrentDownloadsText,
-                                        onValueChange = { screenModel.onEvent(SettingsEvent.UpdateMaxConcurrentDownloads(it)) },
-                                        outline = if (state.maxConcurrentDownloadsError != null) Outline.Error else Outline.None,
-                                        modifier = Modifier.width(100.dp)
-                                    )
-                                    state.maxConcurrentDownloadsError?.let {
-                                        Text(text = it, color = IdeColors.error, style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(scrollState)
+                            .padding(24.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.widthIn(max = 640.dp),
+                            verticalArrangement = Arrangement.spacedBy(24.dp)
+                        ) {
+                            when (state.currentCategory) {
+                                SettingsCategory.GENERAL -> {
+                                    SettingsSection(strings.settings.startupHeader) {
+                                        CheckboxRow(
+                                            text = strings.settings.resumeOnStartupLabel,
+                                            checked = state.settings.resumeDownloadsOnStartup,
+                                            onCheckedChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateResumeDownloadsOnStartup(
+                                                        it
+                                                    )
+                                                )
+                                            }
+                                        )
+                                        CheckboxRow(
+                                            text = strings.settings.startQueuedOnStartupLabel,
+                                            checked = state.settings.startQueuedOnStartup,
+                                            onCheckedChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateStartQueuedOnStartup(
+                                                        it
+                                                    )
+                                                )
+                                            }
+                                        )
                                     }
-                                    Text(
-                                        text = strings.settings.maxConcurrentDownloadsDesc,
-                                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
-                                        color = JewelTheme.globalColors.text.info
-                                    )
                                 }
 
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(text = strings.settings.maxConnectionsLabel)
-                                    TextField(
-                                        value = state.maxConnectionsPerDownloadText,
-                                        onValueChange = { screenModel.onEvent(SettingsEvent.UpdateMaxConnectionsPerDownload(it)) },
-                                        outline = if (state.maxConnectionsPerDownloadError != null) Outline.Error else Outline.None,
-                                        modifier = Modifier.width(100.dp)
-                                    )
-                                    state.maxConnectionsPerDownloadError?.let {
-                                        Text(text = it, color = IdeColors.error, style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp))
+                                SettingsCategory.DOWNLOADS -> {
+                                    SettingsSection(strings.settings.concurrencyHeader) {
+                                        NumberField(
+                                            label = strings.settings.maxConcurrentDownloadsLabel,
+                                            value = state.maxConcurrentDownloadsText,
+                                            error = state.maxConcurrentDownloadsError,
+                                            description = strings.settings.maxConcurrentDownloadsDesc,
+                                            onValueChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateMaxConcurrentDownloads(
+                                                        it
+                                                    )
+                                                )
+                                            }
+                                        )
+                                        NumberField(
+                                            label = strings.settings.maxConnectionsLabel,
+                                            value = state.maxConnectionsPerDownloadText,
+                                            error = state.maxConnectionsPerDownloadError,
+                                            description = strings.settings.maxConnectionsDesc,
+                                            onValueChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateMaxConnectionsPerDownload(
+                                                        it
+                                                    )
+                                                )
+                                            }
+                                        )
                                     }
-                                    Text(
-                                        text = strings.settings.maxConnectionsDesc,
-                                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
-                                        color = JewelTheme.globalColors.text.info
-                                    )
-                                }
 
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = strings.settings.bandwidthHeader,
-                                    style = JewelTheme.defaultTextStyle.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                )
-                                CheckboxRow(
-                                    text = strings.settings.speedLimitEnabledLabel,
-                                    checked = state.settings.globalSpeedLimitEnabled,
-                                    onCheckedChange = { screenModel.onEvent(SettingsEvent.UpdateSpeedLimitEnabled(it)) }
-                                )
-                                if (state.settings.globalSpeedLimitEnabled) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text(text = strings.settings.speedLimitLabel)
-                                        TextField(
+                                    SettingsSection(strings.settings.bandwidthHeader) {
+                                        CheckboxRow(
+                                            text = strings.settings.speedLimitEnabledLabel,
+                                            checked = speedLimitEnabled,
+                                            onCheckedChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateSpeedLimitEnabled(
+                                                        it
+                                                    )
+                                                )
+                                            }
+                                        )
+                                        // Dependent option: indented and disabled (not hidden) when off,
+                                        // like IDE settings, so the layout doesn't jump.
+                                        NumberField(
+                                            label = strings.settings.speedLimitLabel,
                                             value = state.globalSpeedLimitKbpsText,
-                                            onValueChange = { screenModel.onEvent(SettingsEvent.UpdateSpeedLimitKbps(it)) },
-                                            outline = if (state.globalSpeedLimitKbpsError != null) Outline.Error else Outline.None,
-                                            modifier = Modifier.width(150.dp)
+                                            error = state.globalSpeedLimitKbpsError,
+                                            enabled = speedLimitEnabled,
+                                            fieldWidth = 150.dp,
+                                            modifier = Modifier.padding(start = DependentIndent),
+                                            onValueChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateSpeedLimitKbps(
+                                                        it
+                                                    )
+                                                )
+                                            }
                                         )
-                                        state.globalSpeedLimitKbpsError?.let {
-                                            Text(text = it, color = IdeColors.error, style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp))
-                                        }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = strings.settings.retryHeader,
-                                    style = JewelTheme.defaultTextStyle.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                )
-                                CheckboxRow(
-                                    text = strings.settings.autoRetryLabel,
-                                    checked = state.settings.autoRetryFailed,
-                                    onCheckedChange = { screenModel.onEvent(SettingsEvent.UpdateAutoRetryFailed(it)) }
-                                )
-                                if (state.settings.autoRetryFailed) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Text(text = strings.settings.maxRetriesLabel)
-                                            TextField(
+                                    SettingsSection(strings.settings.retryHeader) {
+                                        CheckboxRow(
+                                            text = strings.settings.autoRetryLabel,
+                                            checked = autoRetryEnabled,
+                                            onCheckedChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateAutoRetryFailed(
+                                                        it
+                                                    )
+                                                )
+                                            }
+                                        )
+                                        Row(
+                                            modifier = Modifier.padding(start = DependentIndent),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            NumberField(
+                                                label = strings.settings.maxRetriesLabel,
                                                 value = state.maxRetriesText,
-                                                onValueChange = { screenModel.onEvent(SettingsEvent.UpdateMaxRetries(it)) },
-                                                outline = if (state.maxRetriesError != null) Outline.Error else Outline.None,
-                                                modifier = Modifier.width(100.dp)
+                                                error = state.maxRetriesError,
+                                                enabled = autoRetryEnabled,
+                                                onValueChange = {
+                                                    screenModel.onEvent(
+                                                        SettingsEvent.UpdateMaxRetries(
+                                                            it
+                                                        )
+                                                    )
+                                                }
                                             )
-                                            state.maxRetriesError?.let {
-                                                Text(text = it, color = IdeColors.error, style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp))
-                                            }
-                                        }
-
-                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Text(text = strings.settings.retryDelayLabel)
-                                            TextField(
+                                            NumberField(
+                                                label = strings.settings.retryDelayLabel,
                                                 value = state.retryDelaySecondsText,
-                                                onValueChange = { screenModel.onEvent(SettingsEvent.UpdateRetryDelaySeconds(it)) },
-                                                outline = if (state.retryDelaySecondsError != null) Outline.Error else Outline.None,
-                                                modifier = Modifier.width(100.dp)
+                                                error = state.retryDelaySecondsError,
+                                                enabled = autoRetryEnabled,
+                                                onValueChange = {
+                                                    screenModel.onEvent(
+                                                        SettingsEvent.UpdateRetryDelaySeconds(
+                                                            it
+                                                        )
+                                                    )
+                                                }
                                             )
-                                            state.retryDelaySecondsError?.let {
-                                                Text(text = it, color = IdeColors.error, style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp))
+                                        }
+                                    }
+                                }
+
+                                SettingsCategory.FILES -> {
+                                    SettingsSection(strings.settings.destinationHeader) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text(text = strings.settings.defaultDownloadDirLabel)
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Read-only field: looks like the IDE's path fields and the
+                                                // path can be selected and copied.
+                                                TextField(
+                                                    value = TextFieldValue(state.settings.defaultDownloadDir),
+                                                    onValueChange = {},
+                                                    enabled = false,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                OutlinedButton(onClick = { showDirPicker = true }) {
+                                                    Text(strings.common.browse)
+                                                }
+                                            }
+                                        }
+
+                                        CheckboxRow(
+                                            text = strings.settings.askWhereToSaveLabel,
+                                            checked = state.settings.askWhereToSave,
+                                            onCheckedChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateAskWhereToSave(
+                                                        it
+                                                    )
+                                                )
+                                            }
+                                        )
+                                    }
+
+                                    SettingsSection(strings.settings.fileConflictsHeader) {
+                                        Text(text = strings.settings.fileConflictBehaviorLabel)
+
+                                        val options = listOf(
+                                            FileConflictBehavior.ASK to strings.settings.askOption,
+                                            FileConflictBehavior.OVERWRITE to strings.settings.overwriteOption,
+                                            FileConflictBehavior.SKIP to strings.settings.skipOption,
+                                            FileConflictBehavior.RENAME to strings.settings.renameOption
+                                        )
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            options.forEach { (behavior, label) ->
+                                                RadioButtonRow(
+                                                    text = label,
+                                                    selected = state.settings.fileConflictBehavior == behavior,
+                                                    onClick = {
+                                                        screenModel.onEvent(
+                                                            SettingsEvent.UpdateFileConflictBehavior(
+                                                                behavior
+                                                            )
+                                                        )
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
                                             }
                                         }
                                     }
-                                }
-                            }
-                        }
-
-                        SettingsCategory.FILES -> {
-                            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text(
-                                    text = strings.settings.destinationHeader,
-                                    style = JewelTheme.defaultTextStyle.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                )
-
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(text = strings.settings.defaultDownloadDirLabel)
-                                    var showDirPicker by remember { mutableStateOf(false) }
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = state.settings.defaultDownloadDir,
-                                            modifier = Modifier.weight(1f),
-                                            style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
-                                        )
-                                        OutlinedButton(onClick = { showDirPicker = true }) {
-                                            Text(strings.common.browse)
-                                        }
-                                    }
-
-                                    if (showDirPicker) {
-                                        FilePickerDialog(
-                                            onDismiss = { showDirPicker = false },
-                                            onPick = { path ->
-                                                screenModel.onEvent(SettingsEvent.UpdateDefaultDownloadDir(path.toString()))
-                                                showDirPicker = false
-                                            },
-                                            mode = FilePickerMode.Directory
-                                        )
-                                    }
-                                }
-
-                                CheckboxRow(
-                                    text = strings.settings.askWhereToSaveLabel,
-                                    checked = state.settings.askWhereToSave,
-                                    onCheckedChange = { screenModel.onEvent(SettingsEvent.UpdateAskWhereToSave(it)) }
-                                )
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = strings.settings.fileConflictsHeader,
-                                    style = JewelTheme.defaultTextStyle.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                )
-                                Text(text = strings.settings.fileConflictBehaviorLabel)
-
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    RadioButtonRow(
-                                        text = strings.settings.askOption,
-                                        selected = state.settings.fileConflictBehavior == FileConflictBehavior.ASK,
-                                        onClick = { screenModel.onEvent(SettingsEvent.UpdateFileConflictBehavior(FileConflictBehavior.ASK)) }
-                                    )
-                                    RadioButtonRow(
-                                        text = strings.settings.overwriteOption,
-                                        selected = state.settings.fileConflictBehavior == FileConflictBehavior.OVERWRITE,
-                                        onClick = { screenModel.onEvent(SettingsEvent.UpdateFileConflictBehavior(FileConflictBehavior.OVERWRITE)) }
-                                    )
-                                    RadioButtonRow(
-                                        text = strings.settings.skipOption,
-                                        selected = state.settings.fileConflictBehavior == FileConflictBehavior.SKIP,
-                                        onClick = { screenModel.onEvent(SettingsEvent.UpdateFileConflictBehavior(FileConflictBehavior.SKIP)) }
-                                    )
-                                    RadioButtonRow(
-                                        text = strings.settings.renameOption,
-                                        selected = state.settings.fileConflictBehavior == FileConflictBehavior.RENAME,
-                                        onClick = { screenModel.onEvent(SettingsEvent.UpdateFileConflictBehavior(FileConflictBehavior.RENAME)) }
-                                    )
                                 }
                             }
                         }
@@ -309,24 +341,176 @@ class SettingsScreen : Screen {
                 }
             }
 
-            // Bottom Actions Footer
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(JewelTheme.globalColors.panelBackground)
-                    .border(1.dp, JewelTheme.globalColors.borders.normal)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                DefaultButton(onClick = { screenModel.onEvent(SettingsEvent.SaveSettings) }) {
-                    Text(strings.common.ok)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                OutlinedButton(onClick = { screenModel.onEvent(SettingsEvent.ResetSettings) }) {
-                    Text(strings.common.cancel)
+            // Button bar: top divider only (the old border() drew a frame on all four sides).
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Divider(Orientation.Horizontal)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(JewelTheme.globalColors.panelBackground)
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    DefaultButton(
+                        onClick = { screenModel.onEvent(SettingsEvent.SaveSettings) },
+                        enabled = !downloadsHasError
+                    ) {
+                        Text(strings.common.ok)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            screenModel.onEvent(SettingsEvent.ResetSettings)
+                            navigator.pop()
+                        }
+                    ) {
+                        Text(strings.common.cancel)
+                    }
                 }
             }
+        }
+
+        if (showDirPicker) {
+            FilePickerDialog(
+                title = strings.settings.defaultDownloadDirLabel,
+                mode = FilePickerMode.Directory,
+                initialPath = remember(state.settings.defaultDownloadDir) {
+                    runCatching { Path.of(state.settings.defaultDownloadDir) }.getOrNull()
+                },
+                onDismiss = { showDirPicker = false },
+                onPick = { path ->
+                    screenModel.onEvent(SettingsEvent.UpdateDefaultDownloadDir(path.toString()))
+                }
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Building blocks
+// ---------------------------------------------------------------------------
+
+/** IDE "titled separator": a heading followed by a hairline, then the section's controls. */
+@Composable
+private fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.SemiBold)
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(1.dp)
+                    .background(JewelTheme.globalColors.borders.normal)
+            )
+        }
+        content()
+    }
+}
+
+/** Left-hand category entry with rounded IDE-style selection and an optional error marker. */
+@Composable
+private fun SettingsNavItem(
+    label: String,
+    isSelected: Boolean,
+    hasError: Boolean,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val colors = JewelTheme.simpleListItemStyle.colors
+
+    val background = when {
+        isSelected -> colors.backgroundSelectedActive
+        hovered -> JewelTheme.globalColors.text.normal.copy(alpha = 0.07f)
+        else -> Color.Transparent
+    }
+    val contentColor = if (isSelected) colors.contentSelectedActive else Color.Unspecified
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(background)
+                .hoverable(interaction)
+                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = label,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (hasError) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(IdeColors.error)
+                )
+            }
+        }
+    }
+}
+
+/** Labeled numeric input with inline error and optional description. */
+@OptIn(ExperimentalJewelApi::class)
+@Composable
+private fun NumberField(
+    label: String,
+    value: TextFieldValue,
+    error: String?,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    enabled: Boolean = true,
+    fieldWidth: Dp = 100.dp
+) {
+    val showError = enabled && error != null
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            color = if (enabled) Color.Unspecified else JewelTheme.globalColors.text.disabled
+        )
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            outline = if (showError) Outline.Error else Outline.None,
+            modifier = Modifier.width(fieldWidth)
+        )
+        if (showError) {
+            Text(
+                text = error,
+                color = IdeColors.error,
+                style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+            )
+        }
+        if (description != null) {
+            Text(
+                text = description,
+                style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                color = JewelTheme.globalColors.text.info
+            )
         }
     }
 }
