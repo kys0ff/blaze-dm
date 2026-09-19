@@ -653,7 +653,13 @@ private class FileTreeModel(
     var showHidden by mutableStateOf(false)
 
     init {
-        FileSystems.getDefault().rootDirectories.forEach { roots += FsNode(it, true, false) }
+        FileSystems.getDefault().rootDirectories.forEach {
+            roots += FsNode(
+                path = it,
+                isDirectory = true,
+                isHidden = false
+            )
+        }
     }
 
     /** Flattens the expanded tree into the rows currently visible. Reads state, so callers recompose. */
@@ -697,7 +703,11 @@ private class FileTreeModel(
         val abs = target.toAbsolutePath().normalize()
         val chain = generateSequence(abs) { it.parent }.toList().asReversed()
         val top = chain.first()
-        if (roots.none { it.path == top }) roots += FsNode(top, true, false)
+        if (roots.none { it.path == top }) roots += FsNode(
+            path = top,
+            isDirectory = true,
+            isHidden = false
+        )
 
         for (dir in chain.dropLast(1)) {
             ensureLoaded(dir)
@@ -752,10 +762,10 @@ private fun listChildren(
                     FsNode(p, isDir, isHiddenPath(p))
                 }
             }
-        }.sortedWith(compareBy<FsNode>({ !it.isDirectory }, { it.displayName.lowercase() }))
-    } catch (e: IOException) {
+        }.sortedWith(compareBy({ !it.isDirectory }, { it.displayName.lowercase() }))
+    } catch (_: IOException) {
         emptyList() // unreadable directory
-    } catch (e: SecurityException) {
+    } catch (_: SecurityException) {
         emptyList()
     }
 
@@ -794,7 +804,7 @@ private fun analyzeInput(
 
     val path = try {
         Path.of(expanded).toAbsolutePath().normalize()
-    } catch (e: InvalidPathException) {
+    } catch (_: InvalidPathException) {
         return InputState(null, exists = false, problem = "Invalid path", isValid = false)
     }
 
@@ -827,7 +837,7 @@ private fun folderNameProblem(name: String, parent: Path): String? {
 
     return try {
         if (Files.exists(parent.resolve(name))) "A file or folder with this name already exists" else null
-    } catch (e: InvalidPathException) {
+    } catch (_: InvalidPathException) {
         "Invalid name"
     }
 }

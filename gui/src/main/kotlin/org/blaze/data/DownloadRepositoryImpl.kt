@@ -32,7 +32,7 @@ class DownloadRepositoryImpl(
             .map { tasks -> tasks.map { it.toGuiDownload() } }
             .shareIn(
                 scope = scope,
-                started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                started = SharingStarted.Lazily,
                 replay = 1
             )
 

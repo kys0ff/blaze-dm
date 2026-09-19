@@ -68,6 +68,8 @@ class TorrentDownloader(
     // Distinguishes a user-initiated stop (pause/cancel) from the session ending on its own.
     @Volatile private var stopRequested = false
 
+    @Volatile private var initialPiecesComplete: Int = -1
+
     override fun download(): Flow<DownloadTask> = channelFlow {
         send(createInitialTask())
 
@@ -321,9 +323,13 @@ class TorrentDownloader(
 
                         finalState == null || finalState.piecesTotal == 0 -> mapStateToTask(
                             finalState,
-                            error = DownloadError.NetworkFailure(
-                                "Could not resolve torrent metadata (no peers responded)"
-                            ),
+                            error = if (request.torrentSource is TorrentSource.File) {
+                                DownloadError.InvalidTorrent
+                            } else {
+                                DownloadError.NetworkFailure(
+                                    "Could not resolve torrent metadata (no peers responded)"
+                                )
+                            },
                             resolvedName = resolvedName.get(),
                             totalSize = totalSize.get()
                         )
@@ -508,9 +514,24 @@ class TorrentDownloader(
         resolvedName: String? = null,
         totalSize: Long = -1L
     ): DownloadTask {
-        val downloaded = state?.downloaded ?: 0L
         val piecesTotal = state?.piecesTotal ?: 0
         val piecesComplete = state?.piecesComplete ?: 0
+
+        if (state != null && piecesTotal > 0 && state.downloaded == 0L) {
+            initialPiecesComplete = piecesComplete
+        }
+
+        val downloaded = when {
+            isCompleted || (state != null && piecesTotal > 0 && state.piecesRemaining == 0) -> {
+                if (totalSize > 0) totalSize else state?.downloaded ?: 0L
+            }
+            state != null && piecesTotal > 0 && totalSize > 0 && initialPiecesComplete >= 0 -> {
+                val initialBytes = (initialPiecesComplete.toDouble() / piecesTotal * totalSize).toLong()
+                val totalCalculated = initialBytes + state.downloaded
+                totalCalculated.coerceIn(state.downloaded, totalSize)
+            }
+            else -> state?.downloaded ?: 0L
+        }
 
         val progress = if (piecesTotal > 0) piecesComplete.toFloat() / piecesTotal else 0f
 

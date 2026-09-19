@@ -1,7 +1,7 @@
 package org.blaze.engine.torrent
 
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadRequest
@@ -11,7 +11,6 @@ import org.blaze.engine.api.TorrentSource
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
 
 class TorrentDownloaderTest {
 
@@ -40,11 +39,12 @@ class TorrentDownloaderTest {
     }
 
     @Test
-    fun `test initial state is Starting`() = runTest {
+    fun `test initial state is Starting`() {
+        runBlocking {
         val tempDir = Files.createTempDirectory("blaze-torrent-test-initial")
         val request = DownloadRequest.Torrent(
             name = "Test Torrent",
-            torrentSource = TorrentSource.Magnet("magnet:?xt=urn:btih:deadbeef"),
+            torrentSource = TorrentSource.Magnet("magnet:?xt=urn:btih:abcdefabcdefabcdefabcdefabcdefabcdefabcd"),
             destination = tempDir
         )
 
@@ -56,12 +56,17 @@ class TorrentDownloaderTest {
             downloader.download().collect { tasks.add(it) }
         }
 
-        delay(100.milliseconds)
+        var attempts = 0
+        while (tasks.isEmpty() && attempts < 50) {
+            kotlinx.coroutines.delay(20)
+            attempts++
+        }
         job.cancel()
         
         assertTrue(tasks.isNotEmpty(), "Should have emitted at least one task")
         assertTrue(tasks.any { it.state == DownloadState.Starting }, "First state should be Starting")
         
         tempDir.toFile().deleteRecursively()
+        }
     }
 }
