@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.theme.IdeColors
 import org.blaze.presentation.util.formatSize
@@ -75,12 +76,21 @@ fun DownloadRow(
     val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
             download.totalSize == null && download.progress <= 0f
 
+    val strings = blazeStrings
     val meta = buildString {
-        append(formatSize(download.downloadedSize))
-        if (download.totalSize != null) append(" of ").append(formatSize(download.totalSize))
-        if (download.state == DownloadState.DOWNLOADING) append(", ").append(formatSpeed(download.speed))
+        if (download.totalSize != null) {
+            append(strings.downloads.progress(formatSize(download.downloadedSize, strings), formatSize(download.totalSize, strings)))
+        } else {
+            append(formatSize(download.downloadedSize, strings))
+        }
+        
+        if (download.state == DownloadState.DOWNLOADING) {
+            append(", ")
+            append(strings.downloads.speed(formatSpeed(download.speed, strings)))
+        }
         if (download.peers > 0) {
-            append(", ").append(download.peers).append(if (download.peers == 1) " peer" else " peers")
+            append(", ")
+            append(strings.downloads.peers(download.peers))
         }
     }
 
@@ -160,7 +170,7 @@ fun DownloadRow(
                     if (download.state == DownloadState.FAILED) {
                         download.error?.let { error ->
                             Text(
-                                text = error.toFriendlyMessage(),
+                                text = error.toFriendlyMessage(strings),
                                 style = smallText,
                                 color = if (isSelected) primary else IdeColors.error,
                                 maxLines = 1,
@@ -180,13 +190,13 @@ fun DownloadRow(
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         when (download.state) {
                             DownloadState.DOWNLOADING ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Pause, "Pause", onPause)
+                                ToolbarIconButton(AllIconsKeys.Actions.Pause, strings.downloads.actions.pause, onPause)
 
                             DownloadState.PAUSED, DownloadState.QUEUED ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Resume, "Resume", onResume)
+                                ToolbarIconButton(AllIconsKeys.Actions.Resume, strings.downloads.actions.resume, onResume)
 
                             DownloadState.FAILED ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Restart, "Retry", onRetry)
+                                ToolbarIconButton(AllIconsKeys.Actions.Restart, strings.downloads.actions.retry, onRetry)
 
                             else -> {}
                         }
@@ -194,9 +204,9 @@ fun DownloadRow(
                             download.state == DownloadState.PAUSED ||
                             download.state == DownloadState.QUEUED
                         ) {
-                            ToolbarIconButton(AllIconsKeys.Actions.Cancel, "Cancel", onCancel)
+                            ToolbarIconButton(AllIconsKeys.Actions.Cancel, strings.downloads.actions.cancel, onCancel)
                         }
-                        ToolbarIconButton(AllIconsKeys.Actions.GC, "Remove", onRemove)
+                        ToolbarIconButton(AllIconsKeys.Actions.GC, strings.downloads.actions.remove, onRemove)
                     }
                 }
             }

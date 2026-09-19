@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.blaze.i18n.blazeStrings
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Link
 import org.jetbrains.jewel.ui.component.Text
@@ -17,16 +18,17 @@ fun DownloadsEmptyState(
     onAddDownload: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = blazeStrings
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = "No downloads yet",
+                text = strings.downloads.emptyTitle,
                 color = JewelTheme.globalColors.text.info
             )
-            Link(text = "Add a download", onClick = onAddDownload)
+            Link(text = strings.downloads.emptyAction, onClick = onAddDownload)
         }
     }
 }

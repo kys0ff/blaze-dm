@@ -25,6 +25,7 @@ val koinVersion = "4.2.2"
 
 dependencies {
     implementation(project(":download-engine"))
+    implementation(project(":i18n"))
     
     // Compose Desktop, without Compose Material — Jewel replaces it entirely.
     implementation(compose.desktop.currentOs) {

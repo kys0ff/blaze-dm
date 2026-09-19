@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import org.blaze.domain.repository.DownloadMetadata
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.FilePickerDialog
 import org.blaze.presentation.components.FilePickerMode
 import org.blaze.presentation.theme.IdeColors
@@ -90,6 +91,7 @@ fun AddDownloadDialog(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     val shape = RoundedCornerShape(8.dp)
+    val strings = blazeStrings
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -110,7 +112,7 @@ fun AddDownloadDialog(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Add download",
+                text = strings.downloads.dialogs.addTitle,
                 style = JewelTheme.defaultTextStyle.copy(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
@@ -120,7 +122,7 @@ fun AddDownloadDialog(
             if (step == 1) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(text = "Download source:")
+                        Text(text = strings.downloads.dialogs.downloadSource)
 
                         TextField(
                             value = url,
@@ -128,7 +130,7 @@ fun AddDownloadDialog(
                                 url = it
                                 metadata = null
                             },
-                            placeholder = { Text("https://…  or  magnet:?xt=…") },
+                            placeholder = { Text(strings.downloads.dialogs.addUrlPlaceholder) },
                             outline = if (looksSupported) Outline.None else Outline.Warning,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -147,7 +149,7 @@ fun AddDownloadDialog(
 
                         if (!looksSupported) {
                             Text(
-                                text = "Not an HTTP(S) link, magnet link or .torrent file. It may fail to download.",
+                                text = strings.downloads.dialogs.sourceWarning,
                                 style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
                                 color = IdeColors.warning
                             )
@@ -155,7 +157,7 @@ fun AddDownloadDialog(
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(text = "Save to:")
+                        Text(text = strings.downloads.dialogs.saveTo)
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -166,7 +168,7 @@ fun AddDownloadDialog(
                                 modifier = Modifier.weight(1f)
                             )
                             OutlinedButton(onClick = { showFolderPicker = true }) {
-                                Text("Browse...")
+                                Text(strings.common.browse)
                             }
                         }
                     }
@@ -175,7 +177,7 @@ fun AddDownloadDialog(
                 // Step 2: Metadata
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "Metadata resolved:",
+                        text = strings.downloads.dialogs.metadataResolved,
                         style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.Medium)
                     )
 
@@ -188,21 +190,21 @@ fun AddDownloadDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Name:", color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
-                            Text(metadata?.name ?: "Unknown", fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(strings.common.name, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
+                            Text(metadata?.name ?: strings.common.unknown, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Size:", color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
-                            Text(formatSize(metadata?.totalSize))
+                            Text(strings.downloads.dialogs.size, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
+                            Text(formatSize(metadata?.totalSize, strings))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("URL:", color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
+                            Text(strings.downloads.dialogs.url, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
                             Text(source, maxLines = 1, overflow = TextOverflow.Ellipsis, color = JewelTheme.globalColors.text.info)
                         }
                     }
 
                     OutlinedButton(onClick = { step = 1 }) {
-                        Text("Back to edit")
+                        Text(strings.downloads.dialogs.backToEdit)
                     }
                 }
             }
@@ -214,7 +216,7 @@ fun AddDownloadDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     IndeterminateHorizontalProgressBar(modifier = Modifier.fillMaxWidth())
-                    Text("Fetching metadata...", style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp))
+                    Text(strings.downloads.dialogs.fetchingMetadata, style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp))
                 }
             }
 
@@ -226,16 +228,16 @@ fun AddDownloadDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedButton(onClick = onDismiss) {
-                    Text("Cancel")
+                    Text(strings.common.cancel)
                 }
                 Spacer(Modifier.width(8.dp))
                 if (step == 1) {
                     DefaultButton(onClick = ::fetch, enabled = canFetch && !isFetching) {
-                        Text("Download")
+                        Text(strings.downloads.dialogs.addDownload)
                     }
                 } else {
                     DefaultButton(onClick = ::submit) {
-                        Text("Add")
+                        Text(strings.downloads.dialogs.addAction)
                     }
                 }
             }

@@ -42,6 +42,7 @@ import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.RadioButtonRow
 import org.jetbrains.jewel.ui.component.Text
+import org.blaze.i18n.blazeStrings
 
 @OptIn(ExperimentalJewelApi::class)
 @Composable
@@ -53,6 +54,9 @@ fun RemoveDownloadDialog(
     var deleteFromDisk by remember { mutableStateOf(false) }
     var setAsDefault by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
+
+    val strings = blazeStrings
+    val dStrings = strings.downloads.dialogs
 
     val shape = RoundedCornerShape(8.dp)
     val secondary = JewelTheme.globalColors.text.info
@@ -81,18 +85,26 @@ fun RemoveDownloadDialog(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "Remove download",
+                text = dStrings.removeTitle,
                 style = JewelTheme.defaultTextStyle.copy(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             )
 
+            val message = dStrings.removeMessage(downloadName)
+            val nameIndex = message.indexOf(downloadName)
             Text(
                 text = buildAnnotatedString {
-                    append("Remove ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(downloadName) }
-                    append("?")
+                    if (nameIndex != -1) {
+                        append(message.substring(0, nameIndex))
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                            append(downloadName)
+                        }
+                        append(message.substring(nameIndex + downloadName.length))
+                    } else {
+                        append(message)
+                    }
                 },
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
@@ -101,13 +113,13 @@ fun RemoveDownloadDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     RadioButtonRow(
-                        text = "Remove from list only",
+                        text = dStrings.removeOnly,
                         selected = !deleteFromDisk,
                         onClick = { deleteFromDisk = false },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        text = "The downloaded file stays on disk.",
+                        text = dStrings.removeOnlyHint,
                         style = hintStyle,
                         color = secondary,
                         modifier = Modifier.padding(start = 27.dp)
@@ -116,13 +128,13 @@ fun RemoveDownloadDialog(
 
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     RadioButtonRow(
-                        text = "Remove from list and delete file from disk",
+                        text = dStrings.removeAndDelete,
                         selected = deleteFromDisk,
                         onClick = { deleteFromDisk = true },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        text = "The file is permanently deleted and can't be restored.",
+                        text = dStrings.removeAndDeleteHint,
                         style = hintStyle,
                         color = if (deleteFromDisk) JewelTheme.globalColors.text.error else secondary,
                         modifier = Modifier.padding(start = 27.dp)
@@ -137,7 +149,7 @@ fun RemoveDownloadDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 CheckboxRow(
-                    text = "Don't ask again",
+                    text = dStrings.dontAskAgain,
                     checked = setAsDefault,
                     onCheckedChange = { setAsDefault = it }
                 )
@@ -145,7 +157,7 @@ fun RemoveDownloadDialog(
                 Spacer(Modifier.weight(1f))
 
                 OutlinedButton(onClick = onDismiss) {
-                    Text("Cancel")
+                    Text(strings.common.cancel)
                 }
                 Spacer(Modifier.width(8.dp))
                 DefaultButton(
@@ -154,7 +166,7 @@ fun RemoveDownloadDialog(
                         onDismiss()
                     }
                 ) {
-                    Text(if (deleteFromDisk) "Delete" else "Remove")
+                    Text(if (deleteFromDisk) dStrings.deleteAction else dStrings.removeAction)
                 }
             }
         }

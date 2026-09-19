@@ -61,6 +61,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.blaze.i18n.BlazeStrings
+import org.blaze.i18n.blazeStrings
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -102,13 +104,19 @@ enum class FilePickerMode { Directory, File }
 fun FilePickerDialog(
     onDismiss: () -> Unit,
     onPick: (Path) -> Unit,
-    title: String = "Select folder",
+    title: String? = null,
     description: String? = null,
     mode: FilePickerMode = FilePickerMode.Directory,
     initialPath: Path? = null,
-    confirmText: String = "OK",
+    confirmText: String? = null,
     fileFilter: (Path) -> Boolean = { true },
 ) {
+    val strings = blazeStrings
+    val fStrings = strings.filePicker
+    
+    val actualTitle = title ?: if (mode == FilePickerMode.Directory) fStrings.titleFolder else fStrings.titleFile
+    val actualConfirmText = confirmText ?: strings.common.ok
+    
     val scope = rememberCoroutineScope()
     val directoriesOnly = mode == FilePickerMode.Directory
     val model = remember { FileTreeModel(scope, directoriesOnly, fileFilter) }
@@ -125,7 +133,7 @@ fun FilePickerDialog(
     }
     var pathText by remember { mutableStateOf(TextFieldValue(start.toString())) }
 
-    val input = remember(pathText.text) { analyzeInput(pathText.text, mode, fileFilter) }
+    val input = remember(pathText.text) { analyzeInput(pathText.text, mode, fileFilter, strings) }
     val pickable: Path? = if (input.isValid) input.path else null
     val rows = model.visibleRows()
 
@@ -238,7 +246,7 @@ fun FilePickerDialog(
     IdeDialogSurface(onDismiss = onDismiss, width = 620.dp, requestFocus = false) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = title,
+                text = actualTitle,
                 style = JewelTheme.defaultTextStyle.copy(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
@@ -256,18 +264,18 @@ fun FilePickerDialog(
         ) {
             ToolbarIconButton(
                 key = AllIconsKeys.Nodes.HomeFolder,
-                tooltip = "Home",
+                tooltip = fStrings.home,
                 onClick = { scope.launch { model.reveal(home) } }
             )
             ToolbarIconButton(
                 key = AllIconsKeys.Actions.NewFolder,
-                tooltip = "New folder",
+                tooltip = fStrings.newFolder,
                 enabled = newFolderParent != null,
                 onClick = { showNewFolder = true }
             )
             ToolbarIconButton(
                 key = AllIconsKeys.Actions.Refresh,
-                tooltip = "Refresh",
+                tooltip = fStrings.refresh,
                 onClick = { model.refresh() }
             )
             Divider(
@@ -276,7 +284,7 @@ fun FilePickerDialog(
             )
             ToolbarIconButton(
                 key = AllIconsKeys.Actions.ToggleVisibility,
-                tooltip = if (model.showHidden) "Hide hidden files" else "Show hidden files",
+                tooltip = if (model.showHidden) fStrings.hideHidden else fStrings.showHidden,
                 onClick = { model.showHidden = !model.showHidden },
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
@@ -294,7 +302,7 @@ fun FilePickerDialog(
         TextField(
             value = pathText,
             onValueChange = { pathText = it },
-            placeholder = { Text("Path") },
+            placeholder = { Text(fStrings.pathPlaceholder) },
             outline = if (input.problem != null) Outline.Error else Outline.None,
             modifier = Modifier
                 .fillMaxWidth()
@@ -347,7 +355,8 @@ fun FilePickerDialog(
                             onDoubleClick = {
                                 if (row.node.isDirectory) model.toggle(row.node.path)
                                 else confirm(row.node.path)
-                            }
+                            },
+                            strings = strings
                         )
                     }
                 }
@@ -358,9 +367,9 @@ fun FilePickerDialog(
         Text(
             text = input.problem
                 ?: if (directoriesOnly) {
-                    "Select a folder in the tree, or type a path above."
+                    fStrings.hintFolder
                 } else {
-                    "Select a file in the tree, or type a path above."
+                    fStrings.hintFile
                 },
             style = small,
             color = if (input.problem != null) errorColor else secondary,
@@ -373,13 +382,13 @@ fun FilePickerDialog(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+            OutlinedButton(onClick = onDismiss) { Text(strings.common.cancel) }
             Spacer(Modifier.width(8.dp))
             DefaultButton(
                 onClick = { pickable?.let { confirm(it) } },
                 enabled = pickable != null
             ) {
-                Text(confirmText)
+                Text(actualConfirmText)
             }
         }
     }
@@ -448,9 +457,10 @@ private fun NewFolderDialog(
     var creationError by remember { mutableStateOf<String?>(null) }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    val strings = blazeStrings
 
     val trimmed = name.text.trim()
-    val nameProblem = remember(trimmed) { folderNameProblem(trimmed, parent) }
+    val nameProblem = remember(trimmed) { folderNameProblem(trimmed, parent, strings) }
     val message = creationError ?: nameProblem
     val canCreate = trimmed.isNotEmpty() && nameProblem == null
 
@@ -465,7 +475,7 @@ private fun NewFolderDialog(
                     onCreated(it)
                     onDismiss()
                 }
-                .onFailure { creationError = it.message ?: "Couldn't create the folder" }
+                .onFailure { creationError = it.message ?: strings.filePicker.newFolderError }
         }
     }
 
@@ -473,7 +483,7 @@ private fun NewFolderDialog(
 
     IdeDialogSurface(onDismiss = onDismiss, width = 420.dp, requestFocus = false) {
         Text(
-            text = "New folder",
+            text = strings.filePicker.newFolderTitle,
             style = JewelTheme.defaultTextStyle.copy(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold
@@ -481,7 +491,7 @@ private fun NewFolderDialog(
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Name:")
+            Text(strings.filePicker.newFolderName)
             TextField(
                 value = name,
                 onValueChange = {
@@ -504,7 +514,7 @@ private fun NewFolderDialog(
                     }
             )
             Text(
-                text = message ?: "Will be created in $parent",
+                text = message ?: strings.filePicker.newFolderCreatedIn(parent.toString()),
                 style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
                 color = if (message != null) {
                     JewelTheme.globalColors.text.error
@@ -521,9 +531,9 @@ private fun NewFolderDialog(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+            OutlinedButton(onClick = onDismiss) { Text(strings.common.cancel) }
             Spacer(Modifier.width(8.dp))
-            DefaultButton(onClick = ::create, enabled = canCreate) { Text("OK") }
+            DefaultButton(onClick = ::create, enabled = canCreate) { Text(strings.common.ok) }
         }
     }
 }
@@ -536,7 +546,8 @@ private fun TreeRowItem(
     treeFocused: Boolean,
     onSelect: () -> Unit,
     onToggle: () -> Unit,
-    onDoubleClick: () -> Unit
+    onDoubleClick: () -> Unit,
+    strings: BlazeStrings
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -588,7 +599,7 @@ private fun TreeRowItem(
                 if (row.node.isDirectory) {
                     Icon(
                         key = if (isExpanded) AllIconsKeys.General.ChevronDown else AllIconsKeys.General.ChevronRight,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        contentDescription = if (isExpanded) strings.filePicker.collapse else strings.filePicker.expand,
                         tint = contentColor
                     )
                 }
@@ -755,7 +766,8 @@ private data class InputState(
 private fun analyzeInput(
     raw: String,
     mode: FilePickerMode,
-    fileFilter: (Path) -> Boolean
+    fileFilter: (Path) -> Boolean,
+    strings: BlazeStrings
 ): InputState {
     val text = raw.trim()
     if (text.isEmpty()) return InputState(null, exists = false, problem = null, isValid = false)
@@ -770,38 +782,38 @@ private fun analyzeInput(
     val path = try {
         Path.of(expanded).toAbsolutePath().normalize()
     } catch (_: InvalidPathException) {
-        return InputState(null, exists = false, problem = "Invalid path", isValid = false)
+        return InputState(null, exists = false, problem = strings.filePicker.errorInvalidPath, isValid = false)
     }
 
     if (!Files.exists(path)) {
-        return InputState(path, exists = false, problem = "Path doesn't exist", isValid = false)
+        return InputState(path, exists = false, problem = strings.filePicker.errorPathNotExists, isValid = false)
     }
 
     val isDirectory = Files.isDirectory(path)
     return when (mode) {
         FilePickerMode.Directory ->
             if (isDirectory) InputState(path, true, null, true)
-            else InputState(path, true, "Not a folder", false)
+            else InputState(path, true, strings.filePicker.errorNotAFolder, false)
 
         FilePickerMode.File -> when {
             isDirectory -> InputState(path, true, null, false)
-            !fileFilter(path) -> InputState(path, true, "This file type isn't supported", false)
+            !fileFilter(path) -> InputState(path, true, strings.filePicker.errorUnsupportedFileType, false)
             else -> InputState(path, true, null, true)
         }
     }
 }
 
-private fun folderNameProblem(name: String, parent: Path): String? {
+private fun folderNameProblem(name: String, parent: Path, strings: BlazeStrings): String? {
     if (name.isEmpty()) return null
-    if (name == "." || name == "..") return "Invalid name"
+    if (name == "." || name == "..") return strings.filePicker.errorInvalidName
 
     val windows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
     val illegal = if (windows) "\\/:*?\"<>|" else "/\u0000"
-    if (name.any { it in illegal }) return "Name contains illegal characters"
+    if (name.any { it in illegal }) return strings.filePicker.errorIllegalCharacters
 
     return try {
-        if (Files.exists(parent.resolve(name))) "A file or folder with this name already exists" else null
+        if (Files.exists(parent.resolve(name))) strings.filePicker.errorAlreadyExists else null
     } catch (_: InvalidPathException) {
-        "Invalid name"
+        strings.filePicker.errorInvalidName
     }
 }

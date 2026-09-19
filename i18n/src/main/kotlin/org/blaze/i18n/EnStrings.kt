@@ -1,0 +1,135 @@
+package org.blaze.i18n
+
+object EnStrings : BlazeStrings {
+    override val common = object : BlazeStrings.Common {
+        override val ok = "OK"
+        override val cancel = "Cancel"
+        override val browse = "Browse..."
+        override val path = "Path"
+        override val name = "Name:"
+        override val home = "Home"
+        override val newFolder = "New folder"
+        override val refresh = "Refresh"
+        override val unknown = "Unknown"
+    }
+
+    override val downloads = object : BlazeStrings.Downloads {
+        override val title = "Downloads"
+        override val emptyTitle = "No downloads yet"
+        override val emptyDescription = "Add a download to get started"
+        override val emptyAction = "Add a download"
+        override val searchPlaceholder = "Search downloads…"
+        override val clearSearch = "Clear search"
+        
+        override val toolbar = object : BlazeStrings.Downloads.Toolbar {
+            override val add = "Add download"
+            override val resumeAll = "Resume all"
+            override val pauseAll = "Pause all"
+            override val clearCompleted = "Clear completed"
+        }
+
+        override val dialogs = object : BlazeStrings.Downloads.Dialogs {
+            override val addTitle = "Add download"
+            override val addUrlPlaceholder = "https://…  or  magnet:?xt=…"
+            override val addDownload = "Download"
+            override val addAction = "Add"
+            override val backToEdit = "Back to edit"
+            override val downloadSource = "Download source:"
+            override val saveTo = "Save to:"
+            override val metadataResolved = "Metadata resolved:"
+            override val url = "URL:"
+            override val size = "Size:"
+            override val fetchingMetadata = "Fetching metadata..."
+            override val sourceWarning = "Not an HTTP(S) link, magnet link or .torrent file. It may fail to download."
+            
+            override val removeTitle = "Remove download"
+            override fun removeMessage(name: String) = "Remove $name?"
+            override val removeOnly = "Remove from list only"
+            override val removeOnlyHint = "The downloaded file stays on disk."
+            override val removeAndDelete = "Remove from list and delete file from disk"
+            override val removeAndDeleteHint = "The file is permanently deleted and can't be restored."
+            override val dontAskAgain = "Don't ask again"
+            override val removeAction = "Remove"
+            override val deleteAction = "Delete"
+        }
+
+        override val status = object : BlazeStrings.Downloads.Status {
+            override val downloading = "Downloading"
+            override val paused = "Paused"
+            override val completed = "Completed"
+            override val queued = "Queued"
+            override val error = "Error"
+            override val cancelling = "Cancelling"
+        }
+        
+        override fun progress(downloaded: String, total: String) = "$downloaded / $total"
+        override fun completedCount(count: Int) = if (count == 1) "1 download completed" else "$count downloads completed"
+        override fun peers(count: Int) = if (count == 1) "1 peer" else "$count peers"
+        override fun speed(speed: String) = "$speed/s"
+
+        override val actions = object : BlazeStrings.Downloads.Actions {
+            override val pause = "Pause"
+            override val resume = "Resume"
+            override val retry = "Retry"
+            override val cancel = "Cancel"
+            override val remove = "Remove"
+        }
+    }
+
+    override val filePicker = object : BlazeStrings.FilePicker {
+        override val titleFolder = "Select folder"
+        override val titleFile = "Select file"
+        override val home = "Home"
+        override val newFolder = "New folder"
+        override val refresh = "Refresh"
+        override val showHidden = "Show hidden files"
+        override val hideHidden = "Hide hidden files"
+        override val pathPlaceholder = "Path"
+        override val hintFolder = "Select a folder in the tree, or type a path above."
+        override val hintFile = "Select a file in the tree, or type a path above."
+
+        override val newFolderTitle = "New folder"
+        override val newFolderName = "Name:"
+        override fun newFolderCreatedIn(parent: String) = "Will be created in $parent"
+        override val newFolderError = "Couldn't create the folder"
+
+        override val errorInvalidPath = "Invalid path"
+        override val errorPathNotExists = "Path doesn't exist"
+        override val errorNotAFolder = "Not a folder"
+        override val errorUnsupportedFileType = "This file type isn't supported"
+        override val errorInvalidName = "Invalid name"
+        override val errorIllegalCharacters = "Name contains illegal characters"
+        override val errorAlreadyExists = "A file or folder with this name already exists"
+
+        override val collapse = "Collapse"
+        override val expand = "Expand"
+    }
+
+    override val statusSummary = object : BlazeStrings.StatusSummary {
+        override val ready = "Ready"
+        override fun downloading(count: Int) = "$count downloading"
+        override fun queued(count: Int) = "$count queued"
+        override fun paused(count: Int) = "$count paused"
+        override fun failed(count: Int) = "$count failed"
+    }
+    
+    override val settings = object : BlazeStrings.Settings {
+        override val title = "Settings"
+        override val placeholder = "App configuration will appear here."
+    }
+    
+    override val errors = object : BlazeStrings.Errors {
+        override val networkUnavailable = "Network unavailable"
+        override val timeout = "Connection timed out"
+        override val unauthorized = "Unauthorized access"
+        override val notFound = "File not found"
+        override val diskFull = "Disk full"
+        override val rangeUnsupported = "Resuming not supported"
+        override val invalidTorrent = "Invalid torrent file"
+        override val metadataTimeout = "Failed to fetch metadata"
+        override val cancelled = "Download cancelled"
+        override fun networkFailure(message: String) = "Network failure: $message"
+        override fun diskError(message: String) = "Disk error: $message"
+        override fun unknown(message: String) = "Unknown error: $message"
+    }
+}

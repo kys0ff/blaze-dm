@@ -13,6 +13,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import org.blaze.i18n.blazeStrings
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IconButton
@@ -28,11 +29,12 @@ fun TitleBarScope.BlazeSearchField(
     query: TextFieldValue,
     onQueryChange: (TextFieldValue) -> Unit,
 ) {
+    val strings = blazeStrings
     TextField(
         value = query,
         onValueChange = onQueryChange,
         placeholder = {
-            Text("Search downloads…")
+            Text(strings.downloads.searchPlaceholder)
         },
         leadingIcon = {
             Icon(
@@ -51,7 +53,7 @@ fun TitleBarScope.BlazeSearchField(
                 ) {
                     Icon(
                         key = AllIconsKeys.Actions.Close,
-                        contentDescription = "Clear search",
+                        contentDescription = strings.downloads.clearSearch,
                         modifier = Modifier.size(12.dp),
                     )
                 }

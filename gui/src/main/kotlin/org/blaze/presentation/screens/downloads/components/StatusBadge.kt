@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.domain.models.DownloadState
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.IdeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
@@ -30,6 +31,16 @@ internal fun DownloadState.indicatorColor(): Color = when (this) {
 
 @Composable
 fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier) {
+    val strings = blazeStrings
+    val text = when (state) {
+        DownloadState.QUEUED -> strings.downloads.status.queued
+        DownloadState.DOWNLOADING -> strings.downloads.status.downloading
+        DownloadState.PAUSED -> strings.downloads.status.paused
+        DownloadState.COMPLETED -> strings.downloads.status.completed
+        DownloadState.FAILED -> strings.downloads.status.error
+        DownloadState.REMOVING -> strings.downloads.status.cancelling
+    }
+
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -42,7 +53,7 @@ fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier) {
                 .background(state.indicatorColor())
         )
         Text(
-            text = state.name.lowercase().replaceFirstChar { it.uppercase() },
+            text = text,
             style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
         )
     }

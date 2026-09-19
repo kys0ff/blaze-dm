@@ -13,12 +13,14 @@ import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.Navigator
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.i18n.BlazeStrings
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.Sidebar
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
-import org.blaze.presentation.screens.settings.SettingsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
+import org.blaze.presentation.screens.settings.SettingsScreen
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 class MainScreen : Screen {
@@ -27,18 +29,19 @@ class MainScreen : Screen {
         val screenModel = koinScreenModel<DownloadsScreenModel>()
         val state by screenModel.state.collectAsState()
         val downloads = state.downloads
+        val strings = blazeStrings
 
         Navigator(DownloadsScreen()) { navigator ->
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.weight(1f)) {
                     val sidebarItems = listOf(
                         SidebarItem(
-                            label = "Downloads",
+                            label = strings.downloads.title,
                             icon = AllIconsKeys.Actions.Download,
                             id = "downloads",
                             count = downloads.size.takeIf { it > 0 }
                         ),
-                        SidebarItem("Settings", AllIconsKeys.General.Settings, "settings")
+                        SidebarItem(strings.settings.title, AllIconsKeys.General.Settings, "settings")
                     )
 
                     val currentScreen = navigator.lastItem
@@ -69,13 +72,13 @@ class MainScreen : Screen {
                     }
                 }
 
-                StatusBar(info = downloads.toStatusSummary())
+                StatusBar(info = downloads.toStatusSummary(strings))
             }
         }
     }
 }
 
-fun List<Download>.toStatusSummary(): String {
+fun List<Download>.toStatusSummary(strings: BlazeStrings): String {
     val list = this
     val parts = buildList {
         val downloading = list.count { it.state == DownloadState.DOWNLOADING }
@@ -83,11 +86,11 @@ fun List<Download>.toStatusSummary(): String {
         val paused = list.count { it.state == DownloadState.PAUSED }
         val failed = list.count { it.state == DownloadState.FAILED }
 
-        if (downloading > 0) add("$downloading downloading")
-        if (queued > 0) add("$queued queued")
-        if (paused > 0) add("$paused paused")
-        if (failed > 0) add("$failed failed")
+        if (downloading > 0) add(strings.statusSummary.downloading(downloading))
+        if (queued > 0) add(strings.statusSummary.queued(queued))
+        if (paused > 0) add(strings.statusSummary.paused(paused))
+        if (failed > 0) add(strings.statusSummary.failed(failed))
     }
 
-    return if (parts.isEmpty()) "Ready" else parts.joinToString(", ")
+    return if (parts.isEmpty()) strings.statusSummary.ready else parts.joinToString(", ")
 }
