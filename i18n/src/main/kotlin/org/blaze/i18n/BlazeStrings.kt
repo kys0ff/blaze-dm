@@ -47,6 +47,8 @@ interface BlazeStrings {
         interface Dialogs {
             val addTitle: String
             val addUrlPlaceholder: String
+            val addFromFile: String
+            val selectSourceFile: String
             val addDownload: String
             val addAction: String
             val backToEdit: String
@@ -56,10 +58,13 @@ interface BlazeStrings {
             val url: String
             val size: String
             val fetchingMetadata: String
+            val fetchingItems: String
             val sourceWarning: String
             val files: String
             val selectAll: String
             val deselectAll: String
+            val itemsSelected: String
+            val batchTitle: String
             val scheduleDelayLabel: String
             val scheduleDelayPlaceholder: String
             

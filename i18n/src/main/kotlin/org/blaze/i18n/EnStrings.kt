@@ -38,6 +38,8 @@ object EnStrings : BlazeStrings {
         override val dialogs = object : BlazeStrings.Downloads.Dialogs {
             override val addTitle = "Add download"
             override val addUrlPlaceholder = "https://…  or  magnet:?xt=…"
+            override val addFromFile = "Add from File"
+            override val selectSourceFile = "Select Torrent or Text File"
             override val addDownload = "Download"
             override val addAction = "Add"
             override val backToEdit = "Back to edit"
@@ -47,10 +49,13 @@ object EnStrings : BlazeStrings {
             override val url = "URL:"
             override val size = "Size:"
             override val fetchingMetadata = "Fetching metadata..."
+            override val fetchingItems = "Fetching items..."
             override val sourceWarning = "Not an HTTP(S) link, magnet link or .torrent file. It may fail to download."
             override val files = "Files:"
             override val selectAll = "Select All"
             override val deselectAll = "Deselect All"
+            override val itemsSelected = "items selected"
+            override val batchTitle = "Batch Add Downloads"
             override val scheduleDelayLabel = "Schedule start delay (minutes):"
             override val scheduleDelayPlaceholder = "0 for immediate start"
             

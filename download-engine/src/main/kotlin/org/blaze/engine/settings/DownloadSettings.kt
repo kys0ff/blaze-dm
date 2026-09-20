@@ -22,6 +22,6 @@ data class DownloadSettings(
     val resumeDownloadsOnStartup: Boolean = true,
     val startQueuedOnStartup: Boolean = true,
     val defaultDownloadDir: String = System.getProperty("user.home") + "/Downloads",
-    val askWhereToSave: Boolean = false,
+    val askWhereToSave: Boolean = true,
     val fileConflictBehavior: FileConflictBehavior = FileConflictBehavior.ASK
 )

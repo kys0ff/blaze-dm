@@ -2,38 +2,28 @@ package org.blaze.presentation.screens.downloads.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -42,21 +32,17 @@ import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.screens.filepicker.FilePickerDialog
-import org.blaze.presentation.screens.filepicker.model.FilePickerMode
-import org.blaze.presentation.theme.IdeColors
-import org.blaze.presentation.util.formatSize
+import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputView
+import org.blaze.presentation.screens.downloads.components.add.AddDownloadListView
+import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
+import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.ui.Outline
-import org.jetbrains.jewel.ui.component.Checkbox
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.component.TextField
 import org.koin.compose.koinInject
-import java.nio.file.Path
 
 @OptIn(ExperimentalJewelApi::class)
 @Composable
@@ -65,65 +51,83 @@ fun AddDownloadDialog(
     onAdd: (url: String, destination: String, name: String?, fileIndices: List<Int>?, totalSize: Long?, files: List<DownloadFile>?, scheduledAt: Long?) -> Unit,
     onFetchMetadata: suspend (url: String) -> DownloadMetadata?
 ) {
-    var url by remember { mutableStateOf(TextFieldValue("")) }
     val settingsRepository = koinInject<EngineSettingsRepository>()
     val defaultPath = remember { settingsRepository.settings.value.defaultDownloadDir }
-    var destination by remember { mutableStateOf(TextFieldValue(defaultPath)) }
-    var scheduleDelay by remember { mutableStateOf(TextFieldValue("")) }
-    var showFolderPicker by remember { mutableStateOf(false) }
-
-    var metadata by remember { mutableStateOf<DownloadMetadata?>(null) }
-    var selectedFileIndices by remember { mutableStateOf(emptySet<Int>()) }
-    var isFetching by remember { mutableStateOf(false) }
-    var step by remember { mutableStateOf(1) } // 1: Input, 2: Metadata
+    val state = remember { AddDownloadState(defaultPath) }
 
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
 
-    val source = url.text.trim()
-    val canFetch = source.isNotEmpty() && source.isSupportedSource()
-    val looksSupported = source.isEmpty() || source.isSupportedSource()
-
     fun fetch() {
-        if (!canFetch || isFetching) return
-        isFetching = true
+        if (!state.canFetch || state.isFetching) return
+        state.isFetching = true
         scope.launch {
-            metadata = onFetchMetadata(source)
-            isFetching = false
-            step = 2
+            if (state.isBatch) {
+                state.step = 2
+                state.batchItems.forEach { item ->
+                    launch {
+                        item.isFetching = true
+                        try {
+                            item.metadata = onFetchMetadata(item.url)
+                        } catch (e: Exception) {
+                            item.error = e.message
+                        } finally {
+                            item.isFetching = false
+                        }
+                    }
+                }
+            } else {
+                state.metadata = onFetchMetadata(state.source)
+                state.step = 2
+            }
+            state.isFetching = false
         }
     }
 
-    LaunchedEffect(metadata) {
-        metadata?.files?.let { files ->
-            selectedFileIndices = files.map { it.index }.toSet()
+    LaunchedEffect(state.metadata) {
+        state.metadata?.files?.let { files ->
+            state.selectedFileIndices = files.map { it.index }.toSet()
         } ?: run {
-            selectedFileIndices = emptySet()
+            state.selectedFileIndices = emptySet()
         }
     }
 
     fun submit() {
-        val delayMinutes = scheduleDelay.text.trim().toLongOrNull()
+        val delayMinutes = state.scheduleDelay.text.trim().toLongOrNull()
         val scheduledAt = if (delayMinutes != null && delayMinutes > 0) {
             System.currentTimeMillis() + delayMinutes * 60 * 1000
         } else null
 
-        onAdd(
-            source,
-            destination.text,
-            metadata?.name,
-            if (metadata?.files != null) selectedFileIndices.toList().sorted() else null,
-            metadata?.totalSize,
-            metadata?.files,
-            scheduledAt
-        )
+        if (state.isBatch) {
+            state.batchItems.filter { it.isSelected }.forEach { item ->
+                onAdd(
+                    item.url,
+                    state.destination.text,
+                    item.metadata?.name,
+                    item.metadata?.files?.map { it.index },
+                    item.metadata?.totalSize,
+                    item.metadata?.files,
+                    scheduledAt
+                )
+            }
+        } else {
+            onAdd(
+                state.source,
+                state.destination.text,
+                state.metadata?.name,
+                if (state.metadata?.files != null) state.selectedFileIndices.toList().sorted() else null,
+                state.metadata?.totalSize,
+                state.metadata?.files,
+                scheduledAt
+            )
+        }
         onDismiss()
     }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    val shape = RoundedCornerShape(8.dp)
     val strings = blazeStrings
+    val shape = RoundedCornerShape(8.dp)
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -144,201 +148,37 @@ fun AddDownloadDialog(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = strings.downloads.dialogs.addTitle,
+                text = if (state.isBatch) strings.downloads.dialogs.batchTitle else strings.downloads.dialogs.addTitle,
                 style = JewelTheme.defaultTextStyle.copy(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             )
 
-            if (step == 1) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(text = strings.downloads.dialogs.downloadSource)
-
-                        TextField(
-                            value = url,
-                            onValueChange = {
-                                url = it
-                                metadata = null
-                            },
-                            placeholder = { Text(strings.downloads.dialogs.addUrlPlaceholder) },
-                            outline = if (looksSupported) Outline.None else Outline.Warning,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester)
-                                .onPreviewKeyEvent { event ->
-                                    if (event.type == KeyEventType.KeyDown &&
-                                        (event.key == Key.Enter || event.key == Key.NumPadEnter)
-                                    ) {
-                                        fetch()
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                        )
-
-                        if (!looksSupported) {
-                            Text(
-                                text = strings.downloads.dialogs.sourceWarning,
-                                style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
-                                color = IdeColors.warning
-                            )
-                        }
-                    }
-
-                    if (settingsRepository.settings.value.askWhereToSave) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(text = strings.downloads.dialogs.saveTo)
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextField(
-                                    value = destination,
-                                    onValueChange = { destination = it },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedButton(onClick = { showFolderPicker = true }) {
-                                    Text(strings.common.browse)
-                                }
-                            }
-                        }
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(text = strings.downloads.dialogs.scheduleDelayLabel)
-                        TextField(
-                            value = scheduleDelay,
-                            onValueChange = { scheduleDelay = it },
-                            placeholder = { Text(strings.downloads.dialogs.scheduleDelayPlaceholder) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
+            if (state.step == 1) {
+                AddDownloadInputView(
+                    state = state,
+                    focusRequester = focusRequester,
+                    askWhereToSave = settingsRepository.settings.value.askWhereToSave,
+                    onFetch = ::fetch
+                )
+            } else if (state.isBatch) {
+                AddDownloadListView(state = state)
             } else {
-                // Step 2: Metadata
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = strings.downloads.dialogs.metadataResolved,
-                        style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.Medium)
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(JewelTheme.globalColors.panelBackground.copy(alpha = 0.5f))
-                            .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp))
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(strings.common.name, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
-                            Text(metadata?.name ?: strings.common.unknown, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(strings.downloads.dialogs.size, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
-                            Text(formatSize(metadata?.totalSize, strings))
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(strings.downloads.dialogs.url, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
-                            Text(source, maxLines = 1, overflow = TextOverflow.Ellipsis, color = JewelTheme.globalColors.text.info)
-                        }
-                    }
-
-                    if (metadata?.files != null) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(strings.downloads.dialogs.files, fontWeight = FontWeight.Medium)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(
-                                        text = strings.downloads.dialogs.selectAll,
-                                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
-                                        color = JewelTheme.globalColors.text.info,
-                                        modifier = Modifier.clickable {
-                                            selectedFileIndices = metadata?.files?.map { it.index }?.toSet() ?: emptySet()
-                                        }
-                                    )
-                                    Text(
-                                        text = strings.downloads.dialogs.deselectAll,
-                                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
-                                        color = JewelTheme.globalColors.text.info,
-                                        modifier = Modifier.clickable {
-                                            selectedFileIndices = emptySet()
-                                        }
-                                    )
-                                }
-                            }
-
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 240.dp)
-                                    .background(JewelTheme.globalColors.panelBackground.copy(alpha = 0.3f))
-                                    .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp))
-                                    .padding(4.dp)
-                            ) {
-                                items(metadata!!.files!!) { file ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                selectedFileIndices = if (selectedFileIndices.contains(file.index)) {
-                                                    selectedFileIndices - file.index
-                                                } else {
-                                                    selectedFileIndices + file.index
-                                                }
-                                            }
-                                            .padding(vertical = 4.dp, horizontal = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Checkbox(
-                                            checked = selectedFileIndices.contains(file.index),
-                                            onCheckedChange = {
-                                                selectedFileIndices = if (it) {
-                                                    selectedFileIndices + file.index
-                                                } else {
-                                                    selectedFileIndices - file.index
-                                                }
-                                            }
-                                        )
-                                        Text(
-                                            text = file.name,
-                                            modifier = Modifier.weight(1f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = formatSize(file.size, strings),
-                                            color = JewelTheme.globalColors.text.info,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    OutlinedButton(onClick = { step = 1 }) {
-                        Text(strings.downloads.dialogs.backToEdit)
-                    }
-                }
+                AddDownloadMetadataView(state = state)
             }
 
-            if (isFetching) {
+            if (state.isFetching) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     IndeterminateHorizontalProgressBar(modifier = Modifier.fillMaxWidth())
-                    Text(strings.downloads.dialogs.fetchingMetadata, style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp))
+                    Text(
+                        text = strings.downloads.dialogs.fetchingMetadata,
+                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+                    )
                 }
             }
 
@@ -353,14 +193,18 @@ fun AddDownloadDialog(
                     Text(strings.common.cancel)
                 }
                 Spacer(Modifier.width(8.dp))
-                if (step == 1) {
-                    DefaultButton(onClick = ::fetch, enabled = canFetch && !isFetching) {
+                if (state.step == 1) {
+                    DefaultButton(onClick = ::fetch, enabled = state.canFetch && !state.isFetching) {
                         Text(strings.downloads.dialogs.addDownload)
                     }
                 } else {
                     DefaultButton(
                         onClick = ::submit,
-                        enabled = metadata?.files == null || selectedFileIndices.isNotEmpty()
+                        enabled = if (state.isBatch) {
+                            state.batchItems.any { it.isSelected }
+                        } else {
+                            state.metadata?.files == null || state.selectedFileIndices.isNotEmpty()
+                        }
                     ) {
                         Text(strings.downloads.dialogs.addAction)
                     }
@@ -368,24 +212,4 @@ fun AddDownloadDialog(
             }
         }
     }
-
-    if (showFolderPicker) {
-        FilePickerDialog(
-            onDismiss = { showFolderPicker = false },
-            onPick = { path ->
-                destination = TextFieldValue(path.toString())
-                showFolderPicker = false
-            },
-            mode = FilePickerMode.Directory,
-            initialPath = Path.of(destination.text)
-        )
-    }
-}
-
-private fun String.isSupportedSource(): Boolean {
-    val s = trim().lowercase()
-    return s.startsWith("http://") ||
-            s.startsWith("https://") ||
-            s.startsWith("magnet:") ||
-            s.endsWith(".torrent")
 }
