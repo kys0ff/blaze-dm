@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import org.blaze.engine.api.DownloadError
+import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
@@ -184,20 +185,21 @@ class DownloadExecutorImpl(
 
     private fun executeTorrent(request: DownloadRequest.Torrent, task: DownloadTask): Flow<DownloadTask> =
         channelFlow {
+            var current = task
             val networkClient = TorrentNetworkClient()
             networkClient.download(request).collect { event ->
                 when (event) {
                     is TorrentNetworkEvent.MetadataResolved -> {
-                        event.metadataBytes?.let { onMetadataResolved(task.id, it) }
-                        send(
-                            updateTask(
-                                task,
-                                DownloadState.Downloading,
-                                event.totalBytes,
-                                task.downloadedBytes,
-                                name = event.name
-                            )
+                        event.metadataBytes?.let { onMetadataResolved(current.id, it) }
+                        current = updateTask(
+                            current,
+                            DownloadState.Downloading,
+                            event.totalBytes,
+                            current.downloadedBytes,
+                            name = event.name,
+                            files = event.files
                         )
+                        send(current)
                     }
 
                     is TorrentNetworkEvent.Progress -> {
@@ -206,34 +208,33 @@ class DownloadExecutorImpl(
                             event.piecesRemaining > 0 -> DownloadState.Downloading
                             else -> DownloadState.Seeding
                         }
-                        send(
-                            task.copy(
-                                state = downloadState,
-                                totalBytes = if (event.totalBytes > 0) event.totalBytes else null,
-                                downloadedBytes = event.downloadedBytes,
-                                downloadSpeed = event.downloadSpeed,
-                                uploadSpeed = event.uploadSpeed,
-                                peers = event.peers,
-                                progress = if (event.piecesTotal > 0) event.piecesComplete.toFloat() / event.piecesTotal else 0f
-                            )
+                        current = current.copy(
+                            state = downloadState,
+                            totalBytes = if (event.totalBytes > 0) event.totalBytes else null,
+                            downloadedBytes = event.downloadedBytes,
+                            downloadSpeed = event.downloadSpeed,
+                            uploadSpeed = event.uploadSpeed,
+                            peers = event.peers,
+                            progress = if (event.piecesTotal > 0) event.piecesComplete.toFloat() / event.piecesTotal else 0f
                         )
+                        send(current)
                     }
 
                     is TorrentNetworkEvent.Completed -> {
-                        val total = task.totalBytes ?: task.downloadedBytes
-                        send(updateTask(task, DownloadState.Completed, total, total, progress = 1f))
+                        val total = current.totalBytes ?: current.downloadedBytes
+                        current = updateTask(current, DownloadState.Completed, total, current.downloadedBytes, progress = 1f)
+                        send(current)
                     }
 
                     is TorrentNetworkEvent.Error -> {
-                        send(
-                            updateTask(
-                                task,
-                                DownloadState.Failed,
-                                task.totalBytes,
-                                task.downloadedBytes,
-                                error = event.error
-                            )
+                        current = updateTask(
+                            current,
+                            DownloadState.Failed,
+                            current.totalBytes,
+                            current.downloadedBytes,
+                            error = event.error
                         )
+                        send(current)
                     }
                 }
             }
@@ -247,7 +248,8 @@ class DownloadExecutorImpl(
         speed: Long = 0,
         progress: Float? = null,
         error: DownloadError? = null,
-        name: String? = null
+        name: String? = null,
+        files: List<DownloadFileMetadata>? = null
     ): DownloadTask {
         val total = totalBytes?.takeIf { it > 0 }
         val calculatedProgress = progress ?: run {
@@ -266,7 +268,8 @@ class DownloadExecutorImpl(
             progress = calculatedProgress,
             eta = eta,
             error = error,
-            completedAt = if (state == DownloadState.Completed) Instant.now() else task.completedAt
+            completedAt = if (state == DownloadState.Completed) Instant.now() else task.completedAt,
+            files = files ?: task.files
         )
     }
 

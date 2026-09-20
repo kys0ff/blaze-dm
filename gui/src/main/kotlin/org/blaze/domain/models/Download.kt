@@ -14,13 +14,20 @@ data class Download(
     val addedAt: Long,
     val savePath: String,
     val error: DownloadError? = null,
+    val selectedFiles: List<SelectedFile>? = null,
     val progress: Float = if (totalSize != null && totalSize > 0) {
-        downloadedSize.toFloat() / totalSize
+        (downloadedSize.toFloat() / totalSize).coerceIn(0f, 1f)
     } else if (state == DownloadState.COMPLETED) {
         1f
     } else {
         0f
     }
+)
+
+data class SelectedFile(
+    val path: String,
+    val size: Long,
+    val index: Int
 )
 
 enum class DownloadState {

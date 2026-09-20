@@ -8,7 +8,12 @@ interface DownloadRepository {
 
     suspend fun fetchMetadata(url: String): DownloadMetadata?
 
-    suspend fun addDownload(url: String, savePath: String, name: String? = null)
+    suspend fun addDownload(
+        url: String,
+        savePath: String,
+        name: String? = null,
+        fileIndices: List<Int>? = null
+    )
     suspend fun getDestinationPath(url: String, savePath: String, name: String? = null): String
     suspend fun pauseDownload(id: String)
     suspend fun resumeDownload(id: String)
@@ -22,5 +27,12 @@ interface DownloadRepository {
 
 data class DownloadMetadata(
     val name: String,
-    val totalSize: Long?
+    val totalSize: Long?,
+    val files: List<DownloadFile>? = null
+)
+
+data class DownloadFile(
+    val name: String,
+    val size: Long,
+    val index: Int
 )

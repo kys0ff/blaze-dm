@@ -5,5 +5,6 @@ data class ConflictData(
     val savePath: String,
     val name: String?,
     val fileName: String,
-    val fullPathStr: String
+    val fullPathStr: String,
+    val fileIndices: List<Int>? = null
 )

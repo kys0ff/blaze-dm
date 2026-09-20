@@ -32,8 +32,8 @@ import org.blaze.engine.retry.DefaultRetryPolicy
 import org.blaze.engine.retry.RetryPolicy
 import org.blaze.engine.scheduler.DownloadScheduler
 import org.blaze.engine.settings.EngineSettingsRepository
-import org.blaze.engine.storage.FileStorage
 import org.blaze.engine.storage.DefaultFileStorage
+import org.blaze.engine.storage.FileStorage
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
@@ -141,7 +141,7 @@ class DownloadManager(
                     record.magnetUri != null -> TorrentSource.Magnet(record.magnetUri)
                     else -> error("Torrent record ${record.id} missing both torrentPath and magnetUri")
                 }
-                DownloadRequest.Torrent(record.name, source, Path.of(record.destination))
+                DownloadRequest.Torrent(record.name, source, Path.of(record.destination), record.fileIndices)
             }
             else -> error("Unknown download type '${record.type}' for record ${record.id}")
         }
@@ -154,7 +154,8 @@ class DownloadManager(
             totalBytes = record.totalBytes,
             downloadedBytes = record.downloadedBytes,
             downloadSpeed = 0,
-            createdAt = Instant.ofEpochMilli(record.addedAt)
+            createdAt = Instant.ofEpochMilli(record.addedAt),
+            files = record.files
         )
     }
 
@@ -182,7 +183,9 @@ class DownloadManager(
                 state = serializeState(task.state),
                 totalBytes = task.totalBytes,
                 downloadedBytes = task.downloadedBytes,
-                addedAt = task.createdAt.toEpochMilli()
+                addedAt = task.createdAt.toEpochMilli(),
+                fileIndices = (task.request as? DownloadRequest.Torrent)?.fileIndices,
+                files = task.files
             )
         }
         withContext(Dispatchers.IO) {
@@ -246,7 +249,7 @@ class DownloadManager(
             executor.execute().firstOrNull { it.totalBytes != null && it.totalBytes > 0 }
         }
 
-        metadata?.let { DownloadMetadata(it.name, it.totalBytes) }
+        metadata?.let { DownloadMetadata(it.name, it.totalBytes, it.files) }
     }
 
     override suspend fun enqueue(request: DownloadRequest): DownloadId {

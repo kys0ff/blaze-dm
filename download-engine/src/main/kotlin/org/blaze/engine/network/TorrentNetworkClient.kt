@@ -15,6 +15,7 @@ import bt.metainfo.Torrent
 import bt.peerexchange.PeerExchangeModule
 import bt.runtime.BtRuntime
 import bt.runtime.Config
+import bt.torrent.fileselector.FilePriority
 import bt.tracker.http.HttpTrackerModule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -28,10 +29,12 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.blaze.engine.api.DownloadError
+import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.TorrentSource
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -97,10 +100,12 @@ class TorrentNetworkClient(
                 val monitor = Monitor(metadataPending = source is TorrentSource.Magnet)
                 val totalSize = AtomicLong(-1L)
                 val stopReason = AtomicReference<StopReason?>(null)
+                val torrentRef = AtomicReference<Torrent?>(null)
 
                 val clientBuilder = Bt.client(runtime)
                     .storage(storage)
                     .afterTorrentFetched { torrent ->
+                        torrentRef.set(torrent)
                         logger.info(
                             "Torrent metadata resolved: name='{}', size={} bytes",
                             torrent.name,
@@ -109,6 +114,13 @@ class TorrentNetworkClient(
                         totalSize.set(torrent.size)
                         monitor.onMetadataResolved()
                         logTrackers(torrent)
+
+                        val files = torrent.files.map { file ->
+                            DownloadFileMetadata(
+                                path = file.pathElements.joinToString(File.separator),
+                                size = file.size
+                            )
+                        }
 
                         val metadata = torrent.source.metadata
                         val bytes = if (metadata.isPresent) {
@@ -125,10 +137,29 @@ class TorrentNetworkClient(
                             TorrentNetworkEvent.MetadataResolved(
                                 torrent.name,
                                 torrent.size,
-                                bytes
+                                bytes,
+                                files
                             )
                         )
                     }
+
+                if (request.fileIndices != null) {
+                    val selectedSet = request.fileIndices.toSet()
+                    val counter = AtomicInteger(0)
+                    clientBuilder.fileSelector { file ->
+                        val torrent = torrentRef.get()
+                        val index = if (torrent != null) {
+                            torrent.files.indexOf(file)
+                        } else {
+                            counter.getAndIncrement()
+                        }
+                        if (index == -1 || selectedSet.contains(index)) {
+                            FilePriority.NORMAL_PRIORITY
+                        } else {
+                            FilePriority.SKIP
+                        }
+                    }
+                }
 
                 when (source) {
                     is TorrentSource.File -> clientBuilder.torrent(source.path.toUri().toURL())

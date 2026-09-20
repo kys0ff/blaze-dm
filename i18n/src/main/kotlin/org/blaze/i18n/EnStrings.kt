@@ -41,6 +41,9 @@ object EnStrings : BlazeStrings {
             override val size = "Size:"
             override val fetchingMetadata = "Fetching metadata..."
             override val sourceWarning = "Not an HTTP(S) link, magnet link or .torrent file. It may fail to download."
+            override val files = "Files:"
+            override val selectAll = "Select All"
+            override val deselectAll = "Deselect All"
             
             override val removeTitle = "Remove download"
             override fun removeMessage(name: String) = "Remove $name?"

@@ -1,6 +1,7 @@
 package org.blaze.engine.persistence
 
 import kotlinx.serialization.Serializable
+import org.blaze.engine.api.DownloadFileMetadata
 
 @Serializable
 data class DownloadRecord(
@@ -14,5 +15,7 @@ data class DownloadRecord(
     val state: String,
     val totalBytes: Long? = null,
     val downloadedBytes: Long = 0,
-    val addedAt: Long
+    val addedAt: Long,
+    val fileIndices: List<Int>? = null,
+    val files: List<DownloadFileMetadata>? = null
 )

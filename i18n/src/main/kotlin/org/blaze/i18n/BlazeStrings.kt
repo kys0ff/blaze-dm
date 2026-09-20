@@ -50,6 +50,9 @@ interface BlazeStrings {
             val size: String
             val fetchingMetadata: String
             val sourceWarning: String
+            val files: String
+            val selectAll: String
+            val deselectAll: String
             
             val removeTitle: String
             fun removeMessage(name: String): String

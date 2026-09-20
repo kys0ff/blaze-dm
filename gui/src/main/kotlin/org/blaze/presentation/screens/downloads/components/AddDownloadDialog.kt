@@ -2,13 +2,17 @@ package org.blaze.presentation.screens.downloads.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +48,7 @@ import org.blaze.presentation.util.formatSize
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Outline
+import org.jetbrains.jewel.ui.component.Checkbox
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.OutlinedButton
@@ -56,7 +61,7 @@ import java.nio.file.Path
 @Composable
 fun AddDownloadDialog(
     onDismiss: () -> Unit,
-    onAdd: (url: String, destination: String, name: String?) -> Unit,
+    onAdd: (url: String, destination: String, name: String?, fileIndices: List<Int>?) -> Unit,
     onFetchMetadata: suspend (url: String) -> DownloadMetadata?
 ) {
     var url by remember { mutableStateOf(TextFieldValue("")) }
@@ -66,6 +71,7 @@ fun AddDownloadDialog(
     var showFolderPicker by remember { mutableStateOf(false) }
 
     var metadata by remember { mutableStateOf<DownloadMetadata?>(null) }
+    var selectedFileIndices by remember { mutableStateOf(emptySet<Int>()) }
     var isFetching by remember { mutableStateOf(false) }
     var step by remember { mutableStateOf(1) } // 1: Input, 2: Metadata
 
@@ -86,8 +92,21 @@ fun AddDownloadDialog(
         }
     }
 
+    LaunchedEffect(metadata) {
+        metadata?.files?.let { files ->
+            selectedFileIndices = files.map { it.index }.toSet()
+        } ?: run {
+            selectedFileIndices = emptySet()
+        }
+    }
+
     fun submit() {
-        onAdd(source, destination.text, metadata?.name)
+        onAdd(
+            source,
+            destination.text,
+            metadata?.name,
+            if (metadata?.files != null) selectedFileIndices.toList().sorted() else null
+        )
         onDismiss()
     }
 
@@ -208,6 +227,84 @@ fun AddDownloadDialog(
                         }
                     }
 
+                    if (metadata?.files != null) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(strings.downloads.dialogs.files, fontWeight = FontWeight.Medium)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        text = strings.downloads.dialogs.selectAll,
+                                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                                        color = JewelTheme.globalColors.text.info,
+                                        modifier = Modifier.clickable {
+                                            selectedFileIndices = metadata?.files?.map { it.index }?.toSet() ?: emptySet()
+                                        }
+                                    )
+                                    Text(
+                                        text = strings.downloads.dialogs.deselectAll,
+                                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                                        color = JewelTheme.globalColors.text.info,
+                                        modifier = Modifier.clickable {
+                                            selectedFileIndices = emptySet()
+                                        }
+                                    )
+                                }
+                            }
+
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp)
+                                    .background(JewelTheme.globalColors.panelBackground.copy(alpha = 0.3f))
+                                    .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp))
+                                    .padding(4.dp)
+                            ) {
+                                items(metadata!!.files!!) { file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                selectedFileIndices = if (selectedFileIndices.contains(file.index)) {
+                                                    selectedFileIndices - file.index
+                                                } else {
+                                                    selectedFileIndices + file.index
+                                                }
+                                            }
+                                            .padding(vertical = 4.dp, horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Checkbox(
+                                            checked = selectedFileIndices.contains(file.index),
+                                            onCheckedChange = {
+                                                selectedFileIndices = if (it) {
+                                                    selectedFileIndices + file.index
+                                                } else {
+                                                    selectedFileIndices - file.index
+                                                }
+                                            }
+                                        )
+                                        Text(
+                                            text = file.name,
+                                            modifier = Modifier.weight(1f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = formatSize(file.size, strings),
+                                            color = JewelTheme.globalColors.text.info,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     OutlinedButton(onClick = { step = 1 }) {
                         Text(strings.downloads.dialogs.backToEdit)
                     }
@@ -241,7 +338,10 @@ fun AddDownloadDialog(
                         Text(strings.downloads.dialogs.addDownload)
                     }
                 } else {
-                    DefaultButton(onClick = ::submit) {
+                    DefaultButton(
+                        onClick = ::submit,
+                        enabled = metadata?.files == null || selectedFileIndices.isNotEmpty()
+                    ) {
                         Text(strings.downloads.dialogs.addAction)
                     }
                 }

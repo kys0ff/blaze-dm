@@ -1,9 +1,15 @@
 package org.blaze.engine.network
 
 import org.blaze.engine.api.DownloadError
+import org.blaze.engine.api.DownloadFileMetadata
 
 sealed interface TorrentNetworkEvent {
-    data class MetadataResolved(val name: String, val totalBytes: Long, val metadataBytes: ByteArray?) : TorrentNetworkEvent {
+    data class MetadataResolved(
+        val name: String,
+        val totalBytes: Long,
+        val metadataBytes: ByteArray?,
+        val files: List<DownloadFileMetadata> = emptyList()
+    ) : TorrentNetworkEvent {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
@@ -13,6 +19,7 @@ sealed interface TorrentNetworkEvent {
             if (totalBytes != other.totalBytes) return false
             if (name != other.name) return false
             if (!metadataBytes.contentEquals(other.metadataBytes)) return false
+            if (files != other.files) return false
 
             return true
         }
@@ -21,6 +28,7 @@ sealed interface TorrentNetworkEvent {
             var result = totalBytes.hashCode()
             result = 31 * result + name.hashCode()
             result = 31 * result + (metadataBytes?.contentHashCode() ?: 0)
+            result = 31 * result + files.hashCode()
             return result
         }
     }

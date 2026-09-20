@@ -52,19 +52,19 @@ fun DownloadsScreenContent(
     if (showAddDialog) {
         AddDownloadDialog(
             onDismiss = { showAddDialog = false },
-            onAdd = { url, destination, name ->
+            onAdd = { url, destination, name, fileIndices ->
                 if (fileConflictBehavior == FileConflictBehavior.ASK) {
                     scope.launch {
                         val fullPathStr = onResolveDestinationPath(url, destination, name)
                         val file = File(fullPathStr)
                         if (file.exists()) {
-                            conflictData = ConflictData(url, destination, name, file.name, fullPathStr)
+                            conflictData = ConflictData(url, destination, name, file.name, fullPathStr, fileIndices)
                         } else {
-                            onEvent(DownloadsEvent.AddDownload(url, destination, name))
+                            onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices))
                         }
                     }
                 } else {
-                    onEvent(DownloadsEvent.AddDownload(url, destination, name))
+                    onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices))
                 }
             },
             onFetchMetadata = onFetchMetadata
@@ -83,11 +83,11 @@ fun DownloadsScreenContent(
                             f.delete()
                             val partFile = File(data.fullPathStr + ".part")
                             partFile.delete()
-                            onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name))
+                            onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices))
                         }
                     }
                     FileConflictBehavior.RENAME -> {
-                        onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name))
+                        onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices))
                     }
                     else -> {} // SKIP: do nothing
                 }

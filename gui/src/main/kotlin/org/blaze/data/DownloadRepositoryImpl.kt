@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.withContext
 import org.blaze.domain.models.Download
+import org.blaze.domain.models.SelectedFile
+import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.engine.api.DownloadEngine
@@ -38,12 +40,27 @@ class DownloadRepositoryImpl(
 
     override suspend fun fetchMetadata(url: String): DownloadMetadata? {
         val request = createRequest(url, Path.of(System.getProperty("java.io.tmpdir")), null)
-        return engine.fetchMetadata(request)?.let {
-            DownloadMetadata(it.name, it.totalSize)
+        return engine.fetchMetadata(request)?.let { meta ->
+            DownloadMetadata(
+                name = meta.name,
+                totalSize = meta.totalSize,
+                files = meta.files?.mapIndexed { index, file ->
+                    DownloadFile(
+                        name = file.path,
+                        size = file.size,
+                        index = index
+                    )
+                }
+            )
         }
     }
 
-    private suspend fun createRequest(url: String, destinationDir: Path, name: String?): DownloadRequest =
+    private suspend fun createRequest(
+        url: String,
+        destinationDir: Path,
+        name: String?,
+        fileIndices: List<Int>? = null
+    ): DownloadRequest =
         if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
             val source = if (url.startsWith("magnet:")) {
                 TorrentSource.Magnet(url)
@@ -57,7 +74,8 @@ class DownloadRepositoryImpl(
             DownloadRequest.Torrent(
                 torrentName,
                 source,
-                destinationDir.resolve(folderName)
+                destinationDir.resolve(folderName),
+                fileIndices
             )
         } else {
             val trimmedUrl = url.trim()
@@ -88,7 +106,7 @@ class DownloadRepositoryImpl(
             )
         }
 
-    override suspend fun addDownload(url: String, savePath: String, name: String?) {
+    override suspend fun addDownload(url: String, savePath: String, name: String?, fileIndices: List<Int>?) {
         val destinationDir = Path.of(savePath)
 
         withContext(Dispatchers.IO) {
@@ -97,7 +115,7 @@ class DownloadRepositoryImpl(
             }
         }
 
-        val request = createRequest(url, destinationDir, name)
+        val request = createRequest(url, destinationDir, name, fileIndices)
 
         val id = engine.enqueue(request)
         engine.start(id)
@@ -158,6 +176,25 @@ class DownloadRepositoryImpl(
     }
 
     private fun DownloadTask.toGuiDownload(): Download {
+        val torrentRequest = request as? DownloadRequest.Torrent
+        val selectedIndices = torrentRequest?.fileIndices?.toSet()
+
+        val guiFiles = files?.mapIndexed { idx, f ->
+            SelectedFile(f.path, f.size, idx)
+        }
+
+        val filteredFiles = if (selectedIndices != null && guiFiles != null) {
+            guiFiles.filter { selectedIndices.contains(it.index) }
+        } else {
+            guiFiles
+        }
+
+        val totalSelectedSize = if (selectedIndices != null && files != null) {
+            files!!.filterIndexed { idx, _ -> selectedIndices.contains(idx) }.sumOf { it.size }
+        } else {
+            totalBytes
+        }
+
         return Download(
             id = id.value,
             name = name,
@@ -166,8 +203,8 @@ class DownloadRepositoryImpl(
                 is DownloadRequest.Torrent ->
                     (r.torrentSource as? TorrentSource.Magnet)?.uri ?: "Local Torrent"
             },
-            totalSize = totalBytes,
-            downloadedSize = downloadedBytes,
+            totalSize = totalSelectedSize,
+            downloadedSize = if (state == DownloadState.Completed || state == DownloadState.Seeding) (totalSelectedSize ?: downloadedBytes) else downloadedBytes,
             speed = downloadSpeed,
             peers = peers,
             state = when (state) {
@@ -190,7 +227,8 @@ class DownloadRepositoryImpl(
             },
             addedAt = createdAt.toEpochMilli(),
             savePath = request.destination.toString(),
-            error = error
+            error = error,
+            selectedFiles = filteredFiles
         )
     }
 }

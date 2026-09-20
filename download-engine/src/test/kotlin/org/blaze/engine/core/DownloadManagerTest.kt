@@ -61,28 +61,31 @@ class DownloadManagerTest {
 
         val id = manager.enqueue(request)
 
-        val torrentFolder = downloadsDir.resolve(torrentName)
-        Files.createDirectories(torrentFolder)
-        val torrentFile = torrentFolder.resolve("data.txt")
-        Files.writeString(torrentFile, "torrent data")
+        try {
+            val torrentFolder = downloadsDir.resolve(torrentName)
+            Files.createDirectories(torrentFolder)
+            val torrentFile = torrentFolder.resolve("data.txt")
+            Files.writeString(torrentFile, "torrent data")
 
-        val unrelatedFile = downloadsDir.resolve("important_user_file.txt")
-        Files.writeString(unrelatedFile, "do not delete me")
+            val unrelatedFile = downloadsDir.resolve("important_user_file.txt")
+            Files.writeString(unrelatedFile, "do not delete me")
 
-        assertTrue(Files.exists(torrentFolder))
-        assertTrue(Files.exists(torrentFile))
-        assertTrue(Files.exists(unrelatedFile))
+            assertTrue(Files.exists(torrentFolder))
+            assertTrue(Files.exists(torrentFile))
+            assertTrue(Files.exists(unrelatedFile))
 
-        manager.remove(id, deleteFiles = true)
+            manager.remove(id, deleteFiles = true)
 
-        // Wait a bit for the async deletion
-        delay(100.milliseconds)
+            // Wait a bit for the async deletion
+            delay(100.milliseconds)
 
-        assertFalse(Files.exists(torrentFile), "Torrent file should be deleted")
-        assertFalse(Files.exists(torrentFolder), "Torrent folder should be deleted")
-        assertTrue(Files.exists(unrelatedFile), "Unrelated file in parent folder must not be deleted!")
-
-        tempDir.toFile().deleteRecursively()
+            assertFalse(Files.exists(torrentFile), "Torrent file should be deleted")
+            assertFalse(Files.exists(torrentFolder), "Torrent folder should be deleted")
+            assertTrue(Files.exists(unrelatedFile), "Unrelated file in parent folder must not be deleted!")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
     }
 
     @Test
@@ -118,20 +121,23 @@ class DownloadManagerTest {
             settingsRepository = settingsRepo
         )
 
-        var task: DownloadTask? = null
-        withTimeout(5000.milliseconds) {
-            while (true) {
-                task = manager.getTask(id)
-                if (task != null) break
-                delay(50.milliseconds)
+        try {
+            var task: DownloadTask? = null
+            withTimeout(5000.milliseconds) {
+                while (true) {
+                    task = manager.getTask(id)
+                    if (task != null) break
+                    delay(50.milliseconds)
+                }
             }
-        }
-        
-        assertTrue(task != null, "Task should be loaded")
-        assertEquals(initialDownloaded, task.downloadedBytes, "Downloaded bytes should be preserved")
-        assertEquals(initialTotal, task.totalBytes, "Total bytes should be preserved")
 
-        tempDir.toFile().deleteRecursively()
+            assertTrue(task != null, "Task should be loaded")
+            assertEquals(initialDownloaded, task.downloadedBytes, "Downloaded bytes should be preserved")
+            assertEquals(initialTotal, task.totalBytes, "Total bytes should be preserved")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
     }
 
     @Test
@@ -179,16 +185,68 @@ class DownloadManagerTest {
         // Simulate completion
         mockExecutor?.emit(task.copy(state = DownloadState.Completed))
 
-        var deleted = false
-        for (i in 1..100) {
-            if (!Files.exists(cacheFile)) {
-                deleted = true
-                break
+        try {
+            var deleted = false
+            for (i in 1..100) {
+                if (!Files.exists(cacheFile)) {
+                    deleted = true
+                    break
+                }
+                delay(50.milliseconds)
             }
-            delay(50.milliseconds)
+            assertTrue(deleted, "Cache file should be cleaned up after completion")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
         }
-        assertTrue(deleted, "Cache file should be cleaned up after completion")
+    }
 
-        tempDir.toFile().deleteRecursively()
+    @Test
+    fun `test file indices are preserved in record`() = runTest {
+        val tempDir = Files.createTempDirectory("blaze-indices-test")
+        val storageDir = tempDir.resolve("storage")
+        Files.createDirectories(storageDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        
+        val id = DownloadId.generate()
+        val indices = listOf(1, 3, 5)
+        
+        repository.saveAll(listOf(
+            DownloadRecord(
+                id = id.value,
+                name = "TorrentTest",
+                type = "TORRENT",
+                magnetUri = "magnet:?xt=urn:btih:123",
+                destination = ".",
+                state = "QUEUED",
+                addedAt = System.currentTimeMillis(),
+                fileIndices = indices
+            )
+        ))
+
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo
+        )
+
+        try {
+            val task = withTimeout(5000.milliseconds) {
+                var t: DownloadTask? = null
+                while (t == null) {
+                    t = manager.getTask(id)
+                    delay(50.milliseconds)
+                }
+                t
+            }
+            
+            val request = task.request as DownloadRequest.Torrent
+            assertEquals(indices, request.fileIndices, "File indices should be preserved in request")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
     }
 }

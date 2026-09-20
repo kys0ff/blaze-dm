@@ -17,6 +17,7 @@ sealed interface DownloadRequest {
     data class Torrent(
         override val name: String,
         val torrentSource: TorrentSource,
-        override val destination: Path
+        override val destination: Path,
+        val fileIndices: List<Int>? = null
     ) : DownloadRequest
 }
