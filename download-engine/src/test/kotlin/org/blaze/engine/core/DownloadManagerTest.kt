@@ -7,7 +7,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import org.blaze.engine.api.*
+import org.blaze.engine.api.DownloadId
+import org.blaze.engine.api.DownloadRequest
+import org.blaze.engine.api.DownloadState
+import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.persistence.DownloadRecord
 import org.blaze.engine.persistence.DownloadRepository
@@ -23,7 +27,7 @@ import kotlin.time.Duration.Companion.milliseconds
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadManagerTest {
 
-    private class MockExecutor(val task: DownloadTask) : DownloadExecutor {
+    private class MockExecutor : DownloadExecutor {
         val flow = MutableStateFlow<DownloadTask?>(null)
         override fun execute(): Flow<DownloadTask> = flow.filterNotNull()
         
@@ -124,8 +128,8 @@ class DownloadManagerTest {
         }
         
         assertTrue(task != null, "Task should be loaded")
-        assertEquals(initialDownloaded, task!!.downloadedBytes, "Downloaded bytes should be preserved")
-        assertEquals(initialTotal, task!!.totalBytes, "Total bytes should be preserved")
+        assertEquals(initialDownloaded, task.downloadedBytes, "Downloaded bytes should be preserved")
+        assertEquals(initialTotal, task.totalBytes, "Total bytes should be preserved")
 
         tempDir.toFile().deleteRecursively()
     }
@@ -144,8 +148,8 @@ class DownloadManagerTest {
             scope = backgroundScope,
             repository = repository,
             settingsRepository = settingsRepo,
-            executorFactory = { task ->
-                val mock = MockExecutor(task)
+            executorFactory = {
+                val mock = MockExecutor()
                 mockExecutor = mock
                 mock
             }
