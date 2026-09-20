@@ -214,14 +214,19 @@ class DownloadExecutorImpl(
                         } else {
                             event.downloadedBytes
                         }
-                        current = current.copy(
-                            state = downloadState,
-                            totalBytes = if (event.totalBytes > 0) event.totalBytes else null,
-                            downloadedBytes = calculatedDownloaded,
-                            downloadSpeed = event.downloadSpeed,
+                        val total = if (event.totalBytes > 0) event.totalBytes else null
+                        val progress = if (event.piecesTotal > 0) event.piecesComplete.toFloat() / event.piecesTotal else 0f
+
+                        current = updateTask(
+                            current,
+                            downloadState,
+                            total,
+                            calculatedDownloaded,
+                            event.downloadSpeed,
+                            progress
+                        ).copy(
                             uploadSpeed = event.uploadSpeed,
-                            peers = event.peers,
-                            progress = if (event.piecesTotal > 0) event.piecesComplete.toFloat() / event.piecesTotal else 0f
+                            peers = event.peers
                         )
                         send(current)
                     }

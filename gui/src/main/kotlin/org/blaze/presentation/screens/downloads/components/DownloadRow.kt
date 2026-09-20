@@ -113,8 +113,12 @@ fun DownloadRow(
     // ── Derived state ─────────────────────────────────────────────────────────
     val isFailed = download.state == DownloadState.FAILED
     val isCompleted = download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
+    val isTorrent = download.url.startsWith("magnet:") ||
+        download.url.endsWith(".torrent", ignoreCase = true) ||
+        download.url == "Local Torrent"
+
     val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
-            download.totalSize == null && download.progress <= 0f
+        (download.totalSize == null || (download.downloadedSize == 0L && download.speed == 0L))
     val progress = download.progress.coerceIn(0f, 1f)
     val showActions = hovered || isSelected || isFailed || download.state == DownloadState.SEEDING
 
@@ -136,7 +140,10 @@ fun DownloadRow(
         )
         if (download.state == DownloadState.DOWNLOADING || download.state == DownloadState.SEEDING) {
             add(strings.downloads.speed(formatSpeed(download.speed, strings)))
-            download.eta?.let { add(formatDuration(it)) }
+            val showEta = !isTorrent || (download.downloadedSize > 0L || download.speed > 0L)
+            if (showEta) {
+                download.eta?.let { add(formatDuration(it)) }
+            }
         }
         if (download.peers > 0) add(strings.downloads.peers(download.peers))
     }.joinToString(META_SEPARATOR)
