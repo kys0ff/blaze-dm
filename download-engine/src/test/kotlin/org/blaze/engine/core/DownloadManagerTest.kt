@@ -76,11 +76,18 @@ class DownloadManagerTest {
 
             manager.remove(id, deleteFiles = true)
 
-            // Wait a bit for the async deletion
-            delay(100.milliseconds)
+            // Wait for the async deletion
+            var deleted = false
+            for (i in 1..100) {
+                if (!Files.exists(torrentFolder)) {
+                    deleted = true
+                    break
+                }
+                delay(50.milliseconds)
+            }
 
+            assertTrue(deleted, "Torrent folder should be deleted")
             assertFalse(Files.exists(torrentFile), "Torrent file should be deleted")
-            assertFalse(Files.exists(torrentFolder), "Torrent folder should be deleted")
             assertTrue(Files.exists(unrelatedFile), "Unrelated file in parent folder must not be deleted!")
         } finally {
             manager.shutdown()
@@ -233,14 +240,15 @@ class DownloadManagerTest {
         )
 
         try {
-            val task = withTimeout(5000.milliseconds) {
-                var t: DownloadTask? = null
-                while (t == null) {
-                    t = manager.getTask(id)
-                    delay(50.milliseconds)
-                }
-                t
+            var task: DownloadTask? = null
+            for (i in 1..200) {
+                task = manager.getTask(id)
+                if (task != null) break
+                delay(50.milliseconds)
             }
+            
+            requireNotNull(task) { "Task not loaded within timeout" }
+
             
             val request = task.request as DownloadRequest.Torrent
             assertEquals(indices, request.fileIndices, "File indices should be preserved in request")

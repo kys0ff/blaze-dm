@@ -13,6 +13,7 @@ import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.engine.api.DownloadEngine
+import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
@@ -106,7 +107,14 @@ class DownloadRepositoryImpl(
             )
         }
 
-    override suspend fun addDownload(url: String, savePath: String, name: String?, fileIndices: List<Int>?) {
+    override suspend fun addDownload(
+        url: String,
+        savePath: String,
+        name: String?,
+        fileIndices: List<Int>?,
+        totalSize: Long?,
+        files: List<DownloadFile>?
+    ) {
         val destinationDir = Path.of(savePath)
 
         withContext(Dispatchers.IO) {
@@ -116,8 +124,9 @@ class DownloadRepositoryImpl(
         }
 
         val request = createRequest(url, destinationDir, name, fileIndices)
+        val engineFiles = files?.map { DownloadFileMetadata(path = it.name, size = it.size) }
 
-        val id = engine.enqueue(request)
+        val id = engine.enqueue(request, totalBytes = totalSize, files = engineFiles)
         engine.start(id)
     }
 
@@ -204,7 +213,13 @@ class DownloadRepositoryImpl(
                     (r.torrentSource as? TorrentSource.Magnet)?.uri ?: "Local Torrent"
             },
             totalSize = totalSelectedSize,
-            downloadedSize = if (state == DownloadState.Completed || state == DownloadState.Seeding) (totalSelectedSize ?: downloadedBytes) else downloadedBytes,
+            downloadedSize = if (state == DownloadState.Completed || state == DownloadState.Seeding) {
+                totalSelectedSize ?: downloadedBytes
+            } else if (downloadedBytes == 0L && totalSelectedSize != null && progress != null && progress!! > 0f) {
+                (progress!! * totalSelectedSize).toLong()
+            } else {
+                downloadedBytes
+            },
             speed = downloadSpeed,
             peers = peers,
             state = when (state) {
@@ -219,8 +234,8 @@ class DownloadRepositoryImpl(
                 DownloadState.Paused,
                 DownloadState.Pausing -> GuiState.PAUSED
 
-                DownloadState.Completed,
-                DownloadState.Seeding -> GuiState.COMPLETED
+                DownloadState.Completed -> GuiState.COMPLETED
+                DownloadState.Seeding -> GuiState.SEEDING
 
                 DownloadState.Failed -> GuiState.FAILED
                 DownloadState.Cancelled -> GuiState.FAILED

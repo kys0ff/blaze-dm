@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.api.DownloadError
+import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadMetadata
 import org.blaze.engine.api.DownloadRequest
@@ -35,8 +36,10 @@ import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.engine.storage.DefaultFileStorage
 import org.blaze.engine.storage.FileStorage
 import org.slf4j.LoggerFactory
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.time.Instant
 import kotlin.time.Duration.Companion.seconds
 
@@ -70,6 +73,9 @@ class DownloadManager(
         onTaskUpdated = { task ->
             tasks.update { it + (task.id to task) }
             persist()
+            if (task.state == DownloadState.Completed) {
+                cleanupMetadata(task.id)
+            }
         }
     )
 
@@ -81,7 +87,9 @@ class DownloadManager(
                 logger.error("Failed to create cache directory", e)
             }
             persistSignal.consumeEach {
-                writeSnapshot()
+                try {
+                    writeSnapshot()
+                } catch (_: Exception) {}
             }
         }
         loadTasks()
@@ -123,8 +131,8 @@ class DownloadManager(
                 }
             }.associateBy { it.id }
 
-            tasks.value = loadedTasks
-            scheduler.updateTasks(loadedTasks)
+            tasks.update { current -> loadedTasks + current }
+            scheduler.updateTasks(tasks.value)
         }
     }
 
@@ -219,6 +227,19 @@ class DownloadManager(
         }
     }
 
+    private fun getCacheKey(request: DownloadRequest): String {
+        val sourceString = when (request) {
+            is DownloadRequest.Http -> request.url
+            is DownloadRequest.Torrent -> when (val s = request.torrentSource) {
+                is TorrentSource.Magnet -> s.uri
+                is TorrentSource.File -> s.path.toAbsolutePath().toString()
+            }
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(sourceString.toByteArray(StandardCharsets.UTF_8))
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+
     private fun cleanupMetadata(id: DownloadId) {
         scope.launch(Dispatchers.IO) {
             try {
@@ -242,7 +263,15 @@ class DownloadManager(
             retryPolicy = object : RetryPolicy {
                 override fun getNextDelay(error: DownloadError, retryCount: Int): Long? = null
             },
-            onMetadataResolved = { _, _ -> }
+            onMetadataResolved = { _, bytes ->
+                try {
+                    val cacheDir = repository.storageDir.resolve("cache")
+                    Files.createDirectories(cacheDir)
+                    val key = getCacheKey(request)
+                    val torrentFile = cacheDir.resolve("$key.torrent")
+                    Files.write(torrentFile, bytes)
+                } catch (_: Exception) {}
+            }
         )
 
         val metadata = withTimeoutOrNull(30.seconds) {
@@ -252,9 +281,34 @@ class DownloadManager(
         metadata?.let { DownloadMetadata(it.name, it.totalBytes, it.files) }
     }
 
-    override suspend fun enqueue(request: DownloadRequest): DownloadId {
+    override suspend fun enqueue(
+        request: DownloadRequest,
+        totalBytes: Long?,
+        files: List<DownloadFileMetadata>?
+    ): DownloadId {
         val id = DownloadId.generate()
-        val task = DownloadTask(id, request.name, request, DownloadState.Queued, null, 0, 0)
+        val finalRequest = if (request is DownloadRequest.Torrent && request.torrentSource is TorrentSource.Magnet) {
+            val key = getCacheKey(request)
+            val cachedTorrentFile = repository.storageDir.resolve("cache").resolve("$key.torrent")
+            if (Files.isRegularFile(cachedTorrentFile)) {
+                request.copy(torrentSource = TorrentSource.File(cachedTorrentFile))
+            } else {
+                request
+            }
+        } else {
+            request
+        }
+
+        val task = DownloadTask(
+            id = id,
+            name = finalRequest.name,
+            request = finalRequest,
+            state = DownloadState.Queued,
+            totalBytes = totalBytes,
+            downloadedBytes = 0,
+            downloadSpeed = 0,
+            files = files
+        )
         tasks.update { it + (id to task) }
         scheduler.enqueue(task)
         persist()

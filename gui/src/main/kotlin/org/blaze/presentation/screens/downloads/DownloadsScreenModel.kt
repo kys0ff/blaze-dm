@@ -74,7 +74,9 @@ class DownloadsScreenModel(
                     url = event.url,
                     savePath = event.savePath,
                     name = event.name,
-                    fileIndices = event.fileIndices
+                    fileIndices = event.fileIndices,
+                    totalSize = event.totalSize,
+                    files = event.files
                 )
             } catch (e: Exception) {
                 _effects.emit(DownloadsEffect.ShowError("Failed to add download: ${e.message}"))

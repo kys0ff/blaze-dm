@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.test.runTest
-import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
@@ -22,14 +21,14 @@ import kotlin.time.Duration.Companion.milliseconds
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadSchedulerTest {
 
-    private class MockExecutor(val req: DownloadRequest) : DownloadExecutor {
+    private class MockExecutor(val task: DownloadTask) : DownloadExecutor {
         val flow = MutableStateFlow<DownloadTask?>(null)
         
         init {
              flow.value = DownloadTask(
-                id = DownloadId("dummy"),
-                name = req.name,
-                request = req,
+                id = task.id,
+                name = task.name,
+                request = task.request,
                 state = DownloadState.Downloading,
                 totalBytes = 1000,
                 downloadedBytes = 0,
@@ -62,7 +61,7 @@ class DownloadSchedulerTest {
             repository = repository,
             settingsRepository = settingsRepo,
             executorFactory = { task ->
-                val exec = MockExecutor(task.request)
+                val exec = MockExecutor(task)
                 executors.add(exec)
                 exec
             }
@@ -83,7 +82,7 @@ class DownloadSchedulerTest {
         assertEquals(DownloadState.Queued, manager.getTask(id2)?.state)
         assertEquals(DownloadState.Queued, manager.getTask(id3)?.state)
 
-        executors.firstOrNull { it.req.name == "File1" }?.complete()
+        executors.firstOrNull { it.task.request.name == "File1" }?.complete()
         delay(200.milliseconds)
 
         assertEquals(DownloadState.Completed, manager.getTask(id1)?.state)

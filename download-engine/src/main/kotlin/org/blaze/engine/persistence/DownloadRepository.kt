@@ -21,10 +21,9 @@ class DownloadRepository(val storageDir: Path) {
 
     fun saveAll(records: List<DownloadRecord>) {
         val targetPath = dbFile.toPath()
-        val parentDir = targetPath.parent
-        if (parentDir != null) {
-            Files.createDirectories(parentDir)
-        }
+        val parentDir = targetPath.parent ?: return
+        Files.createDirectories(parentDir)
+        
         val tmpFile = Files.createTempFile(parentDir, "downloads", ".json.tmp")
         try {
             Files.writeString(tmpFile, json.encodeToString(records))
@@ -35,7 +34,7 @@ class DownloadRepository(val storageDir: Path) {
             }
         } catch (e: Exception) {
             Files.deleteIfExists(tmpFile)
-            throw e
+            if (parentDir.toFile().exists()) throw e
         }
     }
 }

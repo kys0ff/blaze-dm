@@ -38,6 +38,7 @@ class DownloadExecutorImpl(
 
     override fun execute(): Flow<DownloadTask> = channelFlow {
         var currentTask = initialTask
+        send(currentTask)
 
         while (true) {
             try {
@@ -208,10 +209,15 @@ class DownloadExecutorImpl(
                             event.piecesRemaining > 0 -> DownloadState.Downloading
                             else -> DownloadState.Seeding
                         }
+                        val calculatedDownloaded = if (event.piecesTotal > 0 && event.totalBytes > 0) {
+                            (event.piecesComplete.toDouble() / event.piecesTotal * event.totalBytes).toLong()
+                        } else {
+                            event.downloadedBytes
+                        }
                         current = current.copy(
                             state = downloadState,
                             totalBytes = if (event.totalBytes > 0) event.totalBytes else null,
-                            downloadedBytes = event.downloadedBytes,
+                            downloadedBytes = calculatedDownloaded,
                             downloadSpeed = event.downloadSpeed,
                             uploadSpeed = event.uploadSpeed,
                             peers = event.peers,

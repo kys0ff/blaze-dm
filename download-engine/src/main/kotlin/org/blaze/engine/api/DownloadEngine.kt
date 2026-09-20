@@ -5,7 +5,11 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface DownloadEngine {
     suspend fun fetchMetadata(request: DownloadRequest): DownloadMetadata?
-    suspend fun enqueue(request: DownloadRequest): DownloadId
+    suspend fun enqueue(
+        request: DownloadRequest,
+        totalBytes: Long? = null,
+        files: List<DownloadFileMetadata>? = null
+    ): DownloadId
     suspend fun start(id: DownloadId)
     suspend fun pause(id: DownloadId)
     suspend fun resume(id: DownloadId)

@@ -79,9 +79,9 @@ class TorrentMetadataTest {
         assertTrue(resolvedTask.name != "Initial Name", "Name should have been updated from metadata. Got: ${resolvedTask.name}")
         assertTrue(resolvedTask.totalBytes!! > 0, "Total bytes should be positive. Got: ${resolvedTask.totalBytes}")
         assertNotNull(resolvedTask.files, "Files list should not be null")
-        assertTrue(resolvedTask.files!!.isNotEmpty(), "Files list should not be empty")
+        assertTrue(resolvedTask.files.isNotEmpty(), "Files list should not be empty")
 
-        resolvedTask.files!!.forEach { file ->
+        resolvedTask.files.forEach { file ->
             logger.info("File: {} ({} bytes)", file.path, file.size)
         }
         

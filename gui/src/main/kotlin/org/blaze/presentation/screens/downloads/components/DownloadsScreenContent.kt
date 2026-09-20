@@ -52,7 +52,7 @@ fun DownloadsScreenContent(
     if (showAddDialog) {
         AddDownloadDialog(
             onDismiss = { showAddDialog = false },
-            onAdd = { url, destination, name, fileIndices ->
+            onAdd = { url, destination, name, fileIndices, totalSize, files ->
                 if (fileConflictBehavior == FileConflictBehavior.ASK) {
                     scope.launch {
                         val fullPathStr = onResolveDestinationPath(url, destination, name)
@@ -60,11 +60,11 @@ fun DownloadsScreenContent(
                         if (file.exists()) {
                             conflictData = ConflictData(url, destination, name, file.name, fullPathStr, fileIndices)
                         } else {
-                            onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices))
+                            onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files))
                         }
                     }
                 } else {
-                    onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices))
+                    onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files))
                 }
             },
             onFetchMetadata = onFetchMetadata

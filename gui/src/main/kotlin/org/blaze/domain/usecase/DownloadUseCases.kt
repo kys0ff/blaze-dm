@@ -2,6 +2,7 @@ package org.blaze.domain.usecase
 
 import kotlinx.coroutines.flow.Flow
 import org.blaze.domain.models.Download
+import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 
@@ -18,8 +19,10 @@ class AddDownloadUseCase(private val repository: DownloadRepository) {
         url: String,
         savePath: String,
         name: String? = null,
-        fileIndices: List<Int>? = null
-    ) = repository.addDownload(url, savePath, name, fileIndices)
+        fileIndices: List<Int>? = null,
+        totalSize: Long? = null,
+        files: List<DownloadFile>? = null
+    ) = repository.addDownload(url, savePath, name, fileIndices, totalSize, files)
 }
 
 class GetDestinationPathUseCase(private val repository: DownloadRepository) {

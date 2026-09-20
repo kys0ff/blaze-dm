@@ -27,6 +27,7 @@ internal fun DownloadState.indicatorColor(): Color = when (this) {
     DownloadState.COMPLETED -> IdeColors.success
     DownloadState.FAILED -> IdeColors.error
     DownloadState.REMOVING -> JewelTheme.globalColors.text.disabled
+    DownloadState.SEEDING -> IdeColors.warning
 }
 
 @Composable
@@ -39,6 +40,7 @@ fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier) {
         DownloadState.COMPLETED -> strings.downloads.status.completed
         DownloadState.FAILED -> strings.downloads.status.error
         DownloadState.REMOVING -> strings.downloads.status.cancelling
+        DownloadState.SEEDING -> "Seeding" // TODO: Add to blazeStrings
     }
 
     Row(

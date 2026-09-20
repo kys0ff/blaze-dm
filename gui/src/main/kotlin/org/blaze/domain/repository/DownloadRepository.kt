@@ -12,7 +12,9 @@ interface DownloadRepository {
         url: String,
         savePath: String,
         name: String? = null,
-        fileIndices: List<Int>? = null
+        fileIndices: List<Int>? = null,
+        totalSize: Long? = null,
+        files: List<DownloadFile>? = null
     )
     suspend fun getDestinationPath(url: String, savePath: String, name: String? = null): String
     suspend fun pauseDownload(id: String)

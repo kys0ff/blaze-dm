@@ -73,7 +73,7 @@ class TorrentDownloaderTest {
                 destination = tempDir
             )
 
-            val task = DownloadTask(DownloadId.generate(), request.name, request, DownloadState.Queued, null, 0, 0)
+            val task = DownloadTask(DownloadId.generate(), request.name, request, DownloadState.Starting, null, 0, 0)
             val executor = createExecutor(task, tempDir)
             val tasks = mutableListOf<DownloadTask>()
             

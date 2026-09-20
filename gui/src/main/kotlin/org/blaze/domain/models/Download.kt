@@ -17,7 +17,7 @@ data class Download(
     val selectedFiles: List<SelectedFile>? = null,
     val progress: Float = if (totalSize != null && totalSize > 0) {
         (downloadedSize.toFloat() / totalSize).coerceIn(0f, 1f)
-    } else if (state == DownloadState.COMPLETED) {
+    } else if (state == DownloadState.COMPLETED || state == DownloadState.SEEDING) {
         1f
     } else {
         0f
@@ -35,6 +35,7 @@ enum class DownloadState {
     DOWNLOADING,
     PAUSED,
     COMPLETED,
+    SEEDING,
     FAILED,
     REMOVING
 }

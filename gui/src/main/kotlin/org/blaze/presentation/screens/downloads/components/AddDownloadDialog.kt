@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
+import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
@@ -61,7 +62,7 @@ import java.nio.file.Path
 @Composable
 fun AddDownloadDialog(
     onDismiss: () -> Unit,
-    onAdd: (url: String, destination: String, name: String?, fileIndices: List<Int>?) -> Unit,
+    onAdd: (url: String, destination: String, name: String?, fileIndices: List<Int>?, totalSize: Long?, files: List<DownloadFile>?) -> Unit,
     onFetchMetadata: suspend (url: String) -> DownloadMetadata?
 ) {
     var url by remember { mutableStateOf(TextFieldValue("")) }
@@ -105,7 +106,9 @@ fun AddDownloadDialog(
             source,
             destination.text,
             metadata?.name,
-            if (metadata?.files != null) selectedFileIndices.toList().sorted() else null
+            if (metadata?.files != null) selectedFileIndices.toList().sorted() else null,
+            metadata?.totalSize,
+            metadata?.files
         )
         onDismiss()
     }

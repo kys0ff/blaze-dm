@@ -71,6 +71,7 @@ private const val META_SEPARATOR = " · "
 
 private fun DownloadState.iconKey(): IconKey = when (this) {
     DownloadState.COMPLETED -> AllIconsKeys.FileTypes.Archive
+    DownloadState.SEEDING -> AllIconsKeys.Actions.Upload
     DownloadState.FAILED -> AllIconsKeys.General.Error
     else -> AllIconsKeys.Actions.Download
 }
@@ -110,11 +111,11 @@ fun DownloadRow(
 
     // ── Derived state ─────────────────────────────────────────────────────────
     val isFailed = download.state == DownloadState.FAILED
-    val isCompleted = download.state == DownloadState.COMPLETED
+    val isCompleted = download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
     val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
             download.totalSize == null && download.progress <= 0f
     val progress = download.progress.coerceIn(0f, 1f)
-    val showActions = hovered || isSelected || isFailed
+    val showActions = hovered || isSelected || isFailed || download.state == DownloadState.SEEDING
 
     val meta = buildList {
         if (hasFiles) add("${files.size} files") // TODO: move to blazeStrings
@@ -129,7 +130,7 @@ fun DownloadRow(
                 formatSize(download.downloadedSize, strings)
             }
         )
-        if (download.state == DownloadState.DOWNLOADING) {
+        if (download.state == DownloadState.DOWNLOADING || download.state == DownloadState.SEEDING) {
             add(strings.downloads.speed(formatSpeed(download.speed, strings)))
         }
         if (download.peers > 0) add(strings.downloads.peers(download.peers))
@@ -235,7 +236,7 @@ fun DownloadRow(
                             )
                         }
                         when (download.state) {
-                            DownloadState.DOWNLOADING ->
+                            DownloadState.DOWNLOADING, DownloadState.SEEDING ->
                                 ToolbarIconButton(AllIconsKeys.Actions.Pause, strings.downloads.actions.pause, onPause)
 
                             DownloadState.PAUSED, DownloadState.QUEUED -> {
@@ -250,6 +251,7 @@ fun DownloadRow(
                             else -> {}
                         }
                         if (download.state == DownloadState.DOWNLOADING ||
+                            download.state == DownloadState.SEEDING ||
                             download.state == DownloadState.PAUSED ||
                             download.state == DownloadState.QUEUED
                         ) {
