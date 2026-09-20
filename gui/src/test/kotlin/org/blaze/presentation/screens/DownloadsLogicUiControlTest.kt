@@ -16,12 +16,12 @@ class DownloadsLogicUiControlTest {
 
         // There are already 2 downloads currently running (state = DOWNLOADING)
         val activeDownloads = listOf(
-            Download(id = "1", name = "file1", url = "http://1", state = DownloadState.DOWNLOADING, totalSize = 100, downloadedSize = 10, speed = 100, peers = 1, addedAt = 0, savePath = ""),
-            Download(id = "2", name = "file2", url = "http://2", state = DownloadState.DOWNLOADING, totalSize = 100, downloadedSize = 20, speed = 100, peers = 1, addedAt = 0, savePath = "")
+            Download(id = "1", name = "file1", url = "http://1", state = DownloadState.DOWNLOADING, totalSize = 100, downloadedSize = 10, speed = 100, eta = null, peers = 1, addedAt = 0, savePath = ""),
+            Download(id = "2", name = "file2", url = "http://2", state = DownloadState.DOWNLOADING, totalSize = 100, downloadedSize = 20, speed = 100, eta = null, peers = 1, addedAt = 0, savePath = "")
         )
 
         // There is also a queued download task
-        val queuedDownload = Download(id = "3", name = "file3", url = "http://3", state = DownloadState.QUEUED, totalSize = 100, downloadedSize = 0, speed = 0, peers = 0, addedAt = 0, savePath = "")
+        val queuedDownload = Download(id = "3", name = "file3", url = "http://3", state = DownloadState.QUEUED, totalSize = 100, downloadedSize = 0, speed = 0, eta = null, peers = 0, addedAt = 0, savePath = "")
 
         val allDownloads = activeDownloads + queuedDownload
         val state = DownloadsState(
@@ -44,8 +44,8 @@ class DownloadsLogicUiControlTest {
 
         // Only 1 active download running
         val allDownloads = listOf(
-            Download(id = "1", name = "file1", url = "http://1", state = DownloadState.DOWNLOADING, totalSize = 100, downloadedSize = 10, speed = 100, peers = 1, addedAt = 0, savePath = ""),
-            Download(id = "2", name = "file2", url = "http://2", state = DownloadState.QUEUED, totalSize = 100, downloadedSize = 0, speed = 0, peers = 0, addedAt = 0, savePath = "")
+            Download(id = "1", name = "file1", url = "http://1", state = DownloadState.DOWNLOADING, totalSize = 100, downloadedSize = 10, speed = 100, eta = null, peers = 1, addedAt = 0, savePath = ""),
+            Download(id = "2", name = "file2", url = "http://2", state = DownloadState.QUEUED, totalSize = 100, downloadedSize = 0, speed = 0, eta = null, peers = 0, addedAt = 0, savePath = "")
         )
 
         val state = DownloadsState(

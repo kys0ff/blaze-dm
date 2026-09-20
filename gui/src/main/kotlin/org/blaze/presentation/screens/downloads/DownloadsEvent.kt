@@ -10,7 +10,8 @@ sealed interface DownloadsEvent {
         val name: String? = null,
         val fileIndices: List<Int>? = null,
         val totalSize: Long? = null,
-        val files: List<DownloadFile>? = null
+        val files: List<DownloadFile>? = null,
+        val scheduledAt: Long? = null
     ) : DownloadsEvent
     data class Pause(val id: String) : DownloadsEvent
     data class Resume(val id: String) : DownloadsEvent

@@ -20,7 +20,10 @@ import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.settings.EngineSettingsRepository
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
 
 class DownloadScheduler(
     private val scope: CoroutineScope,
@@ -42,6 +45,12 @@ class DownloadScheduler(
                 processQueue()
             }
         }
+        scope.launch {
+            while (true) {
+                delay(1.seconds)
+                processQueue()
+            }
+        }
     }
 
     fun updateTasks(loadedTasks: Map<DownloadId, DownloadTask>) {
@@ -57,8 +66,9 @@ class DownloadScheduler(
             val activeCount = currentTasks.values.count { it.state.isActive }
             if (activeCount >= maxConcurrent) return
 
+            val now = Instant.now()
             val queuedTasks = currentTasks.values
-                .filter { it.state == DownloadState.Queued }
+                .filter { it.state == DownloadState.Queued && (it.scheduledAt == null || !it.scheduledAt.isAfter(now)) }
                 .sortedBy { it.createdAt }
 
             var slotsAvailable = maxConcurrent - activeCount
@@ -106,7 +116,7 @@ class DownloadScheduler(
 
     suspend fun start(id: DownloadId) {
         val task = tasks.value[id] ?: return
-        tasks.update { it + (id to task.copy(state = DownloadState.Queued, error = null)) }
+        tasks.update { it + (id to task.copy(state = DownloadState.Queued, scheduledAt = null, error = null)) }
         processQueue()
     }
 

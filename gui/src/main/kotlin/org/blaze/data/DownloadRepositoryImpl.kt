@@ -23,6 +23,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import org.blaze.domain.models.DownloadState as GuiState
 
 class DownloadRepositoryImpl(
@@ -113,7 +114,8 @@ class DownloadRepositoryImpl(
         name: String?,
         fileIndices: List<Int>?,
         totalSize: Long?,
-        files: List<DownloadFile>?
+        files: List<DownloadFile>?,
+        scheduledAt: Long?
     ) {
         val destinationDir = Path.of(savePath)
 
@@ -126,7 +128,12 @@ class DownloadRepositoryImpl(
         val request = createRequest(url, destinationDir, name, fileIndices)
         val engineFiles = files?.map { DownloadFileMetadata(path = it.name, size = it.size) }
 
-        val id = engine.enqueue(request, totalBytes = totalSize, files = engineFiles)
+        val id = engine.enqueue(
+            request = request,
+            totalBytes = totalSize,
+            files = engineFiles,
+            scheduledAt = scheduledAt?.let { Instant.ofEpochMilli(it) }
+        )
         engine.start(id)
     }
 
@@ -221,6 +228,7 @@ class DownloadRepositoryImpl(
                 downloadedBytes
             },
             speed = downloadSpeed,
+            eta = eta?.inWholeSeconds,
             peers = peers,
             state = when (state) {
                 DownloadState.Queued -> GuiState.QUEUED
@@ -241,6 +249,7 @@ class DownloadRepositoryImpl(
                 DownloadState.Cancelled -> GuiState.FAILED
             },
             addedAt = createdAt.toEpochMilli(),
+            scheduledAt = scheduledAt?.toEpochMilli(),
             savePath = request.destination.toString(),
             error = error,
             selectedFiles = filteredFiles

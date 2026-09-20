@@ -3,12 +3,15 @@ package org.blaze.engine.api
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
+import java.time.Instant
+
 interface DownloadEngine {
     suspend fun fetchMetadata(request: DownloadRequest): DownloadMetadata?
     suspend fun enqueue(
         request: DownloadRequest,
         totalBytes: Long? = null,
-        files: List<DownloadFileMetadata>? = null
+        files: List<DownloadFileMetadata>? = null,
+        scheduledAt: Instant? = null
     ): DownloadId
     suspend fun start(id: DownloadId)
     suspend fun pause(id: DownloadId)

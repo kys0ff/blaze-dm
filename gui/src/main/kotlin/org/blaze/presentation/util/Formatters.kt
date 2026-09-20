@@ -18,6 +18,18 @@ internal fun formatSpeed(bytesPerSec: Long, strings: BlazeStrings): String {
     return formatSize(bytesPerSec, strings) + "/s"
 }
 
+internal fun formatDuration(seconds: Long): String {
+    if (seconds <= 0) return "00:00"
+    val h = seconds / 3600
+    val m = (seconds % 3600) / 60
+    val s = seconds % 60
+    return if (h > 0) {
+        String.format("%02d:%02d:%02d", h, m, s)
+    } else {
+        String.format("%02d:%02d", m, s)
+    }
+}
+
 internal fun DownloadError.toFriendlyMessage(strings: BlazeStrings): String = when (this) {
     DownloadError.NetworkUnavailable -> strings.errors.networkUnavailable
     DownloadError.Timeout -> strings.errors.timeout

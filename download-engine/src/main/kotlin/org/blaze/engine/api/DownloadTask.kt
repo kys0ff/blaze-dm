@@ -15,6 +15,7 @@ data class DownloadTask(
     val peers: Int = 0,
     val eta: Duration? = null,
     val progress: Float? = null,
+    val scheduledAt: Instant? = null,
     val error: DownloadError? = null,
     val createdAt: Instant = Instant.now(),
     val completedAt: Instant? = null,

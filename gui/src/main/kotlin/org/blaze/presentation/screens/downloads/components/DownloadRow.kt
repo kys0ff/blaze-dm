@@ -43,6 +43,7 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.theme.IdeColors
+import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
 import org.blaze.presentation.util.formatSpeed
 import org.blaze.presentation.util.toFriendlyMessage
@@ -118,6 +119,9 @@ fun DownloadRow(
     val showActions = hovered || isSelected || isFailed || download.state == DownloadState.SEEDING
 
     val meta = buildList {
+        if (download.scheduledAt != null && download.scheduledAt > System.currentTimeMillis()) {
+            add("Scheduled")
+        }
         if (hasFiles) add("${files.size} files") // TODO: move to blazeStrings
         val totalSize = download.totalSize
         add(
@@ -132,6 +136,7 @@ fun DownloadRow(
         )
         if (download.state == DownloadState.DOWNLOADING || download.state == DownloadState.SEEDING) {
             add(strings.downloads.speed(formatSpeed(download.speed, strings)))
+            download.eta?.let { add(formatDuration(it)) }
         }
         if (download.peers > 0) add(strings.downloads.peers(download.peers))
     }.joinToString(META_SEPARATOR)

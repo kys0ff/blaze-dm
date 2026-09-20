@@ -16,6 +16,7 @@ data class DownloadRecord(
     val totalBytes: Long? = null,
     val downloadedBytes: Long = 0,
     val addedAt: Long,
+    val scheduledAt: Long? = null,
     val fileIndices: List<Int>? = null,
     val files: List<DownloadFileMetadata>? = null
 )

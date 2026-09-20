@@ -21,8 +21,9 @@ class AddDownloadUseCase(private val repository: DownloadRepository) {
         name: String? = null,
         fileIndices: List<Int>? = null,
         totalSize: Long? = null,
-        files: List<DownloadFile>? = null
-    ) = repository.addDownload(url, savePath, name, fileIndices, totalSize, files)
+        files: List<DownloadFile>? = null,
+        scheduledAt: Long? = null
+    ) = repository.addDownload(url, savePath, name, fileIndices, totalSize, files, scheduledAt)
 }
 
 class GetDestinationPathUseCase(private val repository: DownloadRepository) {

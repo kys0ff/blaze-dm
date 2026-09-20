@@ -163,6 +163,7 @@ class DownloadManager(
             downloadedBytes = record.downloadedBytes,
             downloadSpeed = 0,
             createdAt = Instant.ofEpochMilli(record.addedAt),
+            scheduledAt = record.scheduledAt?.let { Instant.ofEpochMilli(it) },
             files = record.files
         )
     }
@@ -192,6 +193,7 @@ class DownloadManager(
                 totalBytes = task.totalBytes,
                 downloadedBytes = task.downloadedBytes,
                 addedAt = task.createdAt.toEpochMilli(),
+                scheduledAt = task.scheduledAt?.toEpochMilli(),
                 fileIndices = (task.request as? DownloadRequest.Torrent)?.fileIndices,
                 files = task.files
             )
@@ -284,7 +286,8 @@ class DownloadManager(
     override suspend fun enqueue(
         request: DownloadRequest,
         totalBytes: Long?,
-        files: List<DownloadFileMetadata>?
+        files: List<DownloadFileMetadata>?,
+        scheduledAt: Instant?
     ): DownloadId {
         val id = DownloadId.generate()
         val finalRequest = if (request is DownloadRequest.Torrent && request.torrentSource is TorrentSource.Magnet) {
@@ -307,6 +310,7 @@ class DownloadManager(
             totalBytes = totalBytes,
             downloadedBytes = 0,
             downloadSpeed = 0,
+            scheduledAt = scheduledAt,
             files = files
         )
         tasks.update { it + (id to task) }

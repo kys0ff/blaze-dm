@@ -62,13 +62,14 @@ import java.nio.file.Path
 @Composable
 fun AddDownloadDialog(
     onDismiss: () -> Unit,
-    onAdd: (url: String, destination: String, name: String?, fileIndices: List<Int>?, totalSize: Long?, files: List<DownloadFile>?) -> Unit,
+    onAdd: (url: String, destination: String, name: String?, fileIndices: List<Int>?, totalSize: Long?, files: List<DownloadFile>?, scheduledAt: Long?) -> Unit,
     onFetchMetadata: suspend (url: String) -> DownloadMetadata?
 ) {
     var url by remember { mutableStateOf(TextFieldValue("")) }
     val settingsRepository = koinInject<EngineSettingsRepository>()
     val defaultPath = remember { settingsRepository.settings.value.defaultDownloadDir }
     var destination by remember { mutableStateOf(TextFieldValue(defaultPath)) }
+    var scheduleDelay by remember { mutableStateOf(TextFieldValue("")) }
     var showFolderPicker by remember { mutableStateOf(false) }
 
     var metadata by remember { mutableStateOf<DownloadMetadata?>(null) }
@@ -102,13 +103,19 @@ fun AddDownloadDialog(
     }
 
     fun submit() {
+        val delayMinutes = scheduleDelay.text.trim().toLongOrNull()
+        val scheduledAt = if (delayMinutes != null && delayMinutes > 0) {
+            System.currentTimeMillis() + delayMinutes * 60 * 1000
+        } else null
+
         onAdd(
             source,
             destination.text,
             metadata?.name,
             if (metadata?.files != null) selectedFileIndices.toList().sorted() else null,
             metadata?.totalSize,
-            metadata?.files
+            metadata?.files,
+            scheduledAt
         )
         onDismiss()
     }
@@ -198,6 +205,16 @@ fun AddDownloadDialog(
                                 }
                             }
                         }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(text = "Schedule start delay (minutes):")
+                        TextField(
+                            value = scheduleDelay,
+                            onValueChange = { scheduleDelay = it },
+                            placeholder = { Text("0 for immediate start") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             } else {

@@ -9,9 +9,11 @@ data class Download(
     val totalSize: Long?, // Nullable for unknown size
     val downloadedSize: Long,
     val speed: Long, // bytes per second
+    val eta: Long? = null, // estimated time remaining in seconds
     val peers: Int = 0,
     val state: DownloadState,
     val addedAt: Long,
+    val scheduledAt: Long? = null,
     val savePath: String,
     val error: DownloadError? = null,
     val selectedFiles: List<SelectedFile>? = null,
