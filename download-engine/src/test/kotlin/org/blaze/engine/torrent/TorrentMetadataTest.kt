@@ -1,10 +1,18 @@
 package org.blaze.engine.torrent
 
+import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.test.runTest
+import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadRequest
+import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.TorrentSource
+import org.blaze.engine.execution.DownloadExecutorImpl
+import org.blaze.engine.retry.DefaultRetryPolicy
+import org.blaze.engine.settings.DownloadSettings
+import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.engine.storage.DefaultFileStorage
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
@@ -15,6 +23,19 @@ import kotlin.test.assertTrue
 class TorrentMetadataTest {
 
     private val logger = LoggerFactory.getLogger(TorrentMetadataTest::class.java)
+
+    private fun createExecutor(task: DownloadTask, tempDir: Path): DownloadExecutorImpl {
+        val storage = DefaultFileStorage()
+        val settingsRepo = EngineSettingsRepository(tempDir)
+        return DownloadExecutorImpl(
+            initialTask = task,
+            httpClient = HttpClient(),
+            storage = storage,
+            settingsRepository = settingsRepo,
+            retryPolicy = DefaultRetryPolicy(DownloadSettings()),
+            onMetadataResolved = { _, _ -> }
+        )
+    }
 
     @Test
     fun `test metadata resolution with big buck bunny torrent`() = runTest {
@@ -31,15 +52,16 @@ class TorrentMetadataTest {
             destination = tempDir
         )
 
-        val downloader = TorrentDownloader(request)
+        val task = DownloadTask(DownloadId.generate(), request.name, request, DownloadState.Queued, null, 0, 0)
+        val executor = createExecutor(task, tempDir)
         
         // We wait for the metadata to be resolved. 
         // We'll collect tasks until we see one with totalBytes set or we hit a limit.
         val tasks = mutableListOf<DownloadTask>()
         try {
-            downloader.download().take(50).collect { task ->
-                tasks.add(task)
-                if (task.totalBytes != null && task.totalBytes > 0) {
+            executor.execute().take(50).collect { t ->
+                tasks.add(t)
+                if (t.totalBytes != null && t.totalBytes > 0) {
                     // Metadata resolved!
                     throw RuntimeException("STOP_COLLECTING")
                 }

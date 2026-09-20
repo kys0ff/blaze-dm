@@ -1,14 +1,16 @@
 package org.blaze.engine.core
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.test.runTest
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.persistence.DownloadRepository
 import org.blaze.engine.settings.EngineSettingsRepository
 import java.nio.file.Files
@@ -20,9 +22,11 @@ import kotlin.time.Duration.Companion.milliseconds
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadSchedulerTest {
 
-    private class TestDownloader(req: DownloadRequest) : Downloader {
-        val flow = MutableStateFlow(
-            DownloadTask(
+    private class MockExecutor(val req: DownloadRequest) : DownloadExecutor {
+        val flow = MutableStateFlow<DownloadTask?>(null)
+        
+        init {
+             flow.value = DownloadTask(
                 id = DownloadId("dummy"),
                 name = req.name,
                 request = req,
@@ -31,13 +35,12 @@ class DownloadSchedulerTest {
                 downloadedBytes = 0,
                 downloadSpeed = 100
             )
-        )
-        override fun download(): Flow<DownloadTask> = flow
-        override suspend fun pause() {}
-        override suspend fun cancel() {}
+        }
+
+        override fun execute(): Flow<DownloadTask> = flow.filterNotNull()
         
         fun complete() {
-            flow.value = flow.value.copy(state = DownloadState.Completed)
+            flow.value = flow.value?.copy(state = DownloadState.Completed)
         }
     }
 
@@ -50,60 +53,46 @@ class DownloadSchedulerTest {
         val repository = DownloadRepository(storageDir)
         val settingsRepo = EngineSettingsRepository(storageDir)
 
-        // Set max concurrent downloads to 1 initially
         settingsRepo.updateSettings { it.copy(maxConcurrentDownloads = 1) }
 
-        val downloaders = mutableListOf<TestDownloader>()
+        val executors = mutableListOf<MockExecutor>()
 
         val manager = DownloadManager(
             scope = backgroundScope,
             repository = repository,
-            httpDownloaderFactory = { req ->
-                val dl = TestDownloader(req)
-                downloaders.add(dl)
-                dl
-            },
-            torrentDownloaderFactory = { req, _ ->
-                val dl = TestDownloader(req)
-                downloaders.add(dl)
-                dl
-            },
-            settingsRepository = settingsRepo
+            settingsRepository = settingsRepo,
+            executorFactory = { task ->
+                val exec = MockExecutor(task.request)
+                executors.add(exec)
+                exec
+            }
         )
 
-        // Enqueue 3 downloads
         val id1 = manager.enqueue(DownloadRequest.Http("File1", "http://url1", Path.of(".")))
         val id2 = manager.enqueue(DownloadRequest.Http("File2", "http://url2", Path.of(".")))
         val id3 = manager.enqueue(DownloadRequest.Http("File3", "http://url3", Path.of(".")))
 
-        // Start all
         manager.start(id1)
         manager.start(id2)
         manager.start(id3)
 
-        // Wait a small moment for coroutines to process the queue
-        advanceTimeBy(100.milliseconds)
+        // Give some time for coroutines
+        delay(200.milliseconds)
 
-        // Only 1 should be active, others queued
         assertEquals(DownloadState.Downloading, manager.getTask(id1)?.state)
         assertEquals(DownloadState.Queued, manager.getTask(id2)?.state)
         assertEquals(DownloadState.Queued, manager.getTask(id3)?.state)
 
-        // Complete the first download
-        downloaders.firstOrNull { it.flow.value.name == "File1" }?.complete()
-        Thread.sleep(10)
-        advanceTimeBy(100.milliseconds)
+        executors.firstOrNull { it.req.name == "File1" }?.complete()
+        delay(200.milliseconds)
 
-        // Now File2 should be started automatically
         assertEquals(DownloadState.Completed, manager.getTask(id1)?.state)
         assertEquals(DownloadState.Downloading, manager.getTask(id2)?.state)
         assertEquals(DownloadState.Queued, manager.getTask(id3)?.state)
 
-        // Dynamically increase max concurrency to 2
         settingsRepo.updateSettings { it.copy(maxConcurrentDownloads = 2) }
-        advanceTimeBy(100.milliseconds)
+        delay(200.milliseconds)
 
-        // File3 should now start as well because a slot opened up
         assertEquals(DownloadState.Downloading, manager.getTask(id3)?.state)
 
         tempDir.toFile().deleteRecursively()

@@ -20,8 +20,3 @@ sealed interface DownloadRequest {
         override val destination: Path
     ) : DownloadRequest
 }
-
-sealed interface TorrentSource {
-    data class File(val path: Path) : TorrentSource
-    data class Magnet(val uri: String) : TorrentSource
-}
