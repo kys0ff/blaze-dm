@@ -11,10 +11,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
+import kotlinx.coroutines.delay
 import org.blaze.presentation.components.notifications.NotificationHost
 import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.screens.downloads.components.DownloadsScreenContent
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
+import kotlin.time.Duration.Companion.seconds
 
 class DownloadsScreen : Screen {
     @OptIn(ExperimentalJewelApi::class)
@@ -31,6 +33,15 @@ class DownloadsScreen : Screen {
                     is DownloadsEffect.ShowMessage -> notifications.info(effect.message)
                 }
             }
+        }
+
+        LaunchedEffect(Unit) {
+            delay(5.seconds)
+            notifications.info("Swipe down to refresh")
+            delay(3.seconds)
+            notifications.error("Something went wrong", "This is an error message")
+            delay(3.seconds)
+            notifications.warning("This is a warning message")
         }
 
         val settings by screenModel.settingsRepository.settings.collectAsState()
