@@ -124,9 +124,9 @@ fun DownloadRow(
 
     val meta = buildList {
         if (download.scheduledAt != null && download.scheduledAt > System.currentTimeMillis()) {
-            add("Scheduled")
+            add(strings.downloads.status.scheduled)
         }
-        if (hasFiles) add("${files.size} files") // TODO: move to blazeStrings
+        if (hasFiles) add(strings.downloads.filesCount(files.size))
         val totalSize = download.totalSize
         add(
             if (totalSize != null) {
@@ -243,7 +243,7 @@ fun DownloadRow(
                             ToolbarIconButton(
                                 if (showFileList) AllIconsKeys.General.ChevronDown
                                 else AllIconsKeys.General.ChevronRight,
-                                "Show files", // TODO: move to blazeStrings
+                                strings.downloads.actions.showFiles,
                                 { showFileList = !showFileList }
                             )
                         }

@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.IdeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -51,6 +52,7 @@ fun Sidebar(
     onItemSelected: (SidebarItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = blazeStrings
     Row(
         modifier = modifier
             .width(200.dp)
@@ -58,7 +60,7 @@ fun Sidebar(
             .background(JewelTheme.globalColors.panelBackground)
     ) {
         Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-            ToolWindowHeader(title = "Views")
+            ToolWindowHeader(title = strings.common.views)
 
             Column(
                 modifier = Modifier.padding(vertical = 6.dp),

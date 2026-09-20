@@ -40,7 +40,7 @@ fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier) {
         DownloadState.COMPLETED -> strings.downloads.status.completed
         DownloadState.FAILED -> strings.downloads.status.error
         DownloadState.REMOVING -> strings.downloads.status.cancelling
-        DownloadState.SEEDING -> "Seeding" // TODO: Add to blazeStrings
+        DownloadState.SEEDING -> strings.downloads.status.seeding
     }
 
     Row(

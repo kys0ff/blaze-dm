@@ -11,6 +11,13 @@ object EnStrings : BlazeStrings {
         override val newFolder = "New folder"
         override val refresh = "Refresh"
         override val unknown = "Unknown"
+        override val copyDetails = "Copy details"
+        override val close = "Close"
+        override val switchLight = "Switch to light theme"
+        override val switchDark = "Switch to dark theme"
+        override val views = "Views"
+        override val connected = "Connected"
+        override val offline = "Offline"
     }
 
     override val downloads = object : BlazeStrings.Downloads {
@@ -44,6 +51,8 @@ object EnStrings : BlazeStrings {
             override val files = "Files:"
             override val selectAll = "Select All"
             override val deselectAll = "Deselect All"
+            override val scheduleDelayLabel = "Schedule start delay (minutes):"
+            override val scheduleDelayPlaceholder = "0 for immediate start"
             
             override val removeTitle = "Remove download"
             override fun removeMessage(name: String) = "Remove $name?"
@@ -69,12 +78,15 @@ object EnStrings : BlazeStrings {
             override val queued = "Queued"
             override val error = "Error"
             override val cancelling = "Cancelling"
+            override val seeding = "Seeding"
+            override val scheduled = "Scheduled"
         }
         
         override fun progress(downloaded: String, total: String) = "$downloaded / $total"
         override fun completedCount(count: Int) = if (count == 1) "1 download completed" else "$count downloads completed"
         override fun peers(count: Int) = if (count == 1) "1 peer" else "$count peers"
         override fun speed(speed: String) = "$speed/s"
+        override fun filesCount(count: Int) = if (count == 1) "1 file" else "$count files"
 
         override val actions = object : BlazeStrings.Downloads.Actions {
             override val pause = "Pause"
@@ -82,6 +94,7 @@ object EnStrings : BlazeStrings {
             override val retry = "Retry"
             override val cancel = "Cancel"
             override val remove = "Remove"
+            override val showFiles = "Show files"
         }
     }
 

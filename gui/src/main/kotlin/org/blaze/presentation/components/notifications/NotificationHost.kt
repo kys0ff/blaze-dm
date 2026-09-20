@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.theme.IdeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -87,6 +88,7 @@ private fun NotificationBalloon(
     notification: Notification,
     onDismiss: () -> Unit,
 ) {
+    val strings = blazeStrings
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -194,7 +196,7 @@ private fun NotificationBalloon(
 
                 if (isError) {
                     Link(
-                        text = "Copy details", // TODO: blazeStrings
+                        text = strings.common.copyDetails,
                         onClick = {
                             clipboard.setText(
                                 AnnotatedString(notification.message),
@@ -210,7 +212,7 @@ private fun NotificationBalloon(
             ) {
                 ToolbarIconButton(
                     AllIconsKeys.General.Close,
-                    "Close", // TODO: blazeStrings
+                    strings.common.close,
                     ::close,
                 )
             }

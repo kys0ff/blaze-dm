@@ -18,6 +18,13 @@ interface BlazeStrings {
         val newFolder: String
         val refresh: String
         val unknown: String
+        val copyDetails: String
+        val close: String
+        val switchLight: String
+        val switchDark: String
+        val views: String
+        val connected: String
+        val offline: String
     }
 
     interface Downloads {
@@ -53,6 +60,8 @@ interface BlazeStrings {
             val files: String
             val selectAll: String
             val deselectAll: String
+            val scheduleDelayLabel: String
+            val scheduleDelayPlaceholder: String
             
             val removeTitle: String
             fun removeMessage(name: String): String
@@ -79,12 +88,15 @@ interface BlazeStrings {
             val queued: String
             val error: String
             val cancelling: String
+            val seeding: String
+            val scheduled: String
         }
         
         fun progress(downloaded: String, total: String): String
         fun completedCount(count: Int): String
         fun peers(count: Int): String
         fun speed(speed: String): String
+        fun filesCount(count: Int): String
 
         val actions: Actions
         interface Actions {
@@ -93,6 +105,7 @@ interface BlazeStrings {
             val retry: String
             val cancel: String
             val remove: String
+            val showFiles: String
         }
     }
 

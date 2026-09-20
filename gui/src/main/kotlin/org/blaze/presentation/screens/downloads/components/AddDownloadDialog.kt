@@ -208,11 +208,11 @@ fun AddDownloadDialog(
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(text = "Schedule start delay (minutes):")
+                        Text(text = strings.downloads.dialogs.scheduleDelayLabel)
                         TextField(
                             value = scheduleDelay,
                             onValueChange = { scheduleDelay = it },
-                            placeholder = { Text("0 for immediate start") },
+                            placeholder = { Text(strings.downloads.dialogs.scheduleDelayPlaceholder) },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

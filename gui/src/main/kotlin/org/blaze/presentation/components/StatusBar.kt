@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.IdeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -31,6 +32,7 @@ fun StatusBar(
     isConnected: Boolean = true,
     trailing: @Composable RowScope.() -> Unit = {}
 ) {
+    val strings = blazeStrings
     val small = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -63,7 +65,7 @@ fun StatusBar(
                         .background(if (isConnected) IdeColors.success else IdeColors.error)
                 )
                 Text(
-                    text = if (isConnected) "Connected" else "Offline",
+                    text = if (isConnected) strings.common.connected else strings.common.offline,
                     style = small,
                     color = JewelTheme.globalColors.text.info
                 )

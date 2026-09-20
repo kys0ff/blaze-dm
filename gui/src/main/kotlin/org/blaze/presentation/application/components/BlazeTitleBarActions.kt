@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.window.TitleBarScope
@@ -17,6 +18,7 @@ fun TitleBarScope.BlazeTitleBarActions(
     isDark: Boolean,
     onToggleDark: () -> Unit,
 ) {
+    val strings = blazeStrings
     Row(
         modifier = Modifier
             .align(Alignment.End)
@@ -31,9 +33,9 @@ fun TitleBarScope.BlazeTitleBarActions(
                 AllIconsKeys.MeetNewUi.DarkTheme
             },
             tooltip = if (isDark) {
-                "Switch to light theme"
+                strings.common.switchLight
             } else {
-                "Switch to dark theme"
+                strings.common.switchDark
             },
             onClick = onToggleDark,
             modifier = Modifier.clientRegion("theme_button"),
