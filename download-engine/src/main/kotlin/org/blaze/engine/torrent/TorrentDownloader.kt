@@ -1,9 +1,17 @@
 package org.blaze.engine.torrent
 
 import bt.Bt
+import bt.bencoding.serializers.BEEncoder
+import bt.bencoding.serializers.BEParser
+import bt.bencoding.types.BEList
+import bt.bencoding.types.BEMap
+import bt.bencoding.model.BEObject
+import bt.bencoding.types.BEString
 import bt.data.file.FileSystemStorage
 import bt.dht.DHTConfig
 import bt.dht.DHTModule
+import bt.metainfo.MetadataConstants
+import bt.metainfo.Torrent
 import bt.peerexchange.PeerExchangeModule
 import bt.runtime.BtClient
 import bt.runtime.BtRuntime
@@ -26,6 +34,8 @@ import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.core.Downloader
+import org.slf4j.LoggerFactory
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.net.DatagramSocket
@@ -53,8 +63,11 @@ class TorrentDownloader(
     /** How long to wait for the *first* peer before giving up. */
     private val peerDiscoveryTimeout: Duration = 120.seconds,
     /** How long the download may make no progress (with peers connected) before giving up. */
-    private val stallTimeout: Duration = 5.minutes
+    private val stallTimeout: Duration = 5.minutes,
+    private val onMetadataResolved: ((ByteArray) -> Unit)? = null
 ) : Downloader {
+
+    private val logger = LoggerFactory.getLogger(TorrentDownloader::class.java)
 
     /** Why the session was stopped, when we stopped it ourselves. */
     private enum class StopReason { DOWNLOADED, NO_PEERS, STALLED }
@@ -80,10 +93,10 @@ class TorrentDownloader(
                 "Torrent destination is not a directory: $destination"
             }
 
-            println("[TorrentDownloader] Starting torrent download")
-            println("[TorrentDownloader] Requested name: ${request.name}")
-            println("[TorrentDownloader] Destination: $destination")
-            println("[TorrentDownloader] Source: ${request.torrentSource}")
+            logger.info("Starting torrent download")
+            logger.info("Requested name: {}", request.name)
+            logger.info("Destination: {}", destination)
+            logger.info("Source: {}", request.torrentSource)
 
             val storage = FileSystemStorage(destination)
 
@@ -102,7 +115,7 @@ class TorrentDownloader(
             // separately to 0.0.0.0, so peer *discovery* keeps working -- which is why the
             // swarm looks empty rather than broken.
             val bindAddress = resolveBindAddress()
-            println("[TorrentDownloader] Binding peer connections to $bindAddress")
+            logger.info("Binding peer connections to {}", bindAddress)
             logNetworkInterfaces()
 
             val config = Config().apply {
@@ -154,7 +167,22 @@ class TorrentDownloader(
                     .afterTorrentFetched { torrent ->
                         resolvedName.set(torrent.name)
                         totalSize.set(torrent.size)
-                        println("[TorrentDownloader] Metadata fetched: name=${torrent.name}, size=${torrent.size}, source=${request.torrentSource}")
+                        logger.info("Metadata fetched: name={}, size={}, source={}", torrent.name, torrent.size, request.torrentSource)
+
+                        val metadata = torrent.source.metadata
+                        if (metadata.isPresent) {
+                            logger.info("Providing metadata bytes to engine ({} bytes)", metadata.get().size)
+                            onMetadataResolved?.invoke(metadata.get())
+                        } else {
+                            logger.info("Metadata bytes NOT available in TorrentSource, attempting to reconstruct BEP-3 torrent file")
+                            try {
+                                val bytes = reconstructTorrentFile(torrent)
+                                logger.info("Providing reconstructed metadata bytes to engine ({} bytes)", bytes.size)
+                                onMetadataResolved?.invoke(bytes)
+                            } catch (e: Exception) {
+                                logger.error("Failed to reconstruct torrent file", e)
+                            }
+                        }
                     }
 
                 when (val source = request.torrentSource) {
@@ -167,19 +195,19 @@ class TorrentDownloader(
                             throw IllegalArgumentException("Torrent file is too small or empty")
                         }
                         val url = source.path.toUri().toURL()
-                        println("[TorrentDownloader] Loading .torrent file: ${file.absolutePath}")
+                        logger.info("Loading .torrent file: {}", file.absolutePath)
                         clientBuilder.torrent(url)
                     }
 
                     is TorrentSource.Magnet -> {
-                        println("[TorrentDownloader] Loading magnet URI: ${source.uri}")
+                        logger.info("Loading magnet URI: {}", source.uri)
                         clientBuilder.magnet(source.uri)
                     }
                 }
 
                 val btClient = clientBuilder.build()
                 client = btClient
-                println("[TorrentDownloader] BtClient built successfully")
+                logger.info("BtClient built successfully")
 
                 // pause()/cancel() may have arrived while the runtime was still coming up.
                 if (stopRequested) {
@@ -202,7 +230,7 @@ class TorrentDownloader(
                 val sawAnyPeer = AtomicBoolean(false)
                 val lastProgressAt = AtomicLong(System.currentTimeMillis())
 
-                println("[TorrentDownloader] Starting BitTorrent session...")
+                logger.info("Starting BitTorrent session...")
                 val future: CompletableFuture<*> = btClient.startAsync({ state ->
                     lastStateRef.set(state)
 
@@ -227,14 +255,14 @@ class TorrentDownloader(
                         lastProgressAt.set(System.currentTimeMillis())
                     }
 
-                    println(
-                        "[TorrentDownloader] Tick: " +
-                                "name=${resolvedName.get() ?: request.name}, " +
-                                "pieces=${state.piecesComplete}/${state.piecesTotal}, " +
-                                "remaining=${state.piecesRemaining}, " +
-                                "downloaded=${state.downloaded}/${totalSize.get().takeIf { it > 0 } ?: "?"}, " +
-                                "peers=$peers, " +
-                                "speed=$speed B/s"
+                    logger.debug(
+                        "Tick: name={}, pieces={}/{}, remaining={}, downloaded={}/{}, peers={}, speed={} B/s",
+                        resolvedName.get() ?: request.name,
+                        state.piecesComplete, state.piecesTotal,
+                        state.piecesRemaining,
+                        state.downloaded, totalSize.get().takeIf { it > 0 } ?: "?",
+                        peers,
+                        speed
                     )
 
                     // trySend is non-suspending and thread-safe, so it can be called
@@ -259,7 +287,7 @@ class TorrentDownloader(
                     // what bt's own CLI client does.
                     if (state.piecesTotal > 0 && state.piecesRemaining == 0) {
                         if (stopReason.compareAndSet(null, StopReason.DOWNLOADED)) {
-                            println("[TorrentDownloader] Download complete, stopping session")
+                            logger.info("Download complete, stopping session")
                             btClient.stop()
                         }
                     }
@@ -278,7 +306,7 @@ class TorrentDownloader(
                         if (idleMillis > limit.inWholeMilliseconds) {
                             val reason = if (sawAnyPeer.get()) StopReason.STALLED else StopReason.NO_PEERS
                             if (stopReason.compareAndSet(null, reason)) {
-                                println("[TorrentDownloader] Watchdog tripped: $reason after ${idleMillis}ms idle")
+                                logger.warn("Watchdog tripped: {} after {}ms idle", reason, idleMillis)
                                 btClient.stop()
                             }
                             break
@@ -290,9 +318,9 @@ class TorrentDownloader(
                     future.awaitCompletion()
 
                     val finalState = lastStateRef.get()
-                    println(
-                        "[TorrentDownloader] Session future completed: " +
-                                "reason=${stopReason.get()}, stopRequested=$stopRequested, finalState=$finalState"
+                    logger.info(
+                        "Session future completed: reason={}, stopRequested={}, finalState={}",
+                        stopReason.get(), stopRequested, finalState
                     )
 
                     val completed = finalState != null &&
@@ -370,11 +398,7 @@ class TorrentDownloader(
                         throw e
                     }
                 } catch (e: Exception) {
-                    println(
-                        "[TorrentDownloader] Torrent session failed: " +
-                                "${e::class.java.name}: ${e.message}"
-                    )
-                    e.printStackTrace()
+                    logger.error("Torrent session failed", e)
                     send(
                         mapStateToTask(
                             lastStateRef.get(),
@@ -385,30 +409,22 @@ class TorrentDownloader(
                     )
                 } finally {
                     watchdog.cancel()
-                    println("[TorrentDownloader] Stopping BitTorrent client")
+                    logger.info("Stopping BitTorrent client")
                     btClient.stop()
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                println(
-                    "[TorrentDownloader] Failed to initialize torrent runtime: " +
-                            "${e::class.java.name}: ${e.message}"
-                )
-                e.printStackTrace()
+                logger.error("Failed to initialize torrent runtime", e)
                 send(mapStateToTask(null, error = DownloadError.InvalidTorrent))
             } finally {
-                println("[TorrentDownloader] Shutting down BitTorrent runtime")
+                logger.info("Shutting down BitTorrent runtime")
                 runtime.shutdown()
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            println(
-                "[TorrentDownloader] Download setup failed: " +
-                        "${e::class.java.name}: ${e.message}"
-            )
-            e.printStackTrace()
+            logger.error("Download setup failed", e)
             send(
                 mapStateToTask(
                     null,
@@ -449,6 +465,36 @@ class TorrentDownloader(
      * letting bt guess. Never sends a packet: connecting a UDP socket only makes the kernel
      * run its routing table and pick a source address.
      */
+    private fun reconstructTorrentFile(torrent: Torrent): ByteArray {
+        val infoDictBytes = torrent.source.exchangedMetadata
+        val infoDict = BEParser(infoDictBytes).readMap()
+
+        val root = mutableMapOf<String, BEObject<*>>()
+        root[MetadataConstants.INFOMAP_KEY] = infoDict
+
+        torrent.announceKey.ifPresent { announceKey ->
+            if (announceKey.isMultiKey) {
+                val announceList = announceKey.trackerUrls.map { tier ->
+                    BEList(tier.map { BEString(it) })
+                }
+                root[MetadataConstants.ANNOUNCE_LIST_KEY] = BEList(announceList)
+
+                // BEP-3 says 'announce' should be a single string.
+                // We pick the first tracker from the first tier.
+                announceKey.trackerUrls.firstOrNull()?.firstOrNull()?.let {
+                    root[MetadataConstants.ANNOUNCE_KEY] = BEString(it)
+                }
+            } else {
+                root[MetadataConstants.ANNOUNCE_KEY] = BEString(announceKey.trackerUrl)
+            }
+        }
+
+        val rootMap = BEMap(root)
+        val out = ByteArrayOutputStream()
+        BEEncoder.encoder().encode(rootMap, out)
+        return out.toByteArray()
+    }
+
     private fun resolveBindAddress(): InetAddress {
         runCatching {
             DatagramSocket().use { socket ->
@@ -459,7 +505,7 @@ class TorrentDownloader(
                 }
             }
         }.onFailure {
-            println("[TorrentDownloader] Route probe failed: ${it.message}")
+            logger.warn("Route probe failed: {}", it.message)
         }
 
         // Fallback: first up, non-loopback, non-virtual interface with an IPv4 address.
@@ -473,7 +519,7 @@ class TorrentDownloader(
                 ?.let { return it }
         }
 
-        println("[TorrentDownloader] No usable interface found, falling back to 0.0.0.0")
+        logger.warn("No usable interface found, falling back to 0.0.0.0")
         return InetAddress.getByName("0.0.0.0")
     }
 
@@ -484,7 +530,7 @@ class TorrentDownloader(
                     .filterIsInstance<Inet4Address>()
                     .joinToString(", ") { it.hostAddress }
                 if (addresses.isNotEmpty()) {
-                    println("[TorrentDownloader] Interface ${iface.name}: $addresses (up=${iface.isUp})")
+                    logger.debug("Interface {}: {} (up={})", iface.name, addresses, iface.isUp)
                 }
             }
         }
@@ -518,6 +564,8 @@ class TorrentDownloader(
         val piecesComplete = state?.piecesComplete ?: 0
 
         if (state != null && piecesTotal > 0 && state.downloaded == 0L) {
+            // During hashing or before first byte arrives, we keep updating initialPiecesComplete
+            // to reflect what we already have on disk.
             initialPiecesComplete = piecesComplete
         }
 
@@ -525,10 +573,17 @@ class TorrentDownloader(
             isCompleted || (state != null && piecesTotal > 0 && state.piecesRemaining == 0) -> {
                 if (totalSize > 0) totalSize else state?.downloaded ?: 0L
             }
-            state != null && piecesTotal > 0 && totalSize > 0 && initialPiecesComplete >= 0 -> {
-                val initialBytes = (initialPiecesComplete.toDouble() / piecesTotal * totalSize).toLong()
-                val totalCalculated = initialBytes + state.downloaded
-                totalCalculated.coerceIn(state.downloaded, totalSize)
+            state != null && piecesTotal > 0 && totalSize > 0 -> {
+                if (state.downloaded == 0L) {
+                    // If no bytes downloaded this session, trust the piece count (covers hashing/resuming)
+                    (piecesComplete.toDouble() / piecesTotal * totalSize).toLong()
+                } else if (initialPiecesComplete >= 0) {
+                    // Bytes downloaded this session + what we had at the start
+                    val initialBytes = (initialPiecesComplete.toDouble() / piecesTotal * totalSize).toLong()
+                    (initialBytes + state.downloaded).coerceIn(state.downloaded, totalSize)
+                } else {
+                    state.downloaded
+                }
             }
             else -> state?.downloaded ?: 0L
         }

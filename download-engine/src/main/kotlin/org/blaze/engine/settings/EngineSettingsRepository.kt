@@ -7,9 +7,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 import java.nio.file.Path
 
 class EngineSettingsRepository(storageDir: Path) {
+    private val logger = LoggerFactory.getLogger(EngineSettingsRepository::class.java)
     private val settingsFile = storageDir.resolve("settings.json").toFile()
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
@@ -36,7 +38,7 @@ class EngineSettingsRepository(storageDir: Path) {
             settingsFile.parentFile.mkdirs()
             settingsFile.writeText(json.encodeToString(settings))
         } catch (e: Exception) {
-            println("Failed to save settings: ${e.message}")
+            logger.error("Failed to save settings: ${e.message}")
         }
     }
 

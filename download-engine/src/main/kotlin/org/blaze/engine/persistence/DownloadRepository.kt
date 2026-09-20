@@ -3,7 +3,7 @@ package org.blaze.engine.persistence
 import kotlinx.serialization.json.Json
 import java.nio.file.Path
 
-class DownloadRepository(storageDir: Path) {
+class DownloadRepository(val storageDir: Path) {
     private val dbFile = storageDir.resolve("downloads.json").toFile()
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 

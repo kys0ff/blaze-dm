@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.runTest
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.TorrentSource
+import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -13,11 +14,13 @@ import kotlin.test.assertTrue
 
 class TorrentMetadataTest {
 
+    private val logger = LoggerFactory.getLogger(TorrentMetadataTest::class.java)
+
     @Test
     fun `test metadata resolution with big buck bunny torrent`() = runTest {
         val torrentPath = Path.of("/home/kys0adam/Downloads/big-buck-bunny.torrent")
         if (!Files.exists(torrentPath)) {
-            println("Skipping test: Torrent file not found at $torrentPath")
+            logger.warn("Skipping test: Torrent file not found at {}", torrentPath)
             return@runTest
         }
 
@@ -54,8 +57,8 @@ class TorrentMetadataTest {
         assertTrue(resolvedTask.name != "Initial Name", "Name should have been updated from metadata. Got: ${resolvedTask.name}")
         assertTrue(resolvedTask.totalBytes!! > 0, "Total bytes should be positive. Got: ${resolvedTask.totalBytes}")
         
-        println("Resolved Torrent Name: ${resolvedTask.name}")
-        println("Resolved Torrent Size: ${resolvedTask.totalBytes}")
+        logger.info("Resolved Torrent Name: {}", resolvedTask.name)
+        logger.info("Resolved Torrent Size: {}", resolvedTask.totalBytes)
         
         tempDir.toFile().deleteRecursively()
     }

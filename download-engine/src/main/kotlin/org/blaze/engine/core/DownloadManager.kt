@@ -34,7 +34,9 @@ import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.persistence.DownloadRecord
 import org.blaze.engine.persistence.DownloadRepository
 import org.blaze.engine.settings.EngineSettingsRepository
+import org.slf4j.LoggerFactory
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -45,9 +47,11 @@ class DownloadManager(
     private val scope: CoroutineScope,
     private val repository: DownloadRepository,
     private val httpDownloaderFactory: (DownloadRequest.Http) -> Downloader,
-    private val torrentDownloaderFactory: (DownloadRequest.Torrent) -> Downloader,
+    private val torrentDownloaderFactory: (DownloadRequest.Torrent, onMetadata: (ByteArray) -> Unit) -> Downloader,
     private val settingsRepository: EngineSettingsRepository
 ) : DownloadEngine {
+
+    private val logger = LoggerFactory.getLogger(DownloadManager::class.java)
 
     private val tasks = MutableStateFlow<Map<DownloadId, DownloadTask>>(emptyMap())
     private val jobs = ConcurrentHashMap<DownloadId, Job>()
@@ -63,6 +67,11 @@ class DownloadManager(
 
     init {
         scope.launch(Dispatchers.IO) {
+            try {
+                Files.createDirectories(repository.storageDir.resolve("cache"))
+            } catch (e: Exception) {
+                logger.error("[DownloadManager] Failed to create cache directory: ${e.message}")
+            }
             persistSignal.consumeEach {
                 writeSnapshot()
             }
@@ -81,7 +90,7 @@ class DownloadManager(
             val records = try {
                 repository.loadAll()
             } catch (e: Exception) {
-                println("Failed to load tasks: ${e.message}")
+                logger.error("Failed to load tasks: ${e.message}")
                 emptyList()
             }
 
@@ -101,7 +110,7 @@ class DownloadManager(
                     }
                     task.copy(state = finalState)
                 } catch (e: Exception) {
-                    println("Skipping corrupt record ${record.id}: ${e.message}")
+                    logger.warn("Skipping corrupt record ${record.id}: ${e.message}")
                     null
                 }
             }
@@ -119,12 +128,10 @@ class DownloadManager(
                 Path.of(record.destination)
             )
             "TORRENT" -> {
-                val source = if (record.magnetUri != null) {
-                    TorrentSource.Magnet(record.magnetUri)
-                } else {
-                    TorrentSource.File(
-                        Path.of(record.torrentPath ?: error("Torrent record ${record.id} missing torrentPath"))
-                    )
+                val source = when {
+                    record.torrentPath != null -> TorrentSource.File(Path.of(record.torrentPath))
+                    record.magnetUri != null -> TorrentSource.Magnet(record.magnetUri)
+                    else -> error("Torrent record ${record.id} missing both torrentPath and magnetUri")
                 }
                 DownloadRequest.Torrent(record.name, source, Path.of(record.destination))
             }
@@ -159,6 +166,68 @@ class DownloadManager(
         persistSignal.trySend(Unit)
     }
 
+    private fun cacheMetadata(id: DownloadId, bytes: ByteArray) {
+        logger.debug("[DownloadManager] Attempting to cache metadata for $id (${bytes.size} bytes)")
+        scope.launch(Dispatchers.IO) {
+            val task = tasks.value[id] ?: return@launch
+            val currentRequest = task.request as? DownloadRequest.Torrent ?: return@launch
+
+            val isFile = currentRequest.torrentSource is TorrentSource.File
+            if (isFile) {
+                val path = (currentRequest.torrentSource as TorrentSource.File).path
+                val cachePath = repository.storageDir.resolve("cache")
+                val isTemp = path.toString().contains(System.getProperty("java.io.tmpdir"))
+                val isCache = path.startsWith(cachePath)
+
+                if (!isTemp && !isCache) {
+                    logger.info("[DownloadManager] Source is a permanent file, skipping cache: $path")
+                    return@launch
+                }
+                
+                if (isCache && Files.exists(path)) {
+                    logger.info("[DownloadManager] Source is already in cache, skipping redundant write: $path")
+                    return@launch
+                }
+            }
+
+            try {
+                val cacheDir = repository.storageDir.resolve("cache")
+                logger.debug("[DownloadManager] Ensuring cache directory exists: ${cacheDir.toAbsolutePath()}")
+                Files.createDirectories(cacheDir)
+
+                val torrentFile = cacheDir.resolve("${id.value}.torrent")
+                Files.write(torrentFile, bytes)
+
+                logger.info("[DownloadManager] Cached metadata for ${task.name} to $torrentFile")
+
+                tasks.update { current ->
+                    val t = current[id] ?: return@update current
+                    val r = t.request as? DownloadRequest.Torrent ?: return@update current
+                    val newRequest = r.copy(torrentSource = TorrentSource.File(torrentFile))
+                    current + (id to t.copy(request = newRequest))
+                }
+                persist()
+            } catch (e: Exception) {
+                logger.error("[DownloadManager] Failed to cache metadata for ${task.name}: ${e.message}")
+            }
+        }
+    }
+
+    private fun cleanupMetadata(id: DownloadId) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val cacheDir = repository.storageDir.resolve("cache")
+                val torrentFile = cacheDir.resolve("${id.value}.torrent")
+                if (Files.exists(torrentFile)) {
+                    Files.delete(torrentFile)
+                    logger.info("[DownloadManager] Cleaned up cached metadata for $id")
+                }
+            } catch (e: Exception) {
+                logger.error("[DownloadManager] Failed to cleanup metadata for $id: ${e.message}")
+            }
+        }
+    }
+
     private suspend fun writeSnapshot() {
         val currentTasks = tasks.value.values.toList()
         val records = currentTasks.map { task ->
@@ -184,7 +253,7 @@ class DownloadManager(
                 repository.saveAll(records)
             }
         } catch (e: Exception) {
-            println("Failed to persist tasks: ${e.message}")
+            logger.error("Failed to persist tasks: ${e.message}")
         }
     }
 
@@ -239,7 +308,9 @@ class DownloadManager(
 
         val downloader = when (val request = task.request) {
             is DownloadRequest.Http -> httpDownloaderFactory(request)
-            is DownloadRequest.Torrent -> torrentDownloaderFactory(request)
+            is DownloadRequest.Torrent -> torrentDownloaderFactory(request) { bytes ->
+                cacheMetadata(id, bytes)
+            }
         }
 
         downloaders[id] = downloader
@@ -251,13 +322,38 @@ class DownloadManager(
                 downloader.download().collect { updatedTask ->
                     tasks.update { current ->
                         if (current.containsKey(id)) {
-                            current + (id to updatedTask.copy(id = id, request = task.request))
+                            val previousTask = current[id]
+                            val transientState = updatedTask.state == DownloadState.Starting ||
+                                    updatedTask.state == DownloadState.ResolvingMetadata ||
+                                    updatedTask.state == DownloadState.Verifying
+
+                            val finalTask = if (transientState && previousTask != null) {
+                                updatedTask.copy(
+                                    id = id,
+                                    request = task.request,
+                                    downloadedBytes = if (updatedTask.downloadedBytes == 0L) {
+                                        previousTask.downloadedBytes
+                                    } else {
+                                        updatedTask.downloadedBytes
+                                    },
+                                    totalBytes = updatedTask.totalBytes ?: previousTask.totalBytes,
+                                    progress = if (updatedTask.progress == null || updatedTask.progress == 0f) {
+                                        previousTask.progress
+                                    } else {
+                                        updatedTask.progress
+                                    }
+                                )
+                            } else {
+                                updatedTask.copy(id = id, request = task.request)
+                            }
+                            current + (id to finalTask)
                         } else {
                             current
                         }
                     }
                     when {
                         updatedTask.state == DownloadState.Completed -> {
+                            cleanupMetadata(id)
                             persist()
                             scope.launch { processQueue() }
                         }
@@ -273,7 +369,7 @@ class DownloadManager(
                 }
             } catch (e: Exception) {
                 if (e !is CancellationException) {
-                    println("Error in download collection for ${task.name}: ${e.message}")
+                    logger.error("Error in download collection for ${task.name}: ${e.message}")
                     tasks.update { current ->
                         current[id]?.let { current + (id to it.copy(state = DownloadState.Failed)) } ?: current
                     }
@@ -291,7 +387,7 @@ class DownloadManager(
             val currentRetries = retryCounts.getOrDefault(id, 0)
             if (currentRetries < settings.maxRetries) {
                 retryCounts[id] = currentRetries + 1
-                println("Scheduling automatic retry for download $id (${currentRetries + 1}/${settings.maxRetries}) in ${settings.retryDelaySeconds}s")
+                logger.info("Scheduling automatic retry for download $id (${currentRetries + 1}/${settings.maxRetries}) in ${settings.retryDelaySeconds}s")
 
                 tasks.update { current ->
                     current[id]?.let { current + (id to it.copy(state = DownloadState.Queued)) } ?: current
@@ -313,7 +409,7 @@ class DownloadManager(
     override suspend fun fetchMetadata(request: DownloadRequest): DownloadMetadata? = withContext(Dispatchers.IO) {
         val downloader = when (request) {
             is DownloadRequest.Http -> httpDownloaderFactory(request)
-            is DownloadRequest.Torrent -> torrentDownloaderFactory(request)
+            is DownloadRequest.Torrent -> torrentDownloaderFactory(request) { /* no-op for pre-fetch */ }
         }
 
         val task = withTimeoutOrNull(30.seconds) {
@@ -329,7 +425,7 @@ class DownloadManager(
     }
 
     override suspend fun enqueue(request: DownloadRequest): DownloadId {
-        println("Enqueuing download: ${request.name} -> ${request.destination}")
+        logger.info("Enqueuing download: ${request.name} -> ${request.destination}")
         val id = DownloadId.generate()
         val task = DownloadTask(
             id = id,
@@ -399,6 +495,7 @@ class DownloadManager(
     override suspend fun remove(id: DownloadId, deleteFiles: Boolean) {
         val task = tasks.value[id]
         cancel(id)
+        cleanupMetadata(id)
 
         if (deleteFiles && task != null) {
             try {
@@ -428,7 +525,7 @@ class DownloadManager(
                     }
                 }
             } catch (e: Exception) {
-                println("Failed to delete files for ${task.name}: ${e.message}")
+                logger.error("Failed to delete files for ${task.name}: ${e.message}")
             }
         }
 

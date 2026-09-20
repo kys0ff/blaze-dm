@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.http.KtorHttpDownloader
+import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,6 +27,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
 class HttpDownloaderRobustnessTest {
+
+    private val logger = LoggerFactory.getLogger(HttpDownloaderRobustnessTest::class.java)
 
     @Test
     fun `test basic successful download`() = runTest {
@@ -205,19 +208,19 @@ class HttpDownloaderRobustnessTest {
     fun `test real world mediafire download`() = runTest {
         val url =
             "https://download2287.mediafire.com/nso5551i3xog3oyI9HUm8vctT3kkjejd-I9HCoIvrd7M4OGCEDcwFR47OFmbOEutfqCP_Nr76RE3fJi8sPI3KuFrJzM2JWuZOt_B8Sx4_-Zjw0qQ_epvx2PetR_OuAjtZOjKSz_xYmqnv5Gyv4Ubac-5B5LkSj2zI6cuiJSb_b6uqA/pv91pda7o7i8ts5/Zero+No+Tsukaima+-+01+Arabc+Nut-World.mp4"
-        println("=== Investigating Real-world MediaFire URL ===")
+        logger.info("=== Investigating Real-world MediaFire URL ===")
         try {
             val client = HttpClient()
             val response = client.prepareGet(url).execute()
-            println("Status: ${response.status}")
-            println("Content-Length: ${response.contentLength()}")
-            println("Headers:")
+            logger.info("Status: {}", response.status)
+            logger.info("Content-Length: {}", response.contentLength())
+            logger.info("Headers:")
             response.headers.entries().forEach { (key, values) ->
-                println("  $key: ${values.joinToString()}")
+                logger.info("  {}: {}", key, values.joinToString())
             }
             client.close()
         } catch (e: Exception) {
-            println("Real-world URL check failed/expired: ${e.message}")
+            logger.error("Real-world URL check failed/expired: {}", e.message)
         }
     }
 

@@ -28,7 +28,9 @@ val engineModule = module {
             scope = get(),
             repository = get(),
             httpDownloaderFactory = { KtorHttpDownloader(it, settingsRepository = get()) },
-            torrentDownloaderFactory = { TorrentDownloader(it) },
+            torrentDownloaderFactory = { request, onMetadata ->
+                TorrentDownloader(request, onMetadataResolved = onMetadata)
+            },
             settingsRepository = get()
         )
     }

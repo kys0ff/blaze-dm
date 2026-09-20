@@ -63,7 +63,7 @@ class DownloadSchedulerTest {
                 downloaders.add(dl)
                 dl
             },
-            torrentDownloaderFactory = { req ->
+            torrentDownloaderFactory = { req, _ ->
                 val dl = TestDownloader(req)
                 downloaders.add(dl)
                 dl

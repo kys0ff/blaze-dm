@@ -57,6 +57,9 @@ dependencies {
     // Coroutines Swing for Dispatchers.Main on Desktop
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.1")
 
+    // Logging Implementation
+    runtimeOnly("ch.qos.logback:logback-classic:1.6.3")
+
     testImplementation(kotlin("test"))
 }
 
