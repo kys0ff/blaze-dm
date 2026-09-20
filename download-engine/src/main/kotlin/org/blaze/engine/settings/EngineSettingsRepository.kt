@@ -8,7 +8,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 class EngineSettingsRepository(storageDir: Path) {
     private val logger = LoggerFactory.getLogger(EngineSettingsRepository::class.java)
@@ -34,11 +37,32 @@ class EngineSettingsRepository(storageDir: Path) {
     }
 
     private suspend fun saveSettings(settings: DownloadSettings) = withContext(Dispatchers.IO) {
+        val targetPath = settingsFile.toPath()
+        val parentDir = targetPath.parent
+        if (parentDir != null) {
+            try {
+                Files.createDirectories(parentDir)
+            } catch (e: Exception) {
+                logger.error("Failed to create directories for settings: ${e.message}")
+                return@withContext
+            }
+        }
+        val tmpFile = try {
+            Files.createTempFile(parentDir, "settings", ".json.tmp")
+        } catch (e: Exception) {
+            logger.error("Failed to create temp file for settings: ${e.message}")
+            return@withContext
+        }
         try {
-            settingsFile.parentFile.mkdirs()
-            settingsFile.writeText(json.encodeToString(settings))
+            Files.writeString(tmpFile, json.encodeToString(settings))
+            try {
+                Files.move(tmpFile, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(tmpFile, targetPath, StandardCopyOption.REPLACE_EXISTING)
+            }
         } catch (e: Exception) {
             logger.error("Failed to save settings: ${e.message}")
+            Files.deleteIfExists(tmpFile)
         }
     }
 

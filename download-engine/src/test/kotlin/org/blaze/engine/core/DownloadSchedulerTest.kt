@@ -91,6 +91,7 @@ class DownloadSchedulerTest {
 
         // Complete the first download
         downloaders.firstOrNull { it.flow.value.name == "File1" }?.complete()
+        Thread.sleep(10)
         advanceTimeBy(100.milliseconds)
 
         // Now File2 should be started automatically

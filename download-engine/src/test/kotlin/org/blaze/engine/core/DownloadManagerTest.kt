@@ -127,6 +127,7 @@ class DownloadManagerTest {
             while (true) {
                 task = manager.getTask(id)
                 if (task != null) break
+                Thread.sleep(10)
                 delay(50.milliseconds)
             }
         }

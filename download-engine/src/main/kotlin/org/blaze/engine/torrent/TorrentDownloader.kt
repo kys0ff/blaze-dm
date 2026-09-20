@@ -1,11 +1,11 @@
 package org.blaze.engine.torrent
 
 import bt.Bt
+import bt.bencoding.model.BEObject
 import bt.bencoding.serializers.BEEncoder
 import bt.bencoding.serializers.BEParser
 import bt.bencoding.types.BEList
 import bt.bencoding.types.BEMap
-import bt.bencoding.model.BEObject
 import bt.bencoding.types.BEString
 import bt.data.file.FileSystemStorage
 import bt.dht.DHTConfig
@@ -224,6 +224,7 @@ class TorrentDownloader(
 
                 val lastStateRef = AtomicReference<TorrentSessionState?>(null)
                 val lastBytesRef = AtomicLong(0L)
+                val lastUploadedBytesRef = AtomicLong(0L)
                 val lastTickRef = AtomicLong(System.nanoTime())
 
                 val stopReason = AtomicReference<StopReason?>(null)
@@ -234,15 +235,24 @@ class TorrentDownloader(
                 val future: CompletableFuture<*> = btClient.startAsync({ state ->
                     lastStateRef.set(state)
 
-                    // Compute a rough instantaneous download speed from the byte delta
+                    // Compute a rough instantaneous download and upload speed from the byte delta
                     // between ticks, since the underlying library doesn't report one.
                     val now = System.nanoTime()
                     val previousTick = lastTickRef.getAndSet(now)
                     val previousBytes = lastBytesRef.getAndSet(state.downloaded)
+                    val previousUploadedBytes = lastUploadedBytesRef.getAndSet(state.uploaded)
                     val elapsedSeconds = (now - previousTick) / 1_000_000_000.0
+                    
                     val delta = state.downloaded - previousBytes
                     val speed = if (elapsedSeconds > 0) {
                         (delta / elapsedSeconds).toLong().coerceAtLeast(0L)
+                    } else {
+                        0L
+                    }
+
+                    val uploadDelta = state.uploaded - previousUploadedBytes
+                    val uploadSpeed = if (elapsedSeconds > 0) {
+                        (uploadDelta / elapsedSeconds).toLong().coerceAtLeast(0L)
                     } else {
                         0L
                     }
@@ -256,13 +266,14 @@ class TorrentDownloader(
                     }
 
                     logger.debug(
-                        "Tick: name={}, pieces={}/{}, remaining={}, downloaded={}/{}, peers={}, speed={} B/s",
+                        "Tick: name={}, pieces={}/{}, remaining={}, downloaded={}/{}, peers={}, speed={} B/s, uploadSpeed={} B/s",
                         resolvedName.get() ?: request.name,
                         state.piecesComplete, state.piecesTotal,
                         state.piecesRemaining,
                         state.downloaded, totalSize.get().takeIf { it > 0 } ?: "?",
                         peers,
-                        speed
+                        speed,
+                        uploadSpeed
                     )
 
                     // trySend is non-suspending and thread-safe, so it can be called
@@ -273,6 +284,7 @@ class TorrentDownloader(
                         mapStateToTask(
                             state,
                             downloadSpeed = speed,
+                            uploadSpeed = uploadSpeed,
                             resolvedName = resolvedName.get(),
                             totalSize = totalSize.get()
                         )
@@ -557,6 +569,7 @@ class TorrentDownloader(
         isCancelled: Boolean = false,
         error: DownloadError? = null,
         downloadSpeed: Long = 0L,
+        uploadSpeed: Long = 0L,
         resolvedName: String? = null,
         totalSize: Long = -1L
     ): DownloadTask {
@@ -608,7 +621,7 @@ class TorrentDownloader(
             totalBytes = if (totalSize > 0) totalSize else null,
             downloadedBytes = downloaded,
             downloadSpeed = downloadSpeed,
-            uploadSpeed = 0, // TODO: populate once bt exposes uploaded-byte tracking for speed calc
+            uploadSpeed = uploadSpeed,
             peers = state?.connectedPeers?.size ?: 0,
             progress = progress,
             error = error,
