@@ -3,7 +3,6 @@ package org.blaze.presentation.application
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,9 +24,11 @@ import org.blaze.engine.settings.ThemeMode
 import org.blaze.i18n.LocalBlazeStrings
 import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.getStrings
-import org.blaze.platform.tray.TrayActions
-import org.blaze.platform.tray.TrayLabels
-import org.blaze.platform.tray.TrayService
+import org.blaze.platform.tray.AppTrayIcon
+import org.blaze.tray.api.TrayConfig
+import org.blaze.tray.api.TrayMenuItem
+import org.blaze.tray.api.TrayService
+import org.blaze.tray.compose.TrayHost
 import org.blaze.presentation.application.components.BlazeWindow
 import org.blaze.presentation.theme.BlazeTheme
 import org.blaze.theming.core.ThemeRegistry
@@ -87,32 +88,37 @@ fun ApplicationScope.BlazeApplication() {
         exitApplication()
     }
 
-    // (Re)install the tray whenever its setting or the locale (menu labels) changes,
-    // and always remove the icon on teardown so it never lingers after exit.
-    DisposableEffect(trayActive, strings) {
-        if (trayActive) {
-            trayService.install(
-                labels = TrayLabels(
-                    show = strings.tray.show,
-                    hide = strings.tray.hide,
-                    pauseAll = strings.tray.pauseAll,
-                    resumeAll = strings.tray.resumeAll,
-                    quit = strings.tray.quit
-                ),
-                actions = TrayActions(
-                    onToggleWindow = {
-                        windowVisible = !windowVisible
-                        trayService.setWindowVisible(windowVisible)
-                    },
-                    onPauseAll = { appScope.launch { downloadRepository.pauseAll() } },
-                    onResumeAll = { appScope.launch { downloadRepository.resumeAll() } },
-                    onQuit = { quitApp() }
-                )
-            )
-            trayService.setWindowVisible(windowVisible)
-        }
-        onDispose { if (trayActive) trayService.dispose() }
+    // Blaze's tray identity, artwork and menu; the :tray library stays app-agnostic.
+    val trayConfig = remember(strings) {
+        TrayConfig(
+            id = "org.blaze.Downloader",
+            title = "Blaze",
+            icon = { size -> AppTrayIcon.image(size) },
+            menu = listOf(
+                TrayMenuItem.WindowToggle(
+                    hiddenLabel = strings.tray.show,
+                    shownLabel = strings.tray.hide,
+                ) { windowVisible = !windowVisible },
+                TrayMenuItem.Item(strings.tray.pauseAll) {
+                    appScope.launch { downloadRepository.pauseAll() }
+                },
+                TrayMenuItem.Item(strings.tray.resumeAll) {
+                    appScope.launch { downloadRepository.resumeAll() }
+                },
+                TrayMenuItem.Separator,
+                TrayMenuItem.Item(strings.tray.quit) { quitApp() },
+            ),
+        )
     }
+
+    // Tray lifecycle (install on setting/locale change, Show/Hide sync, removal on
+    // teardown) is owned by the :tray module's Compose wrapper.
+    TrayHost(
+        service = trayService,
+        enabled = appSettings.trayEnabled,
+        config = trayConfig,
+        windowVisible = windowVisible,
+    )
 
     CompositionLocalProvider(LocalBlazeStrings provides strings) {
         BlazeTheme(palette = palette, isDark = isDark) {
@@ -121,8 +127,8 @@ fun ApplicationScope.BlazeApplication() {
                 visible = windowVisible,
                 onCloseRequest = {
                     if (trayActive && appSettings.minimizeToTrayOnClose && !exiting) {
+                        // TrayHost propagates the new visibility into the Show/Hide item.
                         windowVisible = false
-                        trayService.setWindowVisible(false)
                     } else {
                         quitApp()
                     }

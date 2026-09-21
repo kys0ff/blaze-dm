@@ -1,9 +1,8 @@
-package org.blaze.platform.tray.sni
+package org.blaze.tray.internal.sni
 
-import org.blaze.platform.tray.BlazeTrayIcon
-import org.blaze.platform.tray.TrayActions
-import org.blaze.platform.tray.TrayLabels
-import org.blaze.platform.tray.TrayService
+import org.blaze.tray.api.TrayConfig
+import org.blaze.tray.api.TrayMenuItem
+import org.blaze.tray.api.TrayService
 import org.freedesktop.dbus.DBusPath
 import org.freedesktop.dbus.connections.impl.DBusConnection
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder
@@ -22,12 +21,12 @@ import java.awt.image.BufferedImage
  * + `com.canonical.dbusmenu`) over the session D-Bus — the tray mechanism modern Linux
  * desktops (KDE Plasma in particular) actually implement. AWT's legacy XEmbed tray is
  * displayed by Plasma but never delivers clicks, so on Linux this backend replaces
- * [org.blaze.platform.tray.AwtTrayService].
+ * [org.blaze.tray.internal.awt.AwtTrayService].
  *
  * Every entry point degrades quietly: without a session bus or a watcher nothing is
  * registered and the app keeps running without a tray.
  */
-class SniTrayService : TrayService {
+internal class SniTrayService : TrayService {
 
     private val logger = LoggerFactory.getLogger(SniTrayService::class.java)
 
@@ -36,8 +35,7 @@ class SniTrayService : TrayService {
 
     private var connection: DBusConnection? = null
     private var supportedCache: Boolean? = null
-    private var actions: TrayActions? = null
-    private var labels: TrayLabels? = null
+    private var config: TrayConfig? = null
     private var iconImage: BufferedImage? = null
     private var windowVisible = true
 
@@ -53,7 +51,7 @@ class SniTrayService : TrayService {
             }
         }
 
-    override fun install(labels: TrayLabels, actions: TrayActions) {
+    override fun install(config: TrayConfig) {
         dispose()
         if (!isSupported) {
             logger.info("No StatusNotifierWatcher on the session bus; skipping SNI tray install")
@@ -62,10 +60,9 @@ class SniTrayService : TrayService {
         runCatching {
             synchronized(lock) {
                 val conn = openConnection()
-                this.labels = labels
-                this.actions = actions
-                iconImage = BlazeTrayIcon.create(ICON_SIZE)
-                menuModel.rebuild(labels, windowVisible)
+                this.config = config
+                iconImage = config.icon.create(ICON_SIZE)
+                menuModel.rebuild(config.menu, windowVisible)
 
                 conn.exportObject(MENU_PATH, MenuImpl())
                 conn.exportObject(ITEM_PATH, ItemImpl())
@@ -85,13 +82,12 @@ class SniTrayService : TrayService {
 
     override fun setWindowVisible(visible: Boolean) {
         windowVisible = visible
-        labels?.let { menuModel.rebuild(it, visible) }
+        config?.let { menuModel.rebuild(it.menu, visible) }
     }
 
     override fun dispose() {
         synchronized(lock) {
-            actions = null
-            labels = null
+            config = null
             iconImage = null
             closeConnection()
         }
@@ -126,11 +122,17 @@ class SniTrayService : TrayService {
         override fun getObjectPath(): String = ITEM_PATH
 
         override fun Activate(x: UInt32, y: UInt32) {
-            onUi { actions?.onToggleWindow() }
+            onUi { toggleWindow() }
         }
 
         override fun SecondaryActivate(x: UInt32, y: UInt32) {
-            onUi { actions?.onToggleWindow() }
+            onUi { toggleWindow() }
+        }
+
+        /** Activate/SecondaryActivate: run the caller's window-toggle menu callback. */
+        private fun toggleWindow() {
+            config?.menu?.filterIsInstance<TrayMenuItem.WindowToggle>()
+                ?.firstOrNull()?.onClick?.invoke()
         }
 
         // Plasma pops the dbusmenu itself; no dedicated context menu to show.
@@ -150,10 +152,11 @@ class SniTrayService : TrayService {
 
         private fun sniProperties(iface: String): Map<String, Variant<*>> {
             if (iface.isNotEmpty() && iface != SNI_IFACE) return emptyMap()
+            val cfg = config
             return buildMap {
-                put("Id", Variant("org.blaze.Downloader", "s"))
+                put("Id", Variant(cfg?.id ?: DEFAULT_ID, "s"))
                 put("Category", Variant("ApplicationStatus", "s"))
-                put("Title", Variant("Blaze", "s"))
+                put("Title", Variant(cfg?.title ?: "", "s"))
                 put("Status", Variant("Active", "s"))
                 put("IconName", Variant("", "s"))
                 put("IconPixmap", Variant(pixmapValue(), "a(iiay)"))
@@ -164,7 +167,7 @@ class SniTrayService : TrayService {
                 put("AttentionMovieName", Variant("", "s"))
                 put(
                     "ToolTip",
-                    Variant(arrayOf<Any>("", "Blaze", emptyMap<String, Variant<*>>()), "(ssa{sv})"),
+                    Variant(arrayOf<Any>("", cfg?.title ?: "", emptyMap<String, Variant<*>>()), "(ssa{sv})"),
                 )
                 // Left click must reach us (Activate) instead of opening the menu directly.
                 put("ItemIsMenu", Variant(false, "b"))
@@ -199,14 +202,8 @@ class SniTrayService : TrayService {
 
         override fun Event(id: Int, eventId: String, data: Variant<*>, timestamp: UInt32) {
             if (eventId != "clicked") return
-            val actions = this@SniTrayService.actions ?: return
-            when (menuModel.entryFor(id)?.action) {
-                TrayMenuAction.TOGGLE -> onUi { actions.onToggleWindow() }
-                TrayMenuAction.PAUSE_ALL -> onUi { actions.onPauseAll() }
-                TrayMenuAction.RESUME_ALL -> onUi { actions.onResumeAll() }
-                TrayMenuAction.QUIT -> onUi { actions.onQuit() }
-                TrayMenuAction.SEPARATOR, null -> Unit
-            }
+            val onClick = menuModel.entryFor(id)?.onClick ?: return
+            onUi { onClick() }
         }
 
         // Always claim the layout changed: hosts (like Plasma) then re-run GetLayout on
@@ -262,5 +259,6 @@ class SniTrayService : TrayService {
         const val ITEM_PATH = "/StatusNotifierItem"
         const val MENU_PATH = "/MenuBar"
         const val ICON_SIZE = 22
+        const val DEFAULT_ID = "TrayApp"
     }
 }

@@ -1,6 +1,7 @@
-package org.blaze.platform.tray
+package org.blaze.tray
 
-import org.blaze.platform.tray.sni.SniTrayService
+import org.blaze.tray.internal.awt.AwtTrayService
+import org.blaze.tray.internal.sni.SniTrayService
 import kotlin.test.Test
 import kotlin.test.assertTrue
 

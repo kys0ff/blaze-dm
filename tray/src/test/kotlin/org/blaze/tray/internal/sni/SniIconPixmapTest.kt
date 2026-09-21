@@ -1,4 +1,4 @@
-package org.blaze.platform.tray.sni
+package org.blaze.tray.internal.sni
 
 import java.awt.image.BufferedImage
 import kotlin.test.Test

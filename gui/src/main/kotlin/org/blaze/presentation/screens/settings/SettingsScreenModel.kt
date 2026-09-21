@@ -16,7 +16,7 @@ import org.blaze.data.AppSettingsRepository
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.platform.autostart.AutoStartCoordinator
-import org.blaze.platform.tray.TrayService
+import org.blaze.tray.api.TrayService
 import org.blaze.presentation.screens.settings.state.HandlerUiState
 import org.blaze.presentation.screens.settings.state.SettingsState
 import org.blaze.presentation.screens.settings.state.ThemeUiState

@@ -1,7 +1,7 @@
-package org.blaze.platform.tray.sni
+package org.blaze.tray.internal.sni
 
-import org.blaze.platform.tray.TrayActions
-import org.blaze.platform.tray.TrayLabels
+import org.blaze.tray.api.TrayConfig
+import org.blaze.tray.api.TrayMenuItem
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder
 import org.freedesktop.dbus.interfaces.Introspectable
 import org.freedesktop.dbus.interfaces.Properties
@@ -28,19 +28,24 @@ class SniTraySessionBusSmokeTest {
             return
         }
 
-        val labels = TrayLabels("Show", "Hide", "Pause All", "Resume All", "Quit")
         val clicked = CountDownLatch(1)
-        val actions = TrayActions(
-            onToggleWindow = { clicked.countDown() },
-            onPauseAll = {},
-            onResumeAll = {},
-            onQuit = {},
+        val config = TrayConfig(
+            id = "org.blaze.SmokeTest",
+            title = "Smoke",
+            icon = { size -> java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB) },
+            menu = listOf(
+                TrayMenuItem.WindowToggle("Show", "Hide") { clicked.countDown() },
+                TrayMenuItem.Item("Pause All") {},
+                TrayMenuItem.Item("Resume All") {},
+                TrayMenuItem.Separator,
+                TrayMenuItem.Item("Quit") {},
+            ),
         )
 
         val control = DBusConnectionBuilder.forSessionBus().build()
         try {
             val before = registeredItems(control)
-            service.install(labels, actions)
+            service.install(config)
 
             // The watcher may finish validating asynchronously; poll briefly.
             var mine: String? = null
@@ -59,6 +64,8 @@ class SniTraySessionBusSmokeTest {
             val sniProps = control.getRemoteObject(busName, itemPath, Properties::class.java, false)
             val category = sniProps.Get<Any>("org.kde.StatusNotifierItem", "Category")
             assertEquals("ApplicationStatus", category)
+            val title = sniProps.Get<Any>("org.kde.StatusNotifierItem", "Title")
+            assertEquals("Smoke", title)
             val isMenu = sniProps.Get<Any>("org.kde.StatusNotifierItem", "ItemIsMenu")
             assertEquals(false, isMenu)
             val pixmap = sniProps.Get<Any>("org.kde.StatusNotifierItem", "IconPixmap")

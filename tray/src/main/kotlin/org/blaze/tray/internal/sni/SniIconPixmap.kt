@@ -1,4 +1,4 @@
-package org.blaze.platform.tray.sni
+package org.blaze.tray.internal.sni
 
 import java.awt.image.BufferedImage
 
@@ -7,7 +7,7 @@ import java.awt.image.BufferedImage
  * of (width, height, ARGB32 pixels) structs, each scanline packed big-endian
  * (network byte order) as required by the StatusNotifierItem spec.
  */
-object SniIconPixmap {
+internal object SniIconPixmap {
 
     /** One (width, height, data) struct entry for the given image. */
     fun encode(image: BufferedImage): List<Array<Any>> =

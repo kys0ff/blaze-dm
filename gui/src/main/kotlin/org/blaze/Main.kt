@@ -16,6 +16,7 @@ import org.blaze.logging.LogConfigurator
 import org.blaze.platform.autostart.AutoStartCoordinator
 import org.blaze.presentation.application.BlazeApplication
 import org.blaze.presentation.screens.filepicker.di.filePickerModule
+import org.blaze.tray.di.trayModule
 import org.koin.core.context.startKoin
 import org.slf4j.LoggerFactory
 
@@ -33,6 +34,7 @@ fun main() {
             screenModelModule,
             i18nModule,
             filePickerModule,
+            trayModule,
         )
     }.koin
 

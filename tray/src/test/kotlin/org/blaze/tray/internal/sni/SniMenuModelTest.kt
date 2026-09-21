@@ -1,49 +1,54 @@
-package org.blaze.platform.tray.sni
+package org.blaze.tray.internal.sni
 
-import org.blaze.platform.tray.TrayLabels
+import org.blaze.tray.api.TrayMenuItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SniMenuModelTest {
 
-    private val labels = TrayLabels(
-        show = "Show Window",
-        hide = "Hide Window",
-        pauseAll = "Pause All",
-        resumeAll = "Resume All",
-        quit = "Quit",
+    private var toggled = 0
+
+    private val menu = listOf(
+        TrayMenuItem.WindowToggle("Show Window", "Hide Window") { toggled++ },
+        TrayMenuItem.Item("Pause All") {},
+        TrayMenuItem.Item("Resume All") {},
+        TrayMenuItem.Separator,
+        TrayMenuItem.Item("Quit") {},
     )
 
     private fun model(windowVisible: Boolean = true): SniMenuModel =
-        SniMenuModel().apply { rebuild(labels, windowVisible) }
+        SniMenuModel().apply { rebuild(menu, windowVisible) }
 
     @Test
-    fun `menu order mirrors the awt tray`() {
-        assertEquals(
-            listOf(
-                TrayMenuAction.TOGGLE,
-                TrayMenuAction.PAUSE_ALL,
-                TrayMenuAction.RESUME_ALL,
-                TrayMenuAction.SEPARATOR,
-                TrayMenuAction.QUIT,
-            ),
-            model().entries.map { it.action },
-        )
+    fun `entries keep positional ids in menu order`() {
         assertEquals(listOf(1, 2, 3, 4, 5), model().entries.map { it.id })
+        assertEquals(
+            listOf(false, false, false, true, false),
+            model().entries.map { it.isSeparator },
+        )
     }
 
     @Test
     fun `toggle label follows window visibility`() {
-        assertEquals("Hide Window", model(true).entryFor(SniMenuModel.ID_TOGGLE)?.label)
-        assertEquals("Show Window", model(false).entryFor(SniMenuModel.ID_TOGGLE)?.label)
+        assertEquals("Hide Window", model(true).entryFor(1)?.label)
+        assertEquals("Show Window", model(false).entryFor(1)?.label)
+    }
+
+    @Test
+    fun `click callbacks travel with the entries`() {
+        val m = model()
+        assertNotNull(m.entryFor(1)?.onClick).invoke()
+        assertEquals(1, toggled)
+        assertNotNull(m.entryFor(5)?.onClick)
     }
 
     @Test
     fun `separators are not clickable`() {
         val m = model()
-        assertNull(m.entryFor(SniMenuModel.ID_SEPARATOR))
+        assertNull(m.entryFor(4))
         assertNull(m.entryFor(999))
     }
 
@@ -59,7 +64,7 @@ class SniMenuModelTest {
 
     @Test
     fun `standard item layout carries label enabled and visible flags`() {
-        val quit = model().entries.first { it.action == TrayMenuAction.QUIT }
+        val quit = model().entryFor(5)!!
 
         val props = model().layoutProperties(quit)
 
@@ -67,6 +72,15 @@ class SniMenuModelTest {
         assertEquals("Quit", props.getValue("label").value)
         assertEquals(true, props.getValue("enabled").value)
         assertEquals(true, props.getValue("visible").value)
+    }
+
+    @Test
+    fun `disabled item reports enabled false`() {
+        val m = SniMenuModel().apply {
+            rebuild(listOf(TrayMenuItem.Item("Nope", enabled = false) {}), true)
+        }
+
+        assertEquals(false, m.layoutProperties(m.entries.first()).getValue("enabled").value)
     }
 
     @Test
@@ -93,7 +107,7 @@ class SniMenuModelTest {
 
     @Test
     fun `item struct filters properties by request and always carries id`() {
-        val pause = model().entries.first { it.action == TrayMenuAction.PAUSE_ALL }
+        val pause = model().entries.first { it.label == "Pause All" }
 
         val struct = model().itemStruct(pause, listOf("label"))
 
@@ -106,10 +120,10 @@ class SniMenuModelTest {
     fun `group and single property lookups`() {
         val m = model()
 
-        assertEquals(2, m.groupProperties(SniMenuModel.ID_PAUSE_ALL).getValue("id").value)
+        assertEquals(2, m.groupProperties(2).getValue("id").value)
         assertEquals(setOf("id"), m.groupProperties(SniMenuModel.ROOT_ID).keys)
-        assertEquals("Quit", m.singleProperty(SniMenuModel.ID_QUIT, "label")?.value)
-        assertNull(m.singleProperty(SniMenuModel.ID_QUIT, "nope"))
+        assertEquals("Quit", m.singleProperty(5, "label")?.value)
+        assertNull(m.singleProperty(5, "nope"))
         assertNull(m.singleProperty(999, "label"))
     }
 }

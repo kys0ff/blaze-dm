@@ -1,6 +1,8 @@
-package org.blaze.platform.tray
+package org.blaze.tray
 
-import org.blaze.platform.tray.sni.SniTrayService
+import org.blaze.tray.api.TrayService
+import org.blaze.tray.internal.awt.AwtTrayService
+import org.blaze.tray.internal.sni.SniTrayService
 
 /**
  * Picks the tray backend for the host platform. Linux desktops (KDE Plasma in

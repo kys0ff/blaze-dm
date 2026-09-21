@@ -1,37 +1,54 @@
-package org.blaze.platform.tray.sni
+package org.blaze.tray.internal.sni
 
-import org.blaze.platform.tray.TrayLabels
+import org.blaze.tray.api.TrayMenuItem
 import org.freedesktop.dbus.types.Variant
 
-/** Which [TrayActions] callback a menu click maps to. */
-enum class TrayMenuAction { TOGGLE, PAUSE_ALL, RESUME_ALL, SEPARATOR, QUIT }
-
-/** One row of the tray context menu. */
-data class SniMenuEntry(
+/** One row of the tray context menu, flattened from a [TrayMenuItem]. */
+internal data class SniMenuEntry(
     val id: Int,
-    val action: TrayMenuAction,
     val label: String,
     val enabled: Boolean = true,
-) {
-    val isSeparator: Boolean get() = action == TrayMenuAction.SEPARATOR
-}
+    val isSeparator: Boolean = false,
+    val onClick: (() -> Unit)? = null,
+)
 
 /**
  * Pure menu-state holder for the SNI tray: knows the current entries and how to
  * render them into the `a{sv}` layout dicts of `com.canonical.dbusmenu`. No D-Bus
  * plumbing lives here, so the whole menu behaviour is unit-testable.
  *
- * Ids are stable across rebuilds (see [SniMenuModel.ID_*]) because hosts cache
- * layouts and report clicks by id.
+ * Ids are positional (1-based, in menu order) and stable while the installed
+ * [TrayConfig.menu] shape does not change, because hosts cache layouts and
+ * report clicks by id.
  */
-class SniMenuModel {
+internal class SniMenuModel {
 
     @Volatile
     var entries: List<SniMenuEntry> = emptyList()
         private set
 
-    fun rebuild(labels: TrayLabels, windowVisible: Boolean) {
-        entries = defaultMenuEntries(labels, windowVisible)
+    fun rebuild(menu: List<TrayMenuItem>, windowVisible: Boolean) {
+        entries = menu.mapIndexed { index, item ->
+            val id = index + 1
+            when (item) {
+                TrayMenuItem.Separator -> SniMenuEntry(
+                    id = id,
+                    label = "",
+                    isSeparator = true,
+                )
+                is TrayMenuItem.Item -> SniMenuEntry(
+                    id = id,
+                    label = item.label,
+                    enabled = item.enabled,
+                    onClick = item.onClick,
+                )
+                is TrayMenuItem.WindowToggle -> SniMenuEntry(
+                    id = id,
+                    label = item.labelFor(windowVisible),
+                    onClick = item.onClick,
+                )
+            }
+        }
     }
 
     /** The clickable entry with this menu id, or null for unknown/separator ids. */
@@ -82,20 +99,5 @@ class SniMenuModel {
 
     companion object {
         const val ROOT_ID = 0
-        const val ID_TOGGLE = 1
-        const val ID_PAUSE_ALL = 2
-        const val ID_RESUME_ALL = 3
-        const val ID_SEPARATOR = 4
-        const val ID_QUIT = 5
-
-        /** Menu order mirrors [org.blaze.platform.tray.AwtTrayService]. */
-        fun defaultMenuEntries(labels: TrayLabels, windowVisible: Boolean): List<SniMenuEntry> =
-            listOf(
-                SniMenuEntry(ID_TOGGLE, TrayMenuAction.TOGGLE, if (windowVisible) labels.hide else labels.show),
-                SniMenuEntry(ID_PAUSE_ALL, TrayMenuAction.PAUSE_ALL, labels.pauseAll),
-                SniMenuEntry(ID_RESUME_ALL, TrayMenuAction.RESUME_ALL, labels.resumeAll),
-                SniMenuEntry(ID_SEPARATOR, TrayMenuAction.SEPARATOR, ""),
-                SniMenuEntry(ID_QUIT, TrayMenuAction.QUIT, labels.quit),
-            )
     }
 }
