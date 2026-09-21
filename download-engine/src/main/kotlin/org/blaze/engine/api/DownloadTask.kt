@@ -17,6 +17,7 @@ data class DownloadTask(
     val progress: Float? = null,
     val scheduledAt: Instant? = null,
     val error: DownloadError? = null,
+    val retryCount: Int = 0,
     val createdAt: Instant = Instant.now(),
     val completedAt: Instant? = null,
     val files: List<DownloadFileMetadata>? = null

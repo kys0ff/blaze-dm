@@ -63,17 +63,28 @@ class DownloadScheduler(
             val currentTasks = tasks.value
             val maxConcurrent = settingsRepository.settings.value.maxConcurrentDownloads
 
-            val activeCount = currentTasks.values.count { it.state.isActive }
-            if (activeCount >= maxConcurrent) return
+            val activeTasks = currentTasks.values.filter { it.state.isActive || jobs.containsKey(it.id) }
+            val activeCount = activeTasks.size
+            
+            if (activeCount >= maxConcurrent) {
+                // If we are over the limit (e.g. settings changed), we don't start new ones.
+                // We could also stop some, but let's stick to not starting new ones for now.
+                return
+            }
 
             val now = Instant.now()
             val queuedTasks = currentTasks.values
                 .filter { it.state == DownloadState.Queued && (it.scheduledAt == null || !it.scheduledAt.isAfter(now)) }
+                .filter { !jobs.containsKey(it.id) } // Safety check
                 .sortedBy { it.createdAt }
 
             var slotsAvailable = maxConcurrent - activeCount
             for (task in queuedTasks) {
                 if (slotsAvailable <= 0) break
+                
+                // Double check if it's already starting
+                if (tasks.value[task.id]?.state == DownloadState.Starting) continue
+                
                 slotsAvailable--
 
                 val updated = task.copy(state = DownloadState.Starting)
@@ -89,6 +100,8 @@ class DownloadScheduler(
 
     private suspend fun actuallyStart(id: DownloadId) {
         val task = tasks.value[id] ?: return
+        
+        // Ensure only one job per task
         jobs[id]?.cancelAndJoin()
 
         val executor = executorFactory(task)
@@ -97,13 +110,11 @@ class DownloadScheduler(
                 executor.execute().collect { updatedTask ->
                     tasks.update { it + (id to updatedTask) }
                     onTaskUpdated(updatedTask)
-
-                    if (updatedTask.state == DownloadState.Completed || updatedTask.state == DownloadState.Failed) {
-                        scope.launch { processQueue() }
-                    }
                 }
             } catch (_: Exception) {
-                // Cooperative cancellation or unexpected failure handled inside executor
+            } finally {
+                jobs.remove(id)
+                scope.launch { processQueue() }
             }
         }
         jobs[id] = job

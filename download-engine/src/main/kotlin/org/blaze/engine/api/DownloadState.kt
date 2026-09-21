@@ -18,7 +18,7 @@ sealed interface DownloadState {
 
     val isActive: Boolean
         get() = when (this) {
-            Downloading, Starting, Resuming, Verifying, ResolvingMetadata -> true
+            Downloading, Starting, Resuming, Verifying, ResolvingMetadata, Seeding, Pausing -> true
             else -> false
         }
 

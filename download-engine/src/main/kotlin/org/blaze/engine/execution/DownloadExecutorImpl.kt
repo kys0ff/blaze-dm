@@ -34,42 +34,43 @@ class DownloadExecutorImpl(
     private val onMetadataResolved: (DownloadId, ByteArray) -> Unit
 ) : DownloadExecutor {
     private val logger = LoggerFactory.getLogger(DownloadExecutorImpl::class.java)
-    private var retryCount = 0
 
     override fun execute(): Flow<DownloadTask> = channelFlow {
         var currentTask = initialTask
         send(currentTask)
 
-        while (true) {
-            try {
-                val flow = when (val request = currentTask.request) {
-                    is DownloadRequest.Http -> executeHttp(request, currentTask)
-                    is DownloadRequest.Torrent -> executeTorrent(request, currentTask)
-                }
-
-                flow.collect { updatedTask ->
-                    currentTask = updatedTask
-                    send(updatedTask)
-                }
-
-                if (currentTask.state == DownloadState.Completed) break
-                if (currentTask.state == DownloadState.Cancelled) break
-                if (currentTask.state == DownloadState.Failed) {
-                    val delayMs = retryPolicy.getNextDelay(currentTask.error!!, retryCount)
-                    if (delayMs != null) {
-                        retryCount++
-                        logger.info("Retrying download ${currentTask.id} in ${delayMs}ms (retry $retryCount)")
-                        send(currentTask.copy(state = DownloadState.Queued))
-                        delay(delayMs.milliseconds)
-                        continue
-                    } else {
-                        break
-                    }
-                }
-            } catch (e: Exception) {
-                logger.error("Unexpected error in DownloadExecutor for ${currentTask.id}", e)
-                break
+        try {
+            val flow = when (val request = currentTask.request) {
+                is DownloadRequest.Http -> executeHttp(request, currentTask)
+                is DownloadRequest.Torrent -> executeTorrent(request, currentTask)
             }
+
+            flow.collect { updatedTask ->
+                currentTask = updatedTask
+                send(updatedTask)
+            }
+
+            if (currentTask.state == DownloadState.Failed) {
+                val delayMs = retryPolicy.getNextDelay(currentTask.error!!, currentTask.retryCount)
+                if (delayMs != null) {
+                    logger.info("Scheduling retry for ${currentTask.id} in ${delayMs}ms (retry ${currentTask.retryCount + 1})")
+                    send(
+                        currentTask.copy(
+                            state = DownloadState.Queued,
+                            scheduledAt = Instant.now().plusMillis(delayMs),
+                            retryCount = currentTask.retryCount + 1
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Unexpected error in DownloadExecutor for ${currentTask.id}", e)
+            send(
+                currentTask.copy(
+                    state = DownloadState.Failed,
+                    error = DownloadError.Unknown(e.message ?: "Unknown error")
+                )
+            )
         }
     }
 
