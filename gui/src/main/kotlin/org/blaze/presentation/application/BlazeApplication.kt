@@ -133,6 +133,7 @@ fun ApplicationScope.BlazeApplication() {
                         quitApp()
                     }
                 },
+                onMinimize = { windowVisible = false },
             )
         }
     }
