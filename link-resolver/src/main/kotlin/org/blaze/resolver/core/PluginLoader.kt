@@ -6,7 +6,6 @@ import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.ServiceLoader
-import kotlin.streams.toList
 
 /**
  * Loads [LinkResolver] implementations from jar files placed in the extensions directory.

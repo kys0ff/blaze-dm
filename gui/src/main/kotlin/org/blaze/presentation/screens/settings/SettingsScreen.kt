@@ -49,6 +49,7 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
+import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.theme.IdeColors
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme

@@ -3,6 +3,7 @@ package org.blaze.presentation.screens.settings
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.engine.settings.ThemeMode
+import org.blaze.presentation.screens.settings.state.SettingsCategory
 
 sealed interface SettingsEvent {
     data class ChangeCategory(val category: SettingsCategory) : SettingsEvent

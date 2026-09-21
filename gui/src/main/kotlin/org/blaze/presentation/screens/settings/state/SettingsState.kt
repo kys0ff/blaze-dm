@@ -1,23 +1,7 @@
-package org.blaze.presentation.screens.settings
+package org.blaze.presentation.screens.settings.state
 
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.engine.settings.DownloadSettings
-
-enum class SettingsCategory {
-    GENERAL,
-    DOWNLOADS,
-    FILES,
-    EXTENSIONS
-}
-
-/** UI-facing snapshot of a registered link handler. */
-data class HandlerUiState(
-    val id: String,
-    val displayName: String,
-    val description: String,
-    val enabled: Boolean,
-    val isPlugin: Boolean
-)
 
 data class SettingsState(
     val currentCategory: SettingsCategory = SettingsCategory.GENERAL,
