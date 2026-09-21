@@ -5,7 +5,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.test.runTest
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState

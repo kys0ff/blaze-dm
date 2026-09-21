@@ -55,6 +55,7 @@ import org.jetbrains.jewel.ui.component.TextField
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Strings that aren't in blazeStrings yet. Move them there when you get a chance.
@@ -178,7 +179,7 @@ fun AddDownloadInputView(
                 DestinationStatus.Empty,
                 state.destination.text
             ) {
-                delay(200) // debounce while typing; produceState cancels on key change
+                delay(200.milliseconds) // debounce while typing; produceState cancels on key change
                 value = withContext(Dispatchers.IO) { resolveDestination(state.destination.text) }
             }
 

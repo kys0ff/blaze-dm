@@ -57,8 +57,22 @@ fun DownloadsScreenContent(
                     scope.launch {
                         val fullPathStr = onResolveDestinationPath(url, destination, name)
                         val file = File(fullPathStr)
-                        if (file.exists()) {
-                            conflictData = ConflictData(url, destination, name, file.name, fullPathStr, fileIndices)
+                        val absolutePath = file.absolutePath
+
+                        val conflictingDownload = state.downloads.find {
+                            File(it.savePath).absolutePath == absolutePath
+                        }
+
+                        if (file.exists() || conflictingDownload != null) {
+                            conflictData = ConflictData(
+                                url = url,
+                                savePath = destination,
+                                name = name,
+                                fileName = file.name,
+                                fullPathStr = fullPathStr,
+                                fileIndices = fileIndices,
+                                conflictingDownloadId = conflictingDownload?.id
+                            )
                         } else {
                             onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt))
                         }
@@ -79,6 +93,9 @@ fun DownloadsScreenContent(
                 when (choice) {
                     FileConflictBehavior.OVERWRITE -> {
                         scope.launch {
+                            data.conflictingDownloadId?.let { id ->
+                                onEvent(DownloadsEvent.Remove(id, true))
+                            }
                             val f = File(data.fullPathStr)
                             f.delete()
                             val partFile = File(data.fullPathStr + ".part")

@@ -6,5 +6,6 @@ data class ConflictData(
     val name: String?,
     val fileName: String,
     val fullPathStr: String,
-    val fileIndices: List<Int>? = null
+    val fileIndices: List<Int>? = null,
+    val conflictingDownloadId: String? = null
 )
