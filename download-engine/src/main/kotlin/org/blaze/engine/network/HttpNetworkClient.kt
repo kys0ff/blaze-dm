@@ -14,11 +14,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadRequest
+import org.blaze.engine.settings.DEFAULT_USER_AGENT
 import java.net.URI
 
 class HttpNetworkClient(
     private val client: HttpClient,
-    private val userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    private val userAgent: String = DEFAULT_USER_AGENT,
+    private val maxRedirects: Int = 5
 ) {
     fun download(request: DownloadRequest.Http, offset: Long = 0L): Flow<HttpNetworkEvent> = channelFlow {
         var currentUrl = if (!request.url.contains("://")) "http://${request.url}" else request.url
@@ -26,7 +28,7 @@ class HttpNetworkClient(
 
         while (true) {
             val statement = client.prepareGet(currentUrl) {
-                header(HttpHeaders.UserAgent, userAgent)
+                if (userAgent.isNotBlank()) header(HttpHeaders.UserAgent, userAgent)
                 request.headers.forEach { (k, v) -> header(k, v) }
                 if (offset > 0) {
                     header(HttpHeaders.Range, "bytes=$offset-")
@@ -40,7 +42,7 @@ class HttpNetworkClient(
                 statement.execute { response ->
                     if (response.status.value in 300..399) {
                         val location = response.headers[HttpHeaders.Location]
-                        if (location != null && redirectCount < 5) {
+                        if (location != null && redirectCount < maxRedirects) {
                             redirectCount++
                             nextUrl = if (location.contains("://")) {
                                 location

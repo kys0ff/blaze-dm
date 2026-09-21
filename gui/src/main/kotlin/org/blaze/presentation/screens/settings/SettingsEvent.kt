@@ -2,6 +2,7 @@ package org.blaze.presentation.screens.settings
 
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.engine.settings.FileConflictBehavior
+import org.blaze.engine.settings.ThemeMode
 
 sealed interface SettingsEvent {
     data class ChangeCategory(val category: SettingsCategory) : SettingsEvent
@@ -18,6 +19,19 @@ sealed interface SettingsEvent {
     data class UpdateAutoRetryFailed(val enabled: Boolean) : SettingsEvent
     data class UpdateMaxRetries(val value: TextFieldValue) : SettingsEvent
     data class UpdateRetryDelaySeconds(val value: TextFieldValue) : SettingsEvent
+    data class UpdateExponentialBackoff(val enabled: Boolean) : SettingsEvent
+
+    // Network & Protocol
+    data class UpdateUserAgent(val value: TextFieldValue) : SettingsEvent
+    data class UpdateMaxRedirects(val value: TextFieldValue) : SettingsEvent
+
+    // Torrent
+    data class UpdateMaxPeerConnections(val value: TextFieldValue) : SettingsEvent
+    data class UpdateEnableSeeding(val enabled: Boolean) : SettingsEvent
+    data class UpdateSeedTimeLimitMinutes(val value: TextFieldValue) : SettingsEvent
+
+    // Appearance
+    data class UpdateThemeMode(val mode: ThemeMode) : SettingsEvent
     
     // Startup
     data class UpdateResumeDownloadsOnStartup(val enabled: Boolean) : SettingsEvent

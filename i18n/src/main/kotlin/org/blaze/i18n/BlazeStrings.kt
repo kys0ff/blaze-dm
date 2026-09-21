@@ -169,6 +169,22 @@ interface BlazeStrings {
         val autoRetryLabel: String
         val maxRetriesLabel: String
         val retryDelayLabel: String
+        val exponentialBackoffLabel: String
+        val networkHeader: String
+        val userAgentLabel: String
+        val userAgentDesc: String
+        val maxRedirectsLabel: String
+        val maxRedirectsDesc: String
+        val torrentHeader: String
+        val maxPeerConnectionsLabel: String
+        val maxPeerConnectionsDesc: String
+        val seedingEnabledLabel: String
+        val seedTimeLimitLabel: String
+        val appearanceHeader: String
+        val themeLabel: String
+        val themeSystemOption: String
+        val themeLightOption: String
+        val themeDarkOption: String
         val startupHeader: String
         val resumeOnStartupLabel: String
         val startQueuedOnStartupLabel: String

@@ -16,6 +16,7 @@ import org.blaze.engine.network.HttpNetworkEvent
 import org.blaze.engine.network.TorrentNetworkClient
 import org.blaze.engine.network.TorrentNetworkEvent
 import org.blaze.engine.retry.RetryPolicy
+import org.blaze.engine.settings.DEFAULT_USER_AGENT
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.engine.settings.FileConflictBehavior
@@ -97,7 +98,11 @@ class DownloadExecutorImpl(
                 return@channelFlow
             }
 
-            val networkClient = HttpNetworkClient(httpClient)
+            val networkClient = HttpNetworkClient(
+                client = httpClient,
+                userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+                maxRedirects = settings.maxRedirects
+            )
             val offset =
                 if (storage.exists(finalPartialPath)) storage.size(finalPartialPath) else 0L
 
@@ -189,7 +194,12 @@ class DownloadExecutorImpl(
     private fun executeTorrent(request: DownloadRequest.Torrent, task: DownloadTask): Flow<DownloadTask> =
         channelFlow {
             var current = task
-            val networkClient = TorrentNetworkClient()
+            val settings = settingsRepository.settings.value
+            val networkClient = TorrentNetworkClient(
+                maxPeerConnections = settings.maxPeerConnections,
+                enableSeeding = settings.enableSeeding,
+                seedTimeLimitMinutes = settings.seedTimeLimitMinutes
+            )
             networkClient.download(request).collect { event ->
                 when (event) {
                     is TorrentNetworkEvent.MetadataResolved -> {

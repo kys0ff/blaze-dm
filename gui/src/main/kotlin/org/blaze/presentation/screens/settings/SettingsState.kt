@@ -17,9 +17,16 @@ data class SettingsState(
     val globalSpeedLimitKbpsText: TextFieldValue = TextFieldValue("10240"),
     val maxRetriesText: TextFieldValue = TextFieldValue("3"),
     val retryDelaySecondsText: TextFieldValue = TextFieldValue("5"),
+    val maxRedirectsText: TextFieldValue = TextFieldValue("5"),
+    val maxPeerConnectionsText: TextFieldValue = TextFieldValue("200"),
+    val seedTimeLimitMinutesText: TextFieldValue = TextFieldValue("30"),
+    val userAgentText: TextFieldValue = TextFieldValue(""),
     val maxConcurrentDownloadsError: String? = null,
     val maxConnectionsPerDownloadError: String? = null,
     val globalSpeedLimitKbpsError: String? = null,
     val maxRetriesError: String? = null,
-    val retryDelaySecondsError: String? = null
+    val retryDelaySecondsError: String? = null,
+    val maxRedirectsError: String? = null,
+    val maxPeerConnectionsError: String? = null,
+    val seedTimeLimitMinutesError: String? = null
 )

@@ -44,6 +44,7 @@ import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import org.blaze.engine.settings.FileConflictBehavior
+import org.blaze.engine.settings.ThemeMode
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
@@ -81,12 +82,16 @@ class SettingsScreen : Screen {
 
         val speedLimitEnabled = state.settings.globalSpeedLimitEnabled
         val autoRetryEnabled = state.settings.autoRetryFailed
+        val seedingEnabled = state.settings.enableSeeding
 
         // Errors on fields that are disabled don't count: the user can't see or fix them.
         val downloadsHasError = state.maxConcurrentDownloadsError != null ||
                 state.maxConnectionsPerDownloadError != null ||
                 (speedLimitEnabled && state.globalSpeedLimitKbpsError != null) ||
-                (autoRetryEnabled && (state.maxRetriesError != null || state.retryDelaySecondsError != null))
+                (autoRetryEnabled && (state.maxRetriesError != null || state.retryDelaySecondsError != null)) ||
+                state.maxRedirectsError != null ||
+                state.maxPeerConnectionsError != null ||
+                (seedingEnabled && state.seedTimeLimitMinutesError != null)
 
         // All categories share one scroll state, so start each one at the top.
         LaunchedEffect(state.currentCategory) { scrollState.scrollTo(0) }
@@ -140,6 +145,29 @@ class SettingsScreen : Screen {
                         ) {
                             when (state.currentCategory) {
                                 SettingsCategory.GENERAL -> {
+                                    SettingsSection(strings.settings.appearanceHeader) {
+                                        Text(text = strings.settings.themeLabel)
+                                        val themeOptions = listOf(
+                                            ThemeMode.SYSTEM to strings.settings.themeSystemOption,
+                                            ThemeMode.LIGHT to strings.settings.themeLightOption,
+                                            ThemeMode.DARK to strings.settings.themeDarkOption
+                                        )
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            themeOptions.forEach { (mode, label) ->
+                                                RadioButtonRow(
+                                                    text = label,
+                                                    selected = state.settings.themeMode == mode,
+                                                    onClick = {
+                                                        screenModel.onEvent(
+                                                            SettingsEvent.UpdateThemeMode(mode)
+                                                        )
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     SettingsSection(strings.settings.startupHeader) {
                                         CheckboxRow(
                                             text = strings.settings.resumeOnStartupLabel,
@@ -270,6 +298,79 @@ class SettingsScreen : Screen {
                                                 }
                                             )
                                         }
+                                        CheckboxRow(
+                                            text = strings.settings.exponentialBackoffLabel,
+                                            checked = state.settings.exponentialBackoff,
+                                            enabled = autoRetryEnabled,
+                                            onCheckedChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateExponentialBackoff(
+                                                        it
+                                                    )
+                                                )
+                                            },
+                                            modifier = Modifier.padding(start = DependentIndent)
+                                        )
+                                    }
+
+                                    SettingsSection(strings.settings.networkHeader) {
+                                        LabeledTextField(
+                                            label = strings.settings.userAgentLabel,
+                                            value = state.userAgentText,
+                                            description = strings.settings.userAgentDesc,
+                                            onValueChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateUserAgent(it)
+                                                )
+                                            }
+                                        )
+                                        NumberField(
+                                            label = strings.settings.maxRedirectsLabel,
+                                            value = state.maxRedirectsText,
+                                            error = state.maxRedirectsError,
+                                            description = strings.settings.maxRedirectsDesc,
+                                            onValueChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateMaxRedirects(it)
+                                                )
+                                            }
+                                        )
+                                    }
+
+                                    SettingsSection(strings.settings.torrentHeader) {
+                                        NumberField(
+                                            label = strings.settings.maxPeerConnectionsLabel,
+                                            value = state.maxPeerConnectionsText,
+                                            error = state.maxPeerConnectionsError,
+                                            description = strings.settings.maxPeerConnectionsDesc,
+                                            onValueChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateMaxPeerConnections(it)
+                                                )
+                                            }
+                                        )
+                                        CheckboxRow(
+                                            text = strings.settings.seedingEnabledLabel,
+                                            checked = seedingEnabled,
+                                            onCheckedChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateEnableSeeding(it)
+                                                )
+                                            }
+                                        )
+                                        NumberField(
+                                            label = strings.settings.seedTimeLimitLabel,
+                                            value = state.seedTimeLimitMinutesText,
+                                            error = state.seedTimeLimitMinutesError,
+                                            enabled = seedingEnabled,
+                                            fieldWidth = 150.dp,
+                                            modifier = Modifier.padding(start = DependentIndent),
+                                            onValueChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateSeedTimeLimitMinutes(it)
+                                                )
+                                            }
+                                        )
                                     }
                                 }
 
@@ -505,6 +606,38 @@ private fun NumberField(
                 style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
             )
         }
+        if (description != null) {
+            Text(
+                text = description,
+                style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                color = JewelTheme.globalColors.text.info
+            )
+        }
+    }
+}
+
+/** Labeled free-text input (single line) with an optional description, e.g. the HTTP User-Agent. */
+@OptIn(ExperimentalJewelApi::class)
+@Composable
+private fun LabeledTextField(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    enabled: Boolean = true
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            color = if (enabled) Color.Unspecified else JewelTheme.globalColors.text.disabled
+        )
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth()
+        )
         if (description != null) {
             Text(
                 text = description,

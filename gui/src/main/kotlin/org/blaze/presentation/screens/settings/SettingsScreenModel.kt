@@ -31,7 +31,11 @@ class SettingsScreenModel(
                 maxConnectionsPerDownloadText = TextFieldValue(currentSettings.maxConnectionsPerDownload.toString()),
                 globalSpeedLimitKbpsText = TextFieldValue(currentSettings.globalSpeedLimitKbps.toString()),
                 maxRetriesText = TextFieldValue(currentSettings.maxRetries.toString()),
-                retryDelaySecondsText = TextFieldValue(currentSettings.retryDelaySeconds.toString())
+                retryDelaySecondsText = TextFieldValue(currentSettings.retryDelaySeconds.toString()),
+                maxRedirectsText = TextFieldValue(currentSettings.maxRedirects.toString()),
+                maxPeerConnectionsText = TextFieldValue(currentSettings.maxPeerConnections.toString()),
+                seedTimeLimitMinutesText = TextFieldValue(currentSettings.seedTimeLimitMinutes.toString()),
+                userAgentText = TextFieldValue(currentSettings.httpUserAgent)
             )
         }
     }
@@ -79,6 +83,9 @@ class SettingsScreenModel(
             is SettingsEvent.UpdateAutoRetryFailed -> _state.update {
                 it.copy(settings = it.settings.copy(autoRetryFailed = event.enabled))
             }
+            is SettingsEvent.UpdateExponentialBackoff -> _state.update {
+                it.copy(settings = it.settings.copy(exponentialBackoff = event.enabled))
+            }
             is SettingsEvent.UpdateMaxRetries -> {
                 val text = event.value.text
                 val err = if (text.toIntOrNull() == null || text.toInt() < 0) "Must be >= 0" else null
@@ -101,6 +108,51 @@ class SettingsScreenModel(
                     )
                 }
             }
+            is SettingsEvent.UpdateUserAgent -> _state.update {
+                it.copy(
+                    userAgentText = event.value,
+                    settings = it.settings.copy(httpUserAgent = event.value.text)
+                )
+            }
+            is SettingsEvent.UpdateMaxRedirects -> {
+                val text = event.value.text
+                val err = if (text.toIntOrNull() == null || text.toInt() < 0) "Must be >= 0" else null
+                _state.update {
+                    it.copy(
+                        maxRedirectsText = event.value,
+                        maxRedirectsError = err,
+                        settings = if (err == null) it.settings.copy(maxRedirects = text.toInt()) else it.settings
+                    )
+                }
+            }
+            is SettingsEvent.UpdateMaxPeerConnections -> {
+                val text = event.value.text
+                val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
+                _state.update {
+                    it.copy(
+                        maxPeerConnectionsText = event.value,
+                        maxPeerConnectionsError = err,
+                        settings = if (err == null) it.settings.copy(maxPeerConnections = text.toInt()) else it.settings
+                    )
+                }
+            }
+            is SettingsEvent.UpdateEnableSeeding -> _state.update {
+                it.copy(settings = it.settings.copy(enableSeeding = event.enabled))
+            }
+            is SettingsEvent.UpdateSeedTimeLimitMinutes -> {
+                val text = event.value.text
+                val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
+                _state.update {
+                    it.copy(
+                        seedTimeLimitMinutesText = event.value,
+                        seedTimeLimitMinutesError = err,
+                        settings = if (err == null) it.settings.copy(seedTimeLimitMinutes = text.toInt()) else it.settings
+                    )
+                }
+            }
+            is SettingsEvent.UpdateThemeMode -> _state.update {
+                it.copy(settings = it.settings.copy(themeMode = event.mode))
+            }
             is SettingsEvent.UpdateResumeDownloadsOnStartup -> _state.update {
                 it.copy(settings = it.settings.copy(resumeDownloadsOnStartup = event.enabled))
             }
@@ -118,11 +170,15 @@ class SettingsScreenModel(
             }
             SettingsEvent.SaveSettings -> {
                 val s = _state.value
+                val seedingEnabled = s.settings.enableSeeding
                 if (s.maxConcurrentDownloadsError == null &&
                     s.maxConnectionsPerDownloadError == null &&
                     s.globalSpeedLimitKbpsError == null &&
                     s.maxRetriesError == null &&
-                    s.retryDelaySecondsError == null
+                    s.retryDelaySecondsError == null &&
+                    s.maxRedirectsError == null &&
+                    s.maxPeerConnectionsError == null &&
+                    (!seedingEnabled || s.seedTimeLimitMinutesError == null)
                 ) {
                     screenModelScope.launch {
                         settingsRepository.updateSettings { s.settings }
