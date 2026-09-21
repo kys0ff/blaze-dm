@@ -1,6 +1,7 @@
 package org.blaze.engine.scheduler
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -105,7 +106,11 @@ class DownloadScheduler(
         jobs[id]?.cancelAndJoin()
 
         val executor = executorFactory(task)
-        val job = scope.launch {
+        // Start lazily so the job is registered in `jobs` before its body (and its
+        // completion/cleanup) can run. Without this, a task whose flow completes very
+        // quickly could finish and clear its entry before `jobs[id] = job` executes,
+        // leaking a stale entry that permanently occupies a concurrency slot.
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 executor.execute().collect { updatedTask ->
                     tasks.update { it + (id to updatedTask) }
@@ -121,6 +126,7 @@ class DownloadScheduler(
             }
         }
         jobs[id] = job
+        job.start()
     }
 
     fun enqueue(task: DownloadTask) {
