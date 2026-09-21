@@ -47,10 +47,12 @@ import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.engine.settings.ThemeMode
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolWindowHeader
+import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.theme.IdeColors
+import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -64,6 +66,7 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
 import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 import org.jetbrains.jewel.ui.theme.simpleListItemStyle
+import org.koin.compose.koinInject
 import java.nio.file.Path
 
 /** Settings content is indented to line up with the label of a checkbox/radio (icon + gap). */
@@ -77,6 +80,7 @@ class SettingsScreen : Screen {
         val screenModel = koinScreenModel<SettingsScreenModel>()
         val state by screenModel.state.collectAsState()
         val strings = blazeStrings
+        val resolverRegistry = koinInject<LinkResolverRegistry>()
 
         var showDirPicker by remember { mutableStateOf(false) }
         var showJarPicker by remember { mutableStateOf(false) }
@@ -398,6 +402,11 @@ class SettingsScreen : Screen {
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
+                                                        ExtensionIcon(
+                                                            handler = handler.resolver,
+                                                            registry = resolverRegistry,
+                                                            size = 16.dp
+                                                        )
                                                         CheckboxRow(
                                                             text = handler.displayName,
                                                             checked = handler.enabled,

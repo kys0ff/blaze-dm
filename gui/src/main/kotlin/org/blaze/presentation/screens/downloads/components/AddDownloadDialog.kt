@@ -57,6 +57,17 @@ fun AddDownloadDialog(
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
 
+    // Keep the inline "which extension will handle this?" notice in sync with what the user
+    // has typed, so the outcome is visible *before* Fetch is pressed. Torrents and magnet
+    // links never route through a handler, so clear the list for those.
+    LaunchedEffect(state.url.text) {
+        val source = state.source
+        val isHttp = source.startsWith("http://", ignoreCase = true) ||
+                source.startsWith("https://", ignoreCase = true)
+        state.detectedHandlers =
+            if (isHttp && !state.isBatch) registry.enabledHandlers(source) else emptyList()
+    }
+
     // Defined before fetch() because fetch() references it (Kotlin local functions must be
     // declared before their first use). Resolves a page link to a direct URL, then fetches.
     fun resolveAndFetch(source: String, handler: LoadedResolver) {
@@ -124,14 +135,15 @@ fun AddDownloadDialog(
                     state.isFetching = false
                 }
             }
-            // A single handler and the user opted out of being asked: use it directly.
-            handlers.size == 1 && !resolverSettings.settings.value.alwaysAskHandler ->
-                resolveAndFetch(source, handlers[0])
-            // Several matches (or always-ask): let the user pick.
-            else -> {
+            // A single match is never worth interrupting the user for: use it directly.
+            // The AddDownloadInputView already shows an inline notice naming the extension.
+            handlers.size == 1 -> resolveAndFetch(source, handlers[0])
+            // Several matches: let the user pick, unless they've opted out of being asked.
+            resolverSettings.settings.value.alwaysAskHandler -> {
                 state.handlerChoices = handlers
                 state.showHandlerChoice = true
             }
+            else -> resolveAndFetch(source, handlers.first())
         }
     }
 
@@ -202,6 +214,7 @@ fun AddDownloadDialog(
                 state = state,
                 focusRequester = focusRequester,
                 askWhereToSave = settingsRepository.settings.value.askWhereToSave,
+                registry = registry,
                 onFetch = ::fetch
             )
 

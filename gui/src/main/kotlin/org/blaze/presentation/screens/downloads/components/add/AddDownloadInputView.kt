@@ -39,11 +39,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.theme.IdeColors
 import org.blaze.presentation.util.formatSize
+import org.blaze.i18n.BlazeStrings
+import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Outline
@@ -83,6 +86,7 @@ fun AddDownloadInputView(
     state: AddDownloadState,
     focusRequester: FocusRequester,
     askWhereToSave: Boolean,
+    registry: LinkResolverRegistry,
     onFetch: () -> Unit
 ) {
     val strings = blazeStrings
@@ -170,7 +174,11 @@ fun AddDownloadInputView(
                 !state.looksSupported && state.url.text.isNotBlank() ->
                     FieldHint(dStrings.sourceWarning, HintLevel.Warning)
 
-                kind != null -> FieldHint(kind, HintLevel.Info)
+                else -> {
+                    if (kind != null) FieldHint(kind, HintLevel.Info)
+                    // Reactive notice: which handler (if any) will resolve this link.
+                    HandlerNotice(state, registry, dStrings)
+                }
             }
         }
 
@@ -406,6 +414,42 @@ private fun FieldHint(text: String, level: HintLevel) {
             HintLevel.Error -> IdeColors.error
         }
     )
+}
+
+/**
+ * Reactive notice explaining what will happen to a typed link:
+ *  - exactly one enabled handler claims it: name that extension (with its icon),
+ *  - several handlers claim it: hint that the picker will show,
+ *  - otherwise: nothing (the engine will fetch it directly).
+ */
+@Composable
+private fun HandlerNotice(
+    state: AddDownloadState,
+    registry: LinkResolverRegistry,
+    dStrings: BlazeStrings.Downloads.Dialogs
+) {
+    when {
+        state.detectedHandlers.size == 1 -> {
+            val handler = state.detectedHandlers.first().resolver
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ExtensionIcon(state.detectedHandlers.first(), registry, size = 16.dp)
+                Text(
+                    text = dStrings.handlerWillBeUsed(handler.displayName),
+                    style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                    color = JewelTheme.globalColors.text.info
+                )
+            }
+        }
+
+        state.detectedHandlers.size > 1 ->
+            FieldHint(
+                dStrings.handlerWillAsk(state.detectedHandlers.size),
+                HintLevel.Info
+            )
+    }
 }
 
 /** IDE-style "▸ Advanced options" disclosure. */

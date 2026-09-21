@@ -22,7 +22,7 @@ import java.nio.file.StandardCopyOption
 data class ResolverSettings(
     /** Absolute path to the directory plugin jars are loaded from. */
     val extensionDir: String = "",
-    /** When more than one handler matches — or the only match is a single one — always let the user pick. */
+    /** When more than one handler matches, let the user pick; otherwise use the first one silently. */
     val alwaysAskHandler: Boolean = true,
     /** Ids of handlers the user switched off. Everything not listed is enabled. */
     val disabledHandlers: List<String> = emptyList()

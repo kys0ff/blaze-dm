@@ -25,6 +25,8 @@ interface BlazeStrings {
         val views: String
         val connected: String
         val offline: String
+        /** Content description for a link-handler / extension icon. */
+        val extensionIcon: String
     }
 
     interface Downloads {
@@ -89,6 +91,10 @@ interface BlazeStrings {
             val resolveAction: String
             val resolvingLink: String
             val noHandlerForLink: String
+            /** Shown inline under the URL field when exactly one handler matches. */
+            fun handlerWillBeUsed(name: String): String
+            /** Shown inline under the URL field when several handlers match and picker is on. */
+            fun handlerWillAsk(count: Int): String
         }
 
         val status: Status

@@ -18,6 +18,7 @@ object EnStrings : BlazeStrings {
         override val views = "Views"
         override val connected = "Connected"
         override val offline = "Offline"
+        override val extensionIcon = "Extension icon"
     }
 
     override val downloads = object : BlazeStrings.Downloads {
@@ -80,6 +81,10 @@ object EnStrings : BlazeStrings {
             override val resolveAction = "Resolve"
             override val resolvingLink = "Resolving link..."
             override val noHandlerForLink = "No installed handler can process this link."
+            override fun handlerWillBeUsed(name: String) =
+                "Will be resolved using the $name extension."
+            override fun handlerWillAsk(count: Int) =
+                "$count extensions can process this link — you'll be asked which one to use."
         }
 
         override val status = object : BlazeStrings.Downloads.Status {
@@ -200,7 +205,7 @@ object EnStrings : BlazeStrings {
             override val supportedSitesHeader = "Supported sites"
             override val supportedSitesDesc = "Handlers turn page links (like MediaFire shares) into direct download links."
             override val alwaysAskLabel = "Always ask which handler to use when several match"
-            override val alwaysAskDesc = "When off, a single matching handler is used automatically."
+            override val alwaysAskDesc = "When off, the first matching handler is used automatically. A single matching handler is always used without asking."
             override val extensionsDirHeader = "Extensions"
             override val extensionsDirLabel = "Extensions folder"
             override val extensionsDirDesc = "Handler jars dropped into this folder are loaded at startup."

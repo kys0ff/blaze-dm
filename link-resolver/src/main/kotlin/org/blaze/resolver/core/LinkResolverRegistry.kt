@@ -13,6 +13,7 @@ import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.util.Base64
 
 /**
  * Central registry of link handlers: the built-ins bundled with the app plus any plugin
@@ -67,6 +68,39 @@ class LinkResolverRegistry(
         withContext(Dispatchers.IO) {
             runCatching { handler.resolver.resolve(url) }
         }
+
+    /**
+     * Load the bytes of the handler's icon, preferring the inline [LinkResolver.iconBase64]
+     * and falling back to [LinkResolver.iconResourcePath] when the string is missing or
+     * can't be decoded. Uses the resolver's own class loader for the resource lookup, so
+     * a plugin jar can ship its icon alongside its classes. Returns null when the resolver
+     * opts out or every source fails; the UI is expected to render a placeholder in that
+     * case — a broken icon never brings down the resolver.
+     */
+    fun loadIconBytes(handler: LoadedResolver): ByteArray? {
+        decodeBase64Icon(handler.resolver.iconBase64)?.let { return it }
+
+        val path = handler.resolver.iconResourcePath ?: return null
+        return runCatching {
+            handler.resolver.javaClass.getResourceAsStream(path)?.use { it.readBytes() }
+        }.onFailure { logger.warn("Failed to load icon for ${handler.resolver.id}: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
+     * Tolerant Base64 icon decoder: strips an optional `data:...;base64,` URL prefix and
+     * uses the MIME decoder, which accepts embedded line breaks and other whitespace from
+     * a copy/pasted constant. Returns null (with a warn) on any failure so the caller can
+     * fall back to the resource path without a nested try/catch.
+     */
+    private fun decodeBase64Icon(raw: String?): ByteArray? {
+        if (raw.isNullOrBlank()) return null
+        val body = raw.substringAfter(',', raw) // no-op when there's no `data:` prefix
+        return runCatching { Base64.getMimeDecoder().decode(body) }
+            .onFailure { logger.warn("Ignoring malformed iconBase64: ${it.message}") }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+    }
 
     suspend fun setEnabled(id: String, enabled: Boolean) {
         settingsRepository.updateSettings { settings ->

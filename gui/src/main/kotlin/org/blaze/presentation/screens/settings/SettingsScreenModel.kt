@@ -37,7 +37,8 @@ class SettingsScreenModel(
                             displayName = loaded.resolver.displayName,
                             description = loaded.resolver.description,
                             enabled = loaded.resolver.id !in settings.disabledHandlers,
-                            isPlugin = loaded.source == ResolverSource.PLUGIN
+                            isPlugin = loaded.source == ResolverSource.PLUGIN,
+                            resolver = loaded
                         )
                     },
                     alwaysAsk = settings.alwaysAskHandler,

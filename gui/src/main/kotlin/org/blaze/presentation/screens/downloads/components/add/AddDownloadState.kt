@@ -28,6 +28,13 @@ class AddDownloadState(
     var handlerChoices by mutableStateOf<List<LoadedResolver>>(emptyList())
     var fetchError by mutableStateOf<String?>(null)
 
+    /**
+     * Enabled handlers that currently claim they can process [source]. Recomputed on every
+     * URL edit by the parent dialog; drives the inline "this extension will be used" notice
+     * so the user learns the outcome before pressing Fetch.
+     */
+    var detectedHandlers by mutableStateOf<List<LoadedResolver>>(emptyList())
+
     val batchItems = mutableStateListOf<BatchDownloadItem>()
     val isBatch: Boolean get() = batchItems.isNotEmpty()
 
@@ -46,6 +53,7 @@ class AddDownloadState(
         resolvedDirectUrl = null
         handlerChoices = emptyList()
         fetchError = null
+        detectedHandlers = emptyList()
     }
 
     private fun String.isSupportedSource(): Boolean {

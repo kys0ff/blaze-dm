@@ -1,4 +1,4 @@
-package org.blaze.resolver.builtin
+package org.blaze.resolver.builtin.mediafire
 
 import org.blaze.resolver.api.LinkResolver
 import org.blaze.resolver.api.ResolvedLink
@@ -21,6 +21,8 @@ import java.time.Duration
 class MediafireResolver : LinkResolver {
 
     override val id: String = "mediafire"
+    override val iconBase64: String
+        get() = MediaFireIcon.get()
     override val displayName: String = "MediaFire"
     override val description: String =
         "Resolves MediaFire share pages into a direct download link"
