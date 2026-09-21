@@ -3,6 +3,7 @@ package org.blaze.i18n
 object EnStrings : BlazeStrings {
     override val common = object : BlazeStrings.Common {
         override val ok = "OK"
+        override val apply = "Apply"
         override val cancel = "Cancel"
         override val browse = "Browse..."
         override val path = "Path"

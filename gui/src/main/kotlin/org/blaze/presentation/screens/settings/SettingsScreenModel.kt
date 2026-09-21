@@ -3,12 +3,16 @@ package org.blaze.presentation.screens.settings
 import androidx.compose.ui.text.input.TextFieldValue
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.presentation.screens.settings.state.HandlerUiState
 import org.blaze.presentation.screens.settings.state.SettingsState
@@ -31,6 +35,9 @@ class SettingsScreenModel(
 
     private val _state = MutableStateFlow(SettingsState())
     val state: StateFlow<SettingsState> = _state.asStateFlow()
+
+    private val _effects = MutableSharedFlow<SettingsEffect>()
+    val effects: SharedFlow<SettingsEffect> = _effects.asSharedFlow()
 
     init {
         resetLocalState()
@@ -103,6 +110,7 @@ class SettingsScreenModel(
             SettingsState(
                 currentCategory = it.currentCategory,
                 settings = currentSettings,
+                savedSettings = currentSettings,
                 maxConcurrentDownloadsText = TextFieldValue(currentSettings.maxConcurrentDownloads.toString()),
                 maxConnectionsPerDownloadText = TextFieldValue(currentSettings.maxConnectionsPerDownload.toString()),
                 globalSpeedLimitKbpsText = TextFieldValue(currentSettings.globalSpeedLimitKbps.toString()),
@@ -251,11 +259,11 @@ class SettingsScreenModel(
                 it.copy(settings = it.settings.copy(fileLoggingEnabled = event.enabled))
             }
 
-            is SettingsEvent.ToggleHandler -> screenModelScope.launch {
-                resolverRegistry.setEnabled(event.id, event.enabled)
+            is SettingsEvent.ToggleHandler -> _state.update {
+                it.copy(enabledHandlerOverrides = it.enabledHandlerOverrides + (event.id to event.enabled))
             }
-            is SettingsEvent.UpdateAlwaysAskHandler -> screenModelScope.launch {
-                resolverRegistry.setAlwaysAsk(event.enabled)
+            is SettingsEvent.UpdateAlwaysAskHandler -> _state.update {
+                it.copy(alwaysAskOverride = event.enabled)
             }
             is SettingsEvent.InstallExtension -> screenModelScope.launch {
                 resolverRegistry.install(Path.of(event.jarPath))
@@ -265,8 +273,8 @@ class SettingsScreenModel(
             }
             SettingsEvent.ReloadHandlers -> resolverRegistry.reload()
 
-            is SettingsEvent.SelectTheme -> screenModelScope.launch {
-                themeRegistry.select(event.id)
+            is SettingsEvent.SelectTheme -> _state.update {
+                it.copy(selectedThemeOverride = event.id)
             }
             is SettingsEvent.InstallTheme -> screenModelScope.launch {
                 themeRegistry.install(Path.of(event.jarPath))
@@ -276,24 +284,107 @@ class SettingsScreenModel(
             }
             SettingsEvent.ReloadThemes -> themeRegistry.reload()
 
-            SettingsEvent.SaveSettings -> {
-                val s = _state.value
-                val seedingEnabled = s.settings.enableSeeding
-                if (s.maxConcurrentDownloadsError == null &&
-                    s.maxConnectionsPerDownloadError == null &&
-                    s.globalSpeedLimitKbpsError == null &&
-                    s.maxRetriesError == null &&
-                    s.retryDelaySecondsError == null &&
-                    s.maxRedirectsError == null &&
-                    s.maxPeerConnectionsError == null &&
-                    (!seedingEnabled || s.seedTimeLimitMinutesError == null)
-                ) {
-                    screenModelScope.launch {
-                        settingsRepository.updateSettings { s.settings }
-                    }
+            SettingsEvent.Apply -> applyDraftToLiveState()
+            SettingsEvent.Ok -> persistDraftAndClose()
+            SettingsEvent.Cancel -> screenModelScope.launch { _effects.emit(SettingsEffect.Close) }
+        }
+    }
+
+    /**
+     * Push the buffered draft into the repositories' / registries' live in-memory state so the
+     * running app reflects it (restyle, logging level, limits...), WITHOUT writing to disk.
+     * Dirty state is left intact on purpose: nothing has been persisted yet, so OK is still needed.
+     */
+    private fun applyDraftToLiveState() {
+        val s = _state.value
+        if (s.hasValidationError) return
+
+        // Appearance mode, logging, download limits, ... (whole draft at once).
+        settingsRepository.updateSettingsInMemory { s.settings }
+
+        // Link-handler enable/disable and always-ask.
+        if (s.enabledHandlerOverrides.isNotEmpty() || s.alwaysAskOverride != null) {
+            resolverSettingsRepository.updateSettingsInMemory { settings ->
+                val disabled = settings.disabledHandlers.toMutableSet()
+                s.enabledHandlerOverrides.forEach { (id, enabled) ->
+                    if (enabled) disabled.remove(id) else disabled.add(id)
                 }
+                settings.copy(
+                    disabledHandlers = disabled.toList(),
+                    alwaysAskHandler = s.alwaysAskOverride ?: settings.alwaysAskHandler
+                )
             }
-            SettingsEvent.ResetSettings -> resetLocalState()
+        }
+
+        // Color theme selection.
+        s.selectedThemeOverride
+            ?.takeIf { id -> s.themes.any { it.id == id } }
+            ?.let { themeRegistry.selectInMemory(it) }
+    }
+
+    /**
+     * Write the buffered draft to disk (the only place persistence happens), then close via a
+     * [SettingsEffect.Close].
+     */
+    private fun persistDraftAndClose() {
+        val snapshot = _state.value
+        if (snapshot.hasValidationError) return
+
+        screenModelScope.launch {
+            if (snapshot.settings != snapshot.savedSettings) {
+                settingsRepository.updateSettings { snapshot.settings }
+            }
+            // Only replay overrides for handlers still installed (a removed one has no target).
+            snapshot.enabledHandlerOverrides.forEach { (id, enabled) ->
+                if (snapshot.handlers.any { it.id == id }) resolverRegistry.setEnabled(id, enabled)
+            }
+            snapshot.alwaysAskOverride?.let { resolverRegistry.setAlwaysAsk(it) }
+            snapshot.selectedThemeOverride
+                ?.takeIf { id -> snapshot.themes.any { it.id == id } }
+                ?.let { themeRegistry.select(it) }
+
+            val committed = snapshot.settings
+            _state.update {
+                it.copy(
+                    savedSettings = committed,
+                    enabledHandlerOverrides = emptyMap(),
+                    alwaysAskOverride = null,
+                    selectedThemeOverride = null
+                )
+            }
+            resetTextFieldsTo(committed)
+
+            _effects.emit(SettingsEffect.Close)
+        }
+    }
+
+    /**
+     * Leaving the settings screen must never leave an unpersisted Apply in effect: revert the live
+     * in-memory state back to the settings actually stored on disk. This runs for Cancel *and* for
+     * navigating away (the model is disposed on pop/replaceAll); after OK it is a no-op because OK
+     * already persisted the new values, so `revertToPersisted` restores exactly what was just saved.
+     */
+    override fun onDispose() {
+        super.onDispose()
+        settingsRepository.revertToPersisted()
+        resolverSettingsRepository.revertToPersisted()
+        themeRegistry.restoreSelectionFromSettings()
+    }
+
+    /** Re-seed the numeric/text fields from [s] after a commit or reset. */
+    private fun resetTextFieldsTo(s: DownloadSettings) {
+        _state.update {
+            it.copy(
+                maxConcurrentDownloadsText = TextFieldValue(s.maxConcurrentDownloads.toString()),
+                maxConnectionsPerDownloadText = TextFieldValue(s.maxConnectionsPerDownload.toString()),
+                globalSpeedLimitKbpsText = TextFieldValue(s.globalSpeedLimitKbps.toString()),
+                maxRetriesText = TextFieldValue(s.maxRetries.toString()),
+                retryDelaySecondsText = TextFieldValue(s.retryDelaySeconds.toString()),
+                maxRedirectsText = TextFieldValue(s.maxRedirects.toString()),
+                maxPeerConnectionsText = TextFieldValue(s.maxPeerConnections.toString()),
+                seedTimeLimitMinutesText = TextFieldValue(s.seedTimeLimitMinutes.toString()),
+                userAgentText = TextFieldValue(s.httpUserAgent)
+            )
         }
     }
 }

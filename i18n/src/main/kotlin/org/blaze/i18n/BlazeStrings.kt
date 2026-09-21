@@ -10,6 +10,7 @@ interface BlazeStrings {
 
     interface Common {
         val ok: String
+        val apply: String
         val cancel: String
         val browse: String
         val path: String

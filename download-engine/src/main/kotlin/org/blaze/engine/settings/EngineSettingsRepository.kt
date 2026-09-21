@@ -21,6 +21,9 @@ class EngineSettingsRepository(storageDir: Path) {
     private val _settings = MutableStateFlow(loadSettings())
     val settings: StateFlow<DownloadSettings> = _settings.asStateFlow()
 
+    // The value as it exists on disk; in-memory-only edits are reverted back to this.
+    private var persistedSettings: DownloadSettings = _settings.value
+
     private fun loadSettings(): DownloadSettings {
         if (!settingsFile.exists()) return DownloadSettings()
         return try {
@@ -32,8 +35,22 @@ class EngineSettingsRepository(storageDir: Path) {
 
     suspend fun updateSettings(transform: (DownloadSettings) -> DownloadSettings) {
         val newSettings = transform(_settings.value).validate()
+        persistedSettings = newSettings
         _settings.update { newSettings }
         saveSettings(newSettings)
+    }
+
+    /**
+     * Update the in-memory settings so live consumers react, without writing to disk.
+     * Used by the settings screen's Apply button; only OK/Save persists.
+     */
+    fun updateSettingsInMemory(transform: (DownloadSettings) -> DownloadSettings) {
+        _settings.update { transform(it).validate() }
+    }
+
+    /** Discard any in-memory (Apply) changes and restore the last persisted settings. */
+    fun revertToPersisted() {
+        _settings.update { persistedSettings }
     }
 
     private suspend fun saveSettings(settings: DownloadSettings) = withContext(Dispatchers.IO) {

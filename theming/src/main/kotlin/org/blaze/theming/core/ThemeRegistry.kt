@@ -92,6 +92,23 @@ class ThemeRegistry(
         settingsRepository.updateSettings { it.copy(selectedThemeId = id) }
     }
 
+    /**
+     * Restyle the running app by pointing at the theme with [id] without writing to disk.
+     * The settings screen's Apply button uses this; only OK persists the choice.
+     */
+    fun selectInMemory(id: String) {
+        if (_themes.value.none { it.provider.id == id }) {
+            logger.warn("Ignoring selection of unknown theme {}", id)
+            return
+        }
+        _selectedThemeId.update { id }
+    }
+
+    /** Undo an unpersisted [selectInMemory] by reverting to the theme stored on disk. */
+    fun restoreSelectionFromSettings() {
+        _selectedThemeId.update { settingsRepository.settings.value.selectedThemeId }
+    }
+
     /** Copy [jar] into the themes directory and reload. */
     suspend fun install(jar: Path): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
