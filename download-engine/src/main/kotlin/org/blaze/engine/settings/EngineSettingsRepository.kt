@@ -43,14 +43,14 @@ class EngineSettingsRepository(storageDir: Path) {
             try {
                 Files.createDirectories(parentDir)
             } catch (e: Exception) {
-                logger.error("Failed to create directories for settings: ${e.message}")
+                logger.error("Failed to create directories for settings", e)
                 return@withContext
             }
         }
         val tmpFile = try {
             Files.createTempFile(parentDir, "settings", ".json.tmp")
         } catch (e: Exception) {
-            logger.error("Failed to create temp file for settings: ${e.message}")
+            logger.error("Failed to create temp file for settings", e)
             return@withContext
         }
         try {
@@ -61,7 +61,7 @@ class EngineSettingsRepository(storageDir: Path) {
                 Files.move(tmpFile, targetPath, StandardCopyOption.REPLACE_EXISTING)
             }
         } catch (e: Exception) {
-            logger.error("Failed to save settings: ${e.message}")
+            logger.error("Failed to save settings", e)
             Files.deleteIfExists(tmpFile)
         }
     }

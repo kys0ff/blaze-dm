@@ -44,8 +44,9 @@ dependencies {
     // Coroutines Swing for Dispatchers.Main on Desktop
     implementation(libs.kotlinx.coroutines.swing)
 
-    // Logging Implementation
-    runtimeOnly(libs.logback.classic)
+    // Logging: logback is configured and controlled at runtime by org.blaze.logging.LogConfigurator.
+    implementation(libs.slf4j.api)
+    implementation(libs.logback.classic)
 
     testImplementation(kotlin("test"))
 }

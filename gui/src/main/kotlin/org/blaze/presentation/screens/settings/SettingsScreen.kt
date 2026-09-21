@@ -44,14 +44,17 @@ import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import org.blaze.engine.settings.FileConflictBehavior
+import org.blaze.engine.settings.LogLevel
 import org.blaze.engine.settings.ThemeMode
 import org.blaze.i18n.blazeStrings
+import org.blaze.logging.LogConfigurator
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.theme.IdeColors
+import org.blaze.presentation.util.openInFileManager
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -81,6 +84,7 @@ class SettingsScreen : Screen {
         val state by screenModel.state.collectAsState()
         val strings = blazeStrings
         val resolverRegistry = koinInject<LinkResolverRegistry>()
+        val logConfigurator = koinInject<LogConfigurator>()
 
         var showDirPicker by remember { mutableStateOf(false) }
         var showJarPicker by remember { mutableStateOf(false) }
@@ -119,7 +123,8 @@ class SettingsScreen : Screen {
                         SettingsCategory.GENERAL to strings.settings.generalCategory,
                         SettingsCategory.DOWNLOADS to strings.settings.downloadsCategory,
                         SettingsCategory.FILES to strings.settings.filesCategory,
-                        SettingsCategory.EXTENSIONS to strings.settings.handlers.category
+                        SettingsCategory.EXTENSIONS to strings.settings.handlers.category,
+                        SettingsCategory.LOGS to strings.settings.logsCategory
                     )
 
                     categories.forEach { (category, label) ->
@@ -552,6 +557,86 @@ class SettingsScreen : Screen {
                                                     modifier = Modifier.fillMaxWidth()
                                                 )
                                             }
+                                        }
+                                    }
+                                }
+
+                                SettingsCategory.LOGS -> {
+                                    val lStrings = strings.settings.logging
+                                    val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+
+                                    SettingsSection(lStrings.header) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text(text = lStrings.levelLabel)
+                                            val levelOptions = listOf(
+                                                LogLevel.OFF to lStrings.offOption,
+                                                LogLevel.ERROR to lStrings.errorOption,
+                                                LogLevel.WARN to lStrings.warnOption,
+                                                LogLevel.INFO to lStrings.infoOption,
+                                                LogLevel.DEBUG to lStrings.debugOption,
+                                                LogLevel.TRACE to lStrings.traceOption
+                                            )
+                                            levelOptions.forEach { (level, label) ->
+                                                RadioButtonRow(
+                                                    text = label,
+                                                    selected = state.settings.logLevel == level,
+                                                    onClick = {
+                                                        screenModel.onEvent(
+                                                            SettingsEvent.UpdateLogLevel(level)
+                                                        )
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                            Text(
+                                                text = lStrings.levelDesc,
+                                                style = infoStyle,
+                                                color = JewelTheme.globalColors.text.info
+                                            )
+                                        }
+
+                                        CheckboxRow(
+                                            text = lStrings.fileLoggingLabel,
+                                            checked = state.settings.fileLoggingEnabled,
+                                            onCheckedChange = {
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateFileLoggingEnabled(it)
+                                                )
+                                            }
+                                        )
+                                        Text(
+                                            text = lStrings.fileLoggingDesc,
+                                            style = infoStyle,
+                                            color = JewelTheme.globalColors.text.info,
+                                            modifier = Modifier.padding(start = DependentIndent)
+                                        )
+                                    }
+
+                                    SettingsSection(lStrings.filesHeader) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text(text = lStrings.logDirLabel)
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Same read-only path field pattern as the download dir.
+                                                TextField(
+                                                    value = TextFieldValue(logConfigurator.logDir.toString()),
+                                                    onValueChange = {},
+                                                    enabled = false,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                OutlinedButton(
+                                                    onClick = { openInFileManager(logConfigurator.logDir) }
+                                                ) {
+                                                    Text(lStrings.openFolderAction)
+                                                }
+                                            }
+                                            Text(
+                                                text = lStrings.logDirDesc,
+                                                style = infoStyle,
+                                                color = JewelTheme.globalColors.text.info
+                                            )
                                         }
                                     }
                                 }

@@ -69,11 +69,11 @@ class LinkResolverSettingsRepository(private val storageDir: Path) {
                     Files.move(tmpFile, targetPath, StandardCopyOption.REPLACE_EXISTING)
                 }
             } catch (e: Exception) {
-                logger.error("Failed to save resolver settings: ${e.message}")
+                logger.error("Failed to save resolver settings", e)
                 Files.deleteIfExists(tmpFile)
             }
         } catch (e: Exception) {
-            logger.error("Failed to save resolver settings: ${e.message}")
+            logger.error("Failed to save resolver settings", e)
         }
     }
 }

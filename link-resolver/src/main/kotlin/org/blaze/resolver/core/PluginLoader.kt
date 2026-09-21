@@ -32,7 +32,7 @@ class PluginLoader {
         val jars = runCatching {
             Files.list(extensionDir).use { it.filter { p -> p.toString().endsWith(".jar") }.toList() }
         }.getOrElse {
-            logger.error("Failed to list extensions directory: ${it.message}")
+            logger.error("Failed to list extensions directory {}", extensionDir, it)
             emptyList()
         }
 
@@ -40,7 +40,7 @@ class PluginLoader {
             val loader = runCatching {
                 URLClassLoader(arrayOf(jar.toUri().toURL()), javaClass.classLoader)
             }.getOrElse {
-                logger.error("Failed to open extension jar $jar: ${it.message}")
+                logger.error("Failed to open extension jar {}", jar, it)
                 continue
             }
             loaders += loader
@@ -50,7 +50,7 @@ class PluginLoader {
                     resolvers += LoadedResolver(resolver, ResolverSource.PLUGIN, jar)
                 }
             }.onFailure {
-                logger.error("Failed to load resolvers from $jar: ${it.message}")
+                logger.error("Failed to load resolvers from {}", jar, it)
             }
         }
 

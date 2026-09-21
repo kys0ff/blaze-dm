@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.channelFlow
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.settings.DEFAULT_USER_AGENT
+import org.slf4j.LoggerFactory
 import java.net.URI
 
 class HttpNetworkClient(
@@ -22,9 +23,12 @@ class HttpNetworkClient(
     private val userAgent: String = DEFAULT_USER_AGENT,
     private val maxRedirects: Int = 5
 ) {
+    private val logger = LoggerFactory.getLogger(HttpNetworkClient::class.java)
+
     fun download(request: DownloadRequest.Http, offset: Long = 0L): Flow<HttpNetworkEvent> = channelFlow {
         var currentUrl = if (!request.url.contains("://")) "http://${request.url}" else request.url
         var redirectCount = 0
+        logger.debug("Starting HTTP download from {} (offset={} bytes)", currentUrl, offset)
 
         while (true) {
             val statement = client.prepareGet(currentUrl) {
@@ -54,13 +58,27 @@ class HttpNetworkClient(
                                 }
                             }
                             shouldRedirect = true
+                            logger.debug(
+                                "Following redirect {}/{}: {} -> {}",
+                                redirectCount, maxRedirects, currentUrl, nextUrl
+                            )
+                        } else if (location == null) {
+                            logger.warn("Got {} redirect status without a Location header", response.status.value)
+                            send(HttpNetworkEvent.Error(DownloadError.NetworkFailure("Redirect without location")))
+                        } else {
+                            logger.warn("Redirect limit reached ({}); giving up", maxRedirects)
+                            send(HttpNetworkEvent.Error(DownloadError.NetworkFailure("Too many redirects")))
                         }
                     } else if (!response.status.isSuccess()) {
                         val message = "Server returned ${response.status.value} ${response.status.description}"
+                        logger.warn("HTTP download failed for {}: {}", currentUrl, message)
                         send(HttpNetworkEvent.Error(DownloadError.NetworkFailure(message)))
                     } else {
                         val contentLength = response.contentLength() ?: -1L
                         val isResumed = response.status == HttpStatusCode.PartialContent
+                        if (isResumed) {
+                            logger.debug("Server accepted the resume (206 Partial Content) for {}", currentUrl)
+                        }
                         send(HttpNetworkEvent.Headers(isResumed, contentLength))
 
                         val channel = response.bodyAsChannel()
@@ -73,10 +91,12 @@ class HttpNetworkClient(
                             }
                         }
                         send(HttpNetworkEvent.Completed)
+                        logger.debug("HTTP stream finished for {}", currentUrl)
                     }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                logger.error("HTTP request to {} failed", currentUrl, e)
                 send(HttpNetworkEvent.Error(DownloadError.NetworkFailure(e.message ?: "Unknown network error")))
             }
 

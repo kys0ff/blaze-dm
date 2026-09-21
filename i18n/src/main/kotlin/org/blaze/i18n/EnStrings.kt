@@ -157,6 +157,7 @@ object EnStrings : BlazeStrings {
         override val generalCategory = "General"
         override val downloadsCategory = "Downloads"
         override val filesCategory = "Files"
+        override val logsCategory = "Logs"
         override val concurrencyHeader = "Concurrency & Queuing"
         override val maxConcurrentDownloadsLabel = "Maximum concurrent downloads"
         override val maxConcurrentDownloadsDesc = "Controls how many downloads can actively transfer at the same time. Downloads exceeding this limit remain queued until a slot becomes available."
@@ -199,6 +200,24 @@ object EnStrings : BlazeStrings {
         override val renameOption = "Rename the file automatically"
         override val validationPositiveNumber = "Must be a positive number greater than 0"
         override val validationNonNegativeNumber = "Must be a non-negative number (0 or greater)"
+
+        override val logging = object : BlazeStrings.Settings.Logging {
+            override val header = "Logging"
+            override val levelLabel = "Log level"
+            override val levelDesc = "Controls how much detail Blaze writes to its logs. Debug and Trace are mostly useful when diagnosing problems."
+            override val offOption = "Off"
+            override val errorOption = "Errors"
+            override val warnOption = "Warnings"
+            override val infoOption = "Info"
+            override val debugOption = "Debug"
+            override val traceOption = "Trace"
+            override val fileLoggingLabel = "Write logs to files"
+            override val fileLoggingDesc = "When off, logs are only printed to the console (visible when Blaze is started from a terminal)."
+            override val filesHeader = "Log Files"
+            override val logDirLabel = "Log folder"
+            override val logDirDesc = "Current and rotated (compressed) logs live here. Rotated files are kept for 7 days and capped at 100 MB in total."
+            override val openFolderAction = "Open folder…"
+        }
 
         override val handlers = object : BlazeStrings.Settings.Handlers {
             override val category = "Link Handlers"

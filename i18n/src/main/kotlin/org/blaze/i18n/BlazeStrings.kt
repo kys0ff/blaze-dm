@@ -169,6 +169,7 @@ interface BlazeStrings {
         val generalCategory: String
         val downloadsCategory: String
         val filesCategory: String
+        val logsCategory: String
         val concurrencyHeader: String
         val maxConcurrentDownloadsLabel: String
         val maxConcurrentDownloadsDesc: String
@@ -211,6 +212,25 @@ interface BlazeStrings {
         val renameOption: String
         val validationPositiveNumber: String
         val validationNonNegativeNumber: String
+
+        val logging: Logging
+        interface Logging {
+            val header: String
+            val levelLabel: String
+            val levelDesc: String
+            val offOption: String
+            val errorOption: String
+            val warnOption: String
+            val infoOption: String
+            val debugOption: String
+            val traceOption: String
+            val fileLoggingLabel: String
+            val fileLoggingDesc: String
+            val filesHeader: String
+            val logDirLabel: String
+            val logDirDesc: String
+            val openFolderAction: String
+        }
 
         val handlers: Handlers
         interface Handlers {

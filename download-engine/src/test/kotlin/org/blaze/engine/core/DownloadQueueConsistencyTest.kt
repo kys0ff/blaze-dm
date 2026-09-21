@@ -88,7 +88,6 @@ class DownloadQueueConsistencyTest {
         // Verify only 2 are downloading
         val allTasks = ids.map { manager.getTask(it) }
         val activeStates = allTasks.map { it?.state }
-        println("Active states: $activeStates")
         assertEquals(2, activeStates.count { it == DownloadState.Downloading || it == DownloadState.Starting }, 
             "Expected 2 active downloads, but got states: $activeStates. All tasks: $allTasks")
         assertEquals(3, activeStates.count { it == DownloadState.Queued })

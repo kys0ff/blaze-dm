@@ -207,7 +207,7 @@ class TorrentNetworkClient(
                     )
 
                     if (ticks.incrementAndGet() % 10 == 0) {
-                        logger.info(
+                        logger.debug(
                             "Torrent status: peers={}, down={} B/s, pieces={}/{}",
                             peers, downloadSpeed, state.piecesComplete, state.piecesTotal
                         )
@@ -454,7 +454,7 @@ class TorrentNetworkClient(
             }
         }
         val usable = urls.filter { it.startsWith("http://") || it.startsWith("https://") }
-        logger.info("Trackers: {} total, {} HTTP(S) usable: {}", urls.size, usable.size, urls)
+        logger.debug("Trackers: {} total, {} HTTP(S) usable: {}", urls.size, usable.size, urls)
         if (usable.isEmpty()) {
             logger.warn("No HTTP(S) tracker in torrent; peers can only come from DHT / peer exchange.")
         }

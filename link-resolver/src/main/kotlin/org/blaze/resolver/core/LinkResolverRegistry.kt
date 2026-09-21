@@ -83,7 +83,7 @@ class LinkResolverRegistry(
         val path = handler.resolver.iconResourcePath ?: return null
         return runCatching {
             handler.resolver.javaClass.getResourceAsStream(path)?.use { it.readBytes() }
-        }.onFailure { logger.warn("Failed to load icon for ${handler.resolver.id}: ${it.message}") }
+        }.onFailure { logger.warn("Failed to load icon for {}", handler.resolver.id, it) }
             .getOrNull()
     }
 
@@ -97,7 +97,7 @@ class LinkResolverRegistry(
         if (raw.isNullOrBlank()) return null
         val body = raw.substringAfter(',', raw) // no-op when there's no `data:` prefix
         return runCatching { Base64.getMimeDecoder().decode(body) }
-            .onFailure { logger.warn("Ignoring malformed iconBase64: ${it.message}") }
+            .onFailure { logger.warn("Ignoring malformed iconBase64 for resolver", it) }
             .getOrNull()
             ?.takeIf { it.isNotEmpty() }
     }
@@ -122,7 +122,7 @@ class LinkResolverRegistry(
             val target = dir.resolve(jar.fileName.toString())
             Files.copy(jar, target, StandardCopyOption.REPLACE_EXISTING)
             reload()
-        }.onFailure { logger.error("Failed to install extension: ${it.message}") }
+        }.onFailure { logger.error("Failed to install extension {}", jar, it) }
     }
 
     /** Delete a plugin jar and reload. Built-ins cannot be removed. */
@@ -134,7 +134,7 @@ class LinkResolverRegistry(
             else -> runCatching {
                 Files.deleteIfExists(handler.pluginPath)
                 reload()
-            }.onFailure { logger.error("Failed to remove extension: ${it.message}") }
+            }.onFailure { logger.error("Failed to remove extension {}", id, it) }
         }
     }
 }

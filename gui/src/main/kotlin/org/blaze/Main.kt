@@ -1,22 +1,27 @@
 package org.blaze
 
 import androidx.compose.ui.window.application
+import kotlinx.coroutines.CoroutineScope
 import org.blaze.di.appModule
 import org.blaze.di.engineModule
+import org.blaze.di.loggingModule
 import org.blaze.di.repositoryModule
 import org.blaze.di.resolverModule
 import org.blaze.di.screenModelModule
 import org.blaze.di.useCaseModule
 import org.blaze.i18n.i18nModule
+import org.blaze.logging.LogConfigurator
 import org.blaze.presentation.application.BlazeApplication
 import org.blaze.presentation.screens.filepicker.di.filePickerModule
 import org.koin.core.context.startKoin
+import org.slf4j.LoggerFactory
 
 fun main() {
-    startKoin {
+    val koin = startKoin {
         modules(
             appModule,
             engineModule,
+            loggingModule,
             repositoryModule,
             resolverModule,
             useCaseModule,
@@ -24,7 +29,11 @@ fun main() {
             i18nModule,
             filePickerModule,
         )
-    }
+    }.koin
+
+    // Apply persisted logging settings before anything else logs, then keep them in sync.
+    koin.get<LogConfigurator>().start(koin.get<CoroutineScope>())
+    LoggerFactory.getLogger("org.blaze.Main").info("Blaze is starting up.")
 
     application {
         BlazeApplication()

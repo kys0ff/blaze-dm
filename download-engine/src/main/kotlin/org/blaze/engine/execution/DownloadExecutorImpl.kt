@@ -39,6 +39,7 @@ class DownloadExecutorImpl(
 
     override fun execute(): Flow<DownloadTask> = channelFlow {
         var currentTask = initialTask
+        logger.debug("Starting execution of task {} ({})", currentTask.id, currentTask.request::class.simpleName)
         send(currentTask)
 
         try {
@@ -53,7 +54,7 @@ class DownloadExecutorImpl(
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            logger.error("Unexpected error in DownloadExecutor for ${currentTask.id}", e)
+            logger.error("Unexpected error in DownloadExecutor for {}", currentTask.id, e)
             currentTask = currentTask.copy(
                 state = DownloadState.Failed,
                 error = DownloadError.Unknown(e.message ?: "Unknown error")
@@ -64,7 +65,10 @@ class DownloadExecutorImpl(
         if (currentTask.state == DownloadState.Failed) {
             val delayMs = retryPolicy.getNextDelay(currentTask.error ?: DownloadError.Unknown("Unknown error"), currentTask.retryCount)
             if (delayMs != null) {
-                logger.info("Scheduling retry for ${currentTask.id} in ${delayMs}ms (retry ${currentTask.retryCount + 1})")
+                logger.info(
+                    "Scheduling retry for {} in {}ms (retry {})",
+                    currentTask.id, delayMs, currentTask.retryCount + 1
+                )
                 val retryingTask = currentTask.copy(
                     state = DownloadState.Queued,
                     scheduledAt = Instant.now().plusMillis(delayMs),
@@ -105,6 +109,9 @@ class DownloadExecutorImpl(
             )
             val offset =
                 if (storage.exists(finalPartialPath)) storage.size(finalPartialPath) else 0L
+            if (offset > 0) {
+                logger.info("Resuming {} from {} bytes", task.id, offset)
+            }
 
             var totalBytes = task.totalBytes
             var downloadedBytes = offset
@@ -165,6 +172,7 @@ class DownloadExecutorImpl(
 
                     is HttpNetworkEvent.Completed -> {
                         storage.move(finalPartialPath, finalDestination)
+                        logger.info("HTTP download completed: {}", finalDestination)
                         send(
                             updateTask(
                                 task,
@@ -315,7 +323,10 @@ class DownloadExecutorImpl(
             return destination to storage.getPartialFile(destination).toPath()
         }
         return when (behavior) {
-            FileConflictBehavior.SKIP -> null to storage.getPartialFile(destination).toPath()
+            FileConflictBehavior.SKIP -> {
+                logger.info("Destination {} already exists; skipping the download", destination)
+                null to storage.getPartialFile(destination).toPath()
+            }
             FileConflictBehavior.OVERWRITE -> {
                 storage.delete(destination)
                 val partial = storage.getPartialFile(destination).toPath()
@@ -333,6 +344,7 @@ class DownloadExecutorImpl(
                     count++
                     newFile = destination.resolveSibling("$baseName ($count)$extStr")
                 }
+                logger.info("Destination {} already exists; saving as {}", destination, newFile)
                 newFile to storage.getPartialFile(newFile).toPath()
             }
         }

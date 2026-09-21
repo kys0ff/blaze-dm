@@ -209,6 +209,12 @@ class SettingsScreenModel(
             is SettingsEvent.UpdateFileConflictBehavior -> _state.update {
                 it.copy(settings = it.settings.copy(fileConflictBehavior = event.behavior))
             }
+            is SettingsEvent.UpdateLogLevel -> _state.update {
+                it.copy(settings = it.settings.copy(logLevel = event.level))
+            }
+            is SettingsEvent.UpdateFileLoggingEnabled -> _state.update {
+                it.copy(settings = it.settings.copy(fileLoggingEnabled = event.enabled))
+            }
 
             is SettingsEvent.ToggleHandler -> screenModelScope.launch {
                 resolverRegistry.setEnabled(event.id, event.enabled)

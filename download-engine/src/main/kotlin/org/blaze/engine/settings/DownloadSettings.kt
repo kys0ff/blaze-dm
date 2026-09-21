@@ -17,6 +17,17 @@ enum class ThemeMode {
     DARK
 }
 
+/** Application-wide log verbosity. Mirrors the levels understood by the logging backend. */
+@Serializable
+enum class LogLevel {
+    OFF,
+    ERROR,
+    WARN,
+    INFO,
+    DEBUG,
+    TRACE
+}
+
 const val DEFAULT_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -40,5 +51,7 @@ data class DownloadSettings(
     val maxPeerConnections: Int = 200,
     val enableSeeding: Boolean = false,
     val seedTimeLimitMinutes: Int = 30,
-    val themeMode: ThemeMode = ThemeMode.DARK
+    val themeMode: ThemeMode = ThemeMode.DARK,
+    val logLevel: LogLevel = LogLevel.INFO,
+    val fileLoggingEnabled: Boolean = true
 )

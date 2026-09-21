@@ -2,6 +2,7 @@ package org.blaze.presentation.screens.settings
 
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.engine.settings.FileConflictBehavior
+import org.blaze.engine.settings.LogLevel
 import org.blaze.engine.settings.ThemeMode
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 
@@ -42,6 +43,10 @@ sealed interface SettingsEvent {
     data class UpdateDefaultDownloadDir(val path: String) : SettingsEvent
     data class UpdateAskWhereToSave(val enabled: Boolean) : SettingsEvent
     data class UpdateFileConflictBehavior(val behavior: FileConflictBehavior) : SettingsEvent
+
+    // Logging
+    data class UpdateLogLevel(val level: LogLevel) : SettingsEvent
+    data class UpdateFileLoggingEnabled(val enabled: Boolean) : SettingsEvent
 
     // Link handlers / extensions
     data class ToggleHandler(val id: String, val enabled: Boolean) : SettingsEvent

@@ -4,5 +4,6 @@ enum class SettingsCategory {
     GENERAL,
     DOWNLOADS,
     FILES,
-    EXTENSIONS
+    EXTENSIONS,
+    LOGS
 }
