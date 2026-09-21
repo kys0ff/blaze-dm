@@ -5,10 +5,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadsEvent
-import org.blaze.i18n.blazeStrings
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.icons.AllIconsKeys

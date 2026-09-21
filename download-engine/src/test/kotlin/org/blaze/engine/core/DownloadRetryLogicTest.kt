@@ -69,7 +69,7 @@ class DownloadRetryLogicTest {
 
                 // Wait for all retries to happen.
                 // Initial attempt (0) + 3 retries = 4 attempts total.
-                var finalTask: DownloadTask? = null
+                var finalTask: DownloadTask?
                 withTimeout(15.seconds) {
                     while (true) {
                         finalTask = manager.getTask(id)

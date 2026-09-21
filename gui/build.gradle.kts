@@ -62,9 +62,26 @@ compose.desktop {
         mainClass = "org.blaze.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            targetFormats(
+                TargetFormat.Dmg,
+                TargetFormat.Msi,
+                TargetFormat.Deb
+            )
+
             packageName = "org.blaze"
             packageVersion = "1.0.0"
+
+            linux {
+                iconFile = rootProject.file("src/main/resources/app-icon.png")
+            }
+
+            windows {
+                iconFile = rootProject.file("src/main/resources/app-icon.ico")
+            }
+
+            macOS {
+                iconFile = rootProject.file("src/main/resources/app-icon.icns")
+            }
         }
     }
 }
