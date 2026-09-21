@@ -151,6 +151,14 @@ object EnStrings : BlazeStrings {
         override fun paused(count: Int) = "$count paused"
         override fun failed(count: Int) = "$count failed"
     }
+
+    override val tray = object : BlazeStrings.Tray {
+        override val show = "Show Window"
+        override val hide = "Hide Window"
+        override val pauseAll = "Pause All Downloads"
+        override val resumeAll = "Resume All Downloads"
+        override val quit = "Quit Blaze"
+    }
     
     override val settings = object : BlazeStrings.Settings {
         override val title = "Settings"
@@ -190,6 +198,12 @@ object EnStrings : BlazeStrings {
         override val startupHeader = "Startup & Queue Behavior"
         override val resumeOnStartupLabel = "Resume downloads automatically on application startup"
         override val startQueuedOnStartupLabel = "Start queued downloads automatically on application startup"
+        override val systemIntegrationHeader = "System Integration"
+        override val trayEnabledLabel = "Show an icon in the system tray"
+        override val trayEnabledDesc = "Keeps Blaze accessible in the background. Unavailable on desktops without a tray."
+        override val minimizeToTrayLabel = "Hide the window to the tray when closed"
+        override val runAtStartupLabel = "Run Blaze at system startup"
+        override val runAtStartupDesc = "Registers Blaze to start automatically when you log in."
         override val destinationHeader = "Download Destinations"
         override val defaultDownloadDirLabel = "Default download directory"
         override val askWhereToSaveLabel = "Ask where to save each download before starting"

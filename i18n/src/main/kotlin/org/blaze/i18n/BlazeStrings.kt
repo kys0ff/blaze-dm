@@ -7,6 +7,7 @@ interface BlazeStrings {
     val errors: Errors
     val filePicker: FilePicker
     val statusSummary: StatusSummary
+    val tray: Tray
 
     interface Common {
         val ok: String
@@ -163,6 +164,15 @@ interface BlazeStrings {
         fun paused(count: Int): String
         fun failed(count: Int): String
     }
+
+    /** Labels for the system-tray context menu (rendered by AWT, not Compose). */
+    interface Tray {
+        val show: String
+        val hide: String
+        val pauseAll: String
+        val resumeAll: String
+        val quit: String
+    }
     
     interface Settings {
         val title: String
@@ -202,6 +212,12 @@ interface BlazeStrings {
         val startupHeader: String
         val resumeOnStartupLabel: String
         val startQueuedOnStartupLabel: String
+        val systemIntegrationHeader: String
+        val trayEnabledLabel: String
+        val trayEnabledDesc: String
+        val minimizeToTrayLabel: String
+        val runAtStartupLabel: String
+        val runAtStartupDesc: String
         val destinationHeader: String
         val defaultDownloadDirLabel: String
         val askWhereToSaveLabel: String

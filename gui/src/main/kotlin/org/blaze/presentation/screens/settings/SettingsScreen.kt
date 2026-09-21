@@ -323,6 +323,8 @@ private fun GeneralSection(
     strings: BlazeStrings,
     onEvent: (SettingsEvent) -> Unit
 ) {
+    val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+
     SettingsSection(strings.settings.appearanceHeader) {
         Text(text = strings.settings.themeLabel)
         val themeOptions = listOf(
@@ -339,6 +341,48 @@ private fun GeneralSection(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+        }
+    }
+
+    SettingsSection(strings.settings.systemIntegrationHeader) {
+        val trayEnabled = state.appSettings.trayEnabled
+        // Each option only appears when the environment can actually honour it
+        // (no tray on GNOME without an indicator extension, no autostart on odd OSes).
+        if (state.traySupported) {
+            CheckboxRow(
+                text = strings.settings.trayEnabledLabel,
+                checked = trayEnabled,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateTrayEnabled(it)) }
+            )
+            Text(
+                text = strings.settings.trayEnabledDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
+            // Dependent option: shown only while the tray itself is on.
+            if (trayEnabled) {
+                Column(modifier = Modifier.padding(start = DependentIndent)) {
+                    CheckboxRow(
+                        text = strings.settings.minimizeToTrayLabel,
+                        checked = state.appSettings.minimizeToTrayOnClose,
+                        onCheckedChange = { onEvent(SettingsEvent.UpdateMinimizeToTrayOnClose(it)) }
+                    )
+                }
+            }
+        }
+        if (state.autoStartSupported) {
+            CheckboxRow(
+                text = strings.settings.runAtStartupLabel,
+                checked = state.appSettings.runAtStartup,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateRunAtStartup(it)) }
+            )
+            Text(
+                text = strings.settings.runAtStartupDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
         }
     }
 

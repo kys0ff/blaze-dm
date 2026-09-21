@@ -38,6 +38,11 @@ sealed interface SettingsEvent {
     // Startup
     data class UpdateResumeDownloadsOnStartup(val enabled: Boolean) : SettingsEvent
     data class UpdateStartQueuedOnStartup(val enabled: Boolean) : SettingsEvent
+
+    // System integration (tray / autostart) — buffered in the app-settings draft until Apply/OK
+    data class UpdateTrayEnabled(val enabled: Boolean) : SettingsEvent
+    data class UpdateMinimizeToTrayOnClose(val enabled: Boolean) : SettingsEvent
+    data class UpdateRunAtStartup(val enabled: Boolean) : SettingsEvent
     
     // Destination & Conflicts
     data class UpdateDefaultDownloadDir(val path: String) : SettingsEvent

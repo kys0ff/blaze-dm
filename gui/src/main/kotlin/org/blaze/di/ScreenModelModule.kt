@@ -26,6 +26,9 @@ val screenModelModule = module {
     factory {
         SettingsScreenModel(
             settingsRepository = get(),
+            appSettingsRepository = get(),
+            autoStartCoordinator = get(),
+            trayService = get(),
             resolverRegistry = get(),
             resolverSettingsRepository = get(),
             themeRegistry = get(),

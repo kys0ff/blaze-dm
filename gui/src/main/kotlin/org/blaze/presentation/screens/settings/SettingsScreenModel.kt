@@ -12,8 +12,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.blaze.data.AppSettingsRepository
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.platform.autostart.AutoStartCoordinator
+import org.blaze.platform.tray.TrayService
 import org.blaze.presentation.screens.settings.state.HandlerUiState
 import org.blaze.presentation.screens.settings.state.SettingsState
 import org.blaze.presentation.screens.settings.state.ThemeUiState
@@ -27,6 +30,9 @@ import java.nio.file.Path
 
 class SettingsScreenModel(
     private val settingsRepository: EngineSettingsRepository,
+    private val appSettingsRepository: AppSettingsRepository,
+    private val autoStartCoordinator: AutoStartCoordinator,
+    private val trayService: TrayService,
     private val resolverRegistry: LinkResolverRegistry,
     private val resolverSettingsRepository: LinkResolverSettingsRepository,
     private val themeRegistry: ThemeRegistry,
@@ -106,11 +112,16 @@ class SettingsScreenModel(
 
     private fun resetLocalState() {
         val currentSettings = settingsRepository.settings.value
+        val currentAppSettings = appSettingsRepository.settings.value
         _state.update {
             SettingsState(
                 currentCategory = it.currentCategory,
                 settings = currentSettings,
                 savedSettings = currentSettings,
+                appSettings = currentAppSettings,
+                savedAppSettings = currentAppSettings,
+                traySupported = trayService.isSupported,
+                autoStartSupported = autoStartCoordinator.isSupported,
                 maxConcurrentDownloadsText = TextFieldValue(currentSettings.maxConcurrentDownloads.toString()),
                 maxConnectionsPerDownloadText = TextFieldValue(currentSettings.maxConnectionsPerDownload.toString()),
                 globalSpeedLimitKbpsText = TextFieldValue(currentSettings.globalSpeedLimitKbps.toString()),
@@ -243,6 +254,15 @@ class SettingsScreenModel(
             is SettingsEvent.UpdateStartQueuedOnStartup -> _state.update {
                 it.copy(settings = it.settings.copy(startQueuedOnStartup = event.enabled))
             }
+            is SettingsEvent.UpdateTrayEnabled -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(trayEnabled = event.enabled))
+            }
+            is SettingsEvent.UpdateMinimizeToTrayOnClose -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(minimizeToTrayOnClose = event.enabled))
+            }
+            is SettingsEvent.UpdateRunAtStartup -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(runAtStartup = event.enabled))
+            }
             is SettingsEvent.UpdateDefaultDownloadDir -> _state.update {
                 it.copy(settings = it.settings.copy(defaultDownloadDir = event.path))
             }
@@ -302,6 +322,11 @@ class SettingsScreenModel(
         // Appearance mode, logging, download limits, ... (whole draft at once).
         settingsRepository.updateSettingsInMemory { s.settings }
 
+        // Tray follows the in-memory app settings live; autostart has no in-memory-only
+        // effect, so "live" here means actually writing/removing the OS registration.
+        appSettingsRepository.updateSettingsInMemory { s.appSettings }
+        autoStartCoordinator.applyLive(s.appSettings.runAtStartup)
+
         // Link-handler enable/disable and always-ask.
         if (s.enabledHandlerOverrides.isNotEmpty() || s.alwaysAskOverride != null) {
             resolverSettingsRepository.updateSettingsInMemory { settings ->
@@ -334,6 +359,12 @@ class SettingsScreenModel(
             if (snapshot.settings != snapshot.savedSettings) {
                 settingsRepository.updateSettings { snapshot.settings }
             }
+            if (snapshot.appSettings != snapshot.savedAppSettings) {
+                appSettingsRepository.updateSettings { snapshot.appSettings }
+            }
+            // Make sure the OS registration matches what was just persisted, even if the
+            // user hit OK without Apply first (onDispose reverts to the persisted value).
+            autoStartCoordinator.applyLive(snapshot.appSettings.runAtStartup)
             // Only replay overrides for handlers still installed (a removed one has no target).
             snapshot.enabledHandlerOverrides.forEach { (id, enabled) ->
                 if (snapshot.handlers.any { it.id == id }) resolverRegistry.setEnabled(id, enabled)
@@ -347,6 +378,8 @@ class SettingsScreenModel(
             _state.update {
                 it.copy(
                     savedSettings = committed,
+                    savedAppSettings = snapshot.appSettings,
+                    appSettings = snapshot.appSettings,
                     enabledHandlerOverrides = emptyMap(),
                     alwaysAskOverride = null,
                     selectedThemeOverride = null
@@ -367,6 +400,8 @@ class SettingsScreenModel(
     override fun onDispose() {
         super.onDispose()
         settingsRepository.revertToPersisted()
+        appSettingsRepository.revertToPersisted()
+        autoStartCoordinator.revertToPersisted()
         resolverSettingsRepository.revertToPersisted()
         themeRegistry.restoreSelectionFromSettings()
     }

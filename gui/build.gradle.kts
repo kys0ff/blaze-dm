@@ -2,6 +2,7 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.kotlinCompose)
     alias(libs.plugins.jetbrainsCompose)
 }
@@ -41,6 +42,14 @@ dependencies {
     // Koin
     implementation(libs.koin.core)
     implementation(libs.koin.compose)
+
+    // App-shell settings (app.json) are serialized locally in this module.
+    implementation(libs.kotlinx.serialization.json)
+
+    // Linux tray backend speaks StatusNotifierItem over D-Bus (AWT's legacy XEmbed tray
+    // is broken on KDE/GNOME); pure JVM, no native libraries.
+    implementation(libs.dbus.java.core)
+    implementation(libs.dbus.java.transport.native.unixsocket)
 
     // Coroutines Swing for Dispatchers.Main on Desktop
     implementation(libs.kotlinx.coroutines.swing)

@@ -11,6 +11,7 @@ voyager = "2.2.21-1.10.3"
 koin = "4.2.2"
 intellij-platform = "262.10315.125"
 logback = "1.6.3"
+dbus = "5.2.0"
 
 [libraries]
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -41,6 +42,10 @@ voyager-koin = { group = "cafe.adriel.voyager", name = "voyager-koin", version.r
 
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
 koin-compose = { group = "io.insert-koin", name = "koin-compose", version.ref = "koin" }
+
+# Pure-JVM D-Bus (StatusNotifierItem tray backend on Linux); unixsocket transport uses the JDK's own AF_UNIX support.
+dbus-java-core = { group = "com.github.hypfvieh", name = "dbus-java-core", version.ref = "dbus" }
+dbus-java-transport-native-unixsocket = { group = "com.github.hypfvieh", name = "dbus-java-transport-native-unixsocket", version.ref = "dbus" }
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

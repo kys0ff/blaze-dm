@@ -1,6 +1,7 @@
 package org.blaze.presentation.screens.settings.state
 
 import androidx.compose.ui.text.input.TextFieldValue
+import org.blaze.data.AppSettings
 import org.blaze.engine.settings.DownloadSettings
 
 data class SettingsState(
@@ -35,7 +36,13 @@ data class SettingsState(
     val extensionDir: String = "",
     val themes: List<ThemeUiState> = emptyList(),
     val selectedThemeOverride: String? = null,
-    val themesDir: String = ""
+    val themesDir: String = "",
+    // App-shell (tray / autostart) draft + saved pair, persisted through their own repository.
+    val appSettings: AppSettings = AppSettings(),
+    val savedAppSettings: AppSettings = AppSettings(),
+    // Environment capabilities: the corresponding options are hidden when unsupported.
+    val traySupported: Boolean = false,
+    val autoStartSupported: Boolean = false
 ) {
     /** Enabled state of a handler with any pending override folded in. */
     fun effectiveHandlerEnabled(handler: HandlerUiState): Boolean =
@@ -69,6 +76,7 @@ data class SettingsState(
     /** True when there are uncommitted changes waiting to be applied. */
     val isDirty: Boolean
         get() = settings != savedSettings ||
+                appSettings != savedAppSettings ||
                 enabledHandlerOverrides.isNotEmpty() ||
                 alwaysAskOverride != null ||
                 selectedThemeOverride != null
