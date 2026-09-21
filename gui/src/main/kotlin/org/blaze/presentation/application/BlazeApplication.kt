@@ -1,176 +1,35 @@
 package org.blaze.presentation.application
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
-import androidx.compose.ui.window.rememberWindowState
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import org.blaze.data.AppSettingsRepository
-import org.blaze.domain.models.DownloadState
-import org.blaze.domain.repository.DownloadRepository
-import org.blaze.engine.api.DownloadEngine
-import org.blaze.engine.settings.EngineSettingsRepository
-import org.blaze.engine.settings.ThemeMode
 import org.blaze.i18n.LocalBlazeStrings
-import org.blaze.i18n.LocaleManager
-import org.blaze.i18n.getStrings
-import org.blaze.platform.tray.AppTrayIcon
 import org.blaze.presentation.application.components.BlazeWindow
-import org.blaze.presentation.theme.BlazeTheme
-import org.blaze.theming.core.ThemeRegistry
-import org.blaze.tray.api.TrayConfig
-import org.blaze.tray.api.TrayMenuItem
-import org.blaze.tray.api.TrayService
-import org.blaze.tray.compose.TrayHost
-import org.koin.compose.koinInject
 
+/**
+ * Blaze's application root: a thin composition of the app-shell concerns, each
+ * owned by a dedicated unit.
+ *
+ * - [rememberBlazeStrings]  - locale-driven UI strings,
+ * - [rememberAppShell]      - window lifecycle (visibility, close-to-tray, quit),
+ * - [AppTrayHost]           - system-tray wiring on top of the `:tray` library,
+ * - [AppTheme]              - theme-mode + palette resolution on top of `BlazeTheme`.
+ */
 @Composable
 fun ApplicationScope.BlazeApplication() {
-    val localeManager = koinInject<LocaleManager>()
-    val currentLocale by localeManager.currentLocale.collectAsState()
-    val strings = remember(currentLocale) { getStrings(currentLocale) }
+    val strings = rememberBlazeStrings()
+    val shell = rememberAppShell()
 
-    val settingsRepository = koinInject<EngineSettingsRepository>()
-    val themeMode by settingsRepository.settings
-        .map { it.themeMode }
-        .collectAsState(initial = settingsRepository.settings.value.themeMode)
-    val systemIsDark = isSystemInDarkTheme()
-    val isDark = when (themeMode) {
-        ThemeMode.SYSTEM -> systemIsDark
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
-
-    // Resolve the active color theme (built-in + plugin) for the current light/dark mode.
-    // Observing both flows makes the palette recompute when the selection changes or a
-    // theme jar is installed / removed.
-    val themeRegistry = koinInject<ThemeRegistry>()
-    val selectedThemeId by themeRegistry.selectedThemeId.collectAsState()
-    val themes by themeRegistry.themes.collectAsState()
-    val palette = remember(selectedThemeId, themes, isDark) {
-        themeRegistry.paletteFor(isDark)
-    }
-
-    val windowState = rememberWindowState(
-        size = DpSize(1100.dp, 720.dp),
-    )
-
-    val engine = koinInject<DownloadEngine>()
-
-    // App-shell (tray) state: `windowVisible` drives the AWT frame while the tray hides the
-    // window instead of quitting; `exiting` marks the real shutdown so the close handler and
-    // the tray's Quit don't loop back into "hide".
-    val appSettingsRepository = koinInject<AppSettingsRepository>()
-    val appSettings by appSettingsRepository.settings.collectAsState()
-    val trayService = koinInject<TrayService>()
-    val downloadRepository = koinInject<DownloadRepository>()
-    val appScope = koinInject<CoroutineScope>()
-
-    var windowVisible by remember { mutableStateOf(true) }
-    var exiting by remember { mutableStateOf(false) }
-    val trayActive = appSettings.trayEnabled && trayService.isSupported
-
-    fun quitApp() {
-        exiting = true
-        runBlocking {
-            engine.shutdown()
-        }
-        exitApplication()
-    }
-
-    // Derive just enough download state to keep the tray menu honest: only offer
-    // "Pause All" when something is still transferring/queued and "Resume All"
-    // when something is paused. `distinctUntilChanged` collapses the frequent
-    // progress ticks into the handful of transitions that actually matter, so the
-    // tray is only rebuilt when an item must appear or disappear.
-    val trayControls by downloadRepository.downloads
-        .map { downloads ->
-            TrayDownloadControls(
-                canPauseAll = downloads.any {
-                    it.state == DownloadState.DOWNLOADING || it.state == DownloadState.QUEUED
-                },
-                canResumeAll = downloads.any { it.state == DownloadState.PAUSED },
-            )
-        }
-        .distinctUntilChanged()
-        .collectAsState(initial = TrayDownloadControls())
-
-    // Blaze's tray identity, artwork and menu; the :tray library stays app-agnostic.
-    val trayConfig = remember(strings, trayControls) {
-        val downloadItems = buildList {
-            if (trayControls.canPauseAll) {
-                add(TrayMenuItem.Item(strings.tray.pauseAll) {
-                    appScope.launch { downloadRepository.pauseAll() }
-                })
-            }
-            if (trayControls.canResumeAll) {
-                add(TrayMenuItem.Item(strings.tray.resumeAll) {
-                    appScope.launch { downloadRepository.resumeAll() }
-                })
-            }
-        }
-        TrayConfig(
-            id = "org.blaze.Downloader",
-            title = "Blaze",
-            icon = { size -> AppTrayIcon.image(size) },
-            menu = listOf(
-                TrayMenuItem.WindowToggle(
-                    hiddenLabel = strings.tray.show,
-                    shownLabel = strings.tray.hide,
-                ) { windowVisible = !windowVisible },
-            ) + downloadItems + listOf(
-                TrayMenuItem.Separator,
-                TrayMenuItem.Item(strings.tray.quit) { quitApp() },
-            ),
-        )
-    }
-
-    // Tray lifecycle (install on setting/locale change, Show/Hide sync, removal on
-    // teardown) is owned by the :tray module's Compose wrapper.
-    TrayHost(
-        service = trayService,
-        enabled = appSettings.trayEnabled,
-        config = trayConfig,
-        windowVisible = windowVisible,
-    )
+    AppTrayHost(strings = strings, shell = shell)
 
     CompositionLocalProvider(LocalBlazeStrings provides strings) {
-        BlazeTheme(palette = palette, isDark = isDark) {
+        AppTheme {
             BlazeWindow(
-                windowState = windowState,
-                visible = windowVisible,
-                onCloseRequest = {
-                    if (trayActive && appSettings.minimizeToTrayOnClose && !exiting) {
-                        // TrayHost propagates the new visibility into the Show/Hide item.
-                        windowVisible = false
-                    } else {
-                        quitApp()
-                    }
-                },
-                onMinimize = { windowVisible = false },
+                windowState = shell.windowState,
+                visible = shell.windowVisible.value,
+                onCloseRequest = shell::onCloseRequest,
+                onMinimize = shell::onMinimize,
             )
         }
     }
 }
-
-/**
- * Minimal snapshot of download state used to decide which queue actions the tray
- * menu should expose. A data class so `distinctUntilChanged` only re-emits when a
- * flag actually flips, keeping tray rebuilds tied to real state changes.
- */
-private data class TrayDownloadControls(
-    val canPauseAll: Boolean = false,
-    val canResumeAll: Boolean = false,
-)
