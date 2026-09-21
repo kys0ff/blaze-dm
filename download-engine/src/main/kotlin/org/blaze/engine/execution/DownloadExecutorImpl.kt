@@ -1,6 +1,7 @@
 package org.blaze.engine.execution
 
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -49,28 +50,28 @@ class DownloadExecutorImpl(
                 currentTask = updatedTask
                 send(updatedTask)
             }
-
-            if (currentTask.state == DownloadState.Failed) {
-                val delayMs = retryPolicy.getNextDelay(currentTask.error!!, currentTask.retryCount)
-                if (delayMs != null) {
-                    logger.info("Scheduling retry for ${currentTask.id} in ${delayMs}ms (retry ${currentTask.retryCount + 1})")
-                    send(
-                        currentTask.copy(
-                            state = DownloadState.Queued,
-                            scheduledAt = Instant.now().plusMillis(delayMs),
-                            retryCount = currentTask.retryCount + 1
-                        )
-                    )
-                }
-            }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             logger.error("Unexpected error in DownloadExecutor for ${currentTask.id}", e)
-            send(
-                currentTask.copy(
-                    state = DownloadState.Failed,
-                    error = DownloadError.Unknown(e.message ?: "Unknown error")
-                )
+            currentTask = currentTask.copy(
+                state = DownloadState.Failed,
+                error = DownloadError.Unknown(e.message ?: "Unknown error")
             )
+            send(currentTask)
+        }
+
+        if (currentTask.state == DownloadState.Failed) {
+            val delayMs = retryPolicy.getNextDelay(currentTask.error ?: DownloadError.Unknown("Unknown error"), currentTask.retryCount)
+            if (delayMs != null) {
+                logger.info("Scheduling retry for ${currentTask.id} in ${delayMs}ms (retry ${currentTask.retryCount + 1})")
+                send(
+                    currentTask.copy(
+                        state = DownloadState.Queued,
+                        scheduledAt = Instant.now().plusMillis(delayMs),
+                        retryCount = currentTask.retryCount + 1
+                    )
+                )
+            }
         }
     }
 

@@ -130,12 +130,10 @@ class DownloadManagerTest {
 
         try {
             var task: DownloadTask? = null
-            withTimeout(5000.milliseconds) {
-                while (true) {
-                    task = manager.getTask(id)
-                    if (task != null) break
-                    delay(50.milliseconds)
-                }
+            for (i in 1..500) {
+                task = manager.getTask(id)
+                if (task != null) break
+                Thread.sleep(10)
             }
 
             assertTrue(task != null, "Task should be loaded")
@@ -241,17 +239,124 @@ class DownloadManagerTest {
 
         try {
             var task: DownloadTask? = null
-            for (i in 1..200) {
+            for (i in 1..500) {
                 task = manager.getTask(id)
                 if (task != null) break
-                delay(50.milliseconds)
+                Thread.sleep(10)
             }
             
             requireNotNull(task) { "Task not loaded within timeout" }
 
-            
             val request = task.request as DownloadRequest.Torrent
             assertEquals(indices, request.fileIndices, "File indices should be preserved in request")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `test retryCount resets on manual start`() = runTest {
+        val tempDir = Files.createTempDirectory("blaze-retry-reset-test")
+        val storageDir = tempDir.resolve("storage")
+        Files.createDirectories(storageDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        
+        val id = DownloadId.generate()
+        repository.saveAll(listOf(
+            DownloadRecord(
+                id = id.value,
+                name = "RetryResetTest",
+                type = "HTTP",
+                url = "http://test",
+                destination = ".",
+                state = "FAILED",
+                addedAt = System.currentTimeMillis(),
+                retryCount = 3
+            )
+        ))
+
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo,
+            executorFactory = { MockExecutor() }
+        )
+
+        try {
+            var task: DownloadTask? = null
+            for (i in 1..500) {
+                task = manager.getTask(id)
+                if (task != null) break
+                Thread.sleep(10)
+            }
+            manager.start(id)
+            for (i in 1..500) {
+                task = manager.getTask(id)
+                if (task != null && task.retryCount == 0) break
+                Thread.sleep(10)
+            }
+            assertEquals(0, task?.retryCount, "retryCount should reset to 0 after manual start")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `test paused and failed downloads resume on startup`() = runTest {
+        val tempDir = Files.createTempDirectory("blaze-startup-resume-test")
+        val storageDir = tempDir.resolve("storage")
+        Files.createDirectories(storageDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        
+        val idPaused = DownloadId.generate()
+        val idFailed = DownloadId.generate()
+        repository.saveAll(listOf(
+            DownloadRecord(
+                id = idPaused.value,
+                name = "PausedTest",
+                type = "HTTP",
+                url = "http://test1",
+                destination = ".",
+                state = "PAUSED",
+                addedAt = System.currentTimeMillis()
+            ),
+            DownloadRecord(
+                id = idFailed.value,
+                name = "FailedTest",
+                type = "HTTP",
+                url = "http://test2",
+                destination = ".",
+                state = "FAILED",
+                addedAt = System.currentTimeMillis()
+            )
+        ))
+
+        settingsRepo.updateSettings { it.copy(resumeDownloadsOnStartup = true) }
+
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo,
+            executorFactory = { MockExecutor() }
+        )
+
+        try {
+            var taskPaused: DownloadTask? = null
+            var taskFailed: DownloadTask? = null
+            for (i in 1..500) {
+                taskPaused = manager.getTask(idPaused)
+                taskFailed = manager.getTask(idFailed)
+                if (taskPaused != null && taskFailed != null) break
+                Thread.sleep(10)
+            }
+            assertTrue(taskPaused?.state == DownloadState.Queued || taskPaused?.state == DownloadState.Starting, "Paused downloads should transition to Queued or Starting when resumeDownloadsOnStartup is true")
+            assertTrue(taskFailed?.state == DownloadState.Queued || taskFailed?.state == DownloadState.Starting, "Failed downloads should transition to Queued or Starting when resumeDownloadsOnStartup is true")
         } finally {
             manager.shutdown()
             tempDir.toFile().deleteRecursively()

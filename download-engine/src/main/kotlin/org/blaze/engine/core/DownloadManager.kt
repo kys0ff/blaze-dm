@@ -119,10 +119,14 @@ class DownloadManager(
             val loadedTasks = records.mapNotNull { record ->
                 try {
                     val task = parseRecord(record)
-                    val finalState = if (task.state == DownloadState.Queued || task.state.isActive) {
-                        if (settings.resumeDownloadsOnStartup) DownloadState.Queued else DownloadState.Paused
-                    } else {
-                        task.state
+                    val finalState = when {
+                        task.state.isActive || task.state == DownloadState.Paused || task.state == DownloadState.Failed -> {
+                            if (settings.resumeDownloadsOnStartup) DownloadState.Queued else DownloadState.Paused
+                        }
+                        task.state == DownloadState.Queued -> {
+                            if (settings.startQueuedOnStartup) DownloadState.Queued else DownloadState.Paused
+                        }
+                        else -> task.state
                     }
                     task.copy(state = finalState)
                 } catch (e: Exception) {

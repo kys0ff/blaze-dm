@@ -3,6 +3,7 @@ package org.blaze.engine.scheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,7 +23,6 @@ import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.settings.EngineSettingsRepository
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.seconds
 
 class DownloadScheduler(
@@ -127,7 +127,7 @@ class DownloadScheduler(
 
     suspend fun start(id: DownloadId) {
         val task = tasks.value[id] ?: return
-        tasks.update { it + (id to task.copy(state = DownloadState.Queued, scheduledAt = null, error = null)) }
+        tasks.update { it + (id to task.copy(state = DownloadState.Queued, scheduledAt = null, error = null, retryCount = 0)) }
         processQueue()
     }
 

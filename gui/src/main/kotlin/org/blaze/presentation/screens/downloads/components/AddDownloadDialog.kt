@@ -48,7 +48,15 @@ import org.koin.compose.koinInject
 @Composable
 fun AddDownloadDialog(
     onDismiss: () -> Unit,
-    onAdd: (url: String, destination: String, name: String?, fileIndices: List<Int>?, totalSize: Long?, files: List<DownloadFile>?, scheduledAt: Long?) -> Unit,
+    onAdd: (
+        url: String,
+        destination: String,
+        name: String?,
+        fileIndices: List<Int>?,
+        totalSize: Long?,
+        files: List<DownloadFile>?,
+        scheduledAt: Long?
+    ) -> Unit,
     onFetchMetadata: suspend (url: String) -> DownloadMetadata?
 ) {
     val settingsRepository = koinInject<EngineSettingsRepository>()
@@ -115,7 +123,8 @@ fun AddDownloadDialog(
                 state.source,
                 state.destination.text,
                 state.metadata?.name,
-                if (state.metadata?.files != null) state.selectedFileIndices.toList().sorted() else null,
+                if (state.metadata?.files != null) state.selectedFileIndices.toList()
+                    .sorted() else null,
                 state.metadata?.totalSize,
                 state.metadata?.files,
                 scheduledAt
@@ -194,7 +203,10 @@ fun AddDownloadDialog(
                 }
                 Spacer(Modifier.width(8.dp))
                 if (state.step == 1) {
-                    DefaultButton(onClick = ::fetch, enabled = state.canFetch && !state.isFetching) {
+                    DefaultButton(
+                        onClick = ::fetch,
+                        enabled = state.canFetch && !state.isFetching
+                    ) {
                         Text(strings.downloads.dialogs.addDownload)
                     }
                 } else {

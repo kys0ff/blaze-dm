@@ -4,6 +4,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.test.runTest
 import org.blaze.engine.api.DownloadRequest
@@ -36,7 +37,16 @@ class DownloadSchedulerTest {
             )
         }
 
-        override fun execute(): Flow<DownloadTask> = flow.filterNotNull()
+        override fun execute(): Flow<DownloadTask> = channelFlow {
+            flow.collect { currentTask ->
+                if (currentTask != null) {
+                    send(currentTask)
+                    if (currentTask.state == DownloadState.Completed) {
+                        close()
+                    }
+                }
+            }
+        }
         
         fun complete() {
             flow.value = flow.value?.copy(state = DownloadState.Completed)
