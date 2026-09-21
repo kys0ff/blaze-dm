@@ -24,6 +24,9 @@ import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputV
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadListView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
+import org.blaze.resolver.core.LinkResolverRegistry
+import org.blaze.resolver.core.LinkResolverSettingsRepository
+import org.blaze.resolver.core.LoadedResolver
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
@@ -46,17 +49,48 @@ fun AddDownloadDialog(
     onFetchMetadata: suspend (url: String) -> DownloadMetadata?
 ) {
     val settingsRepository = koinInject<EngineSettingsRepository>()
+    val registry = koinInject<LinkResolverRegistry>()
+    val resolverSettings = koinInject<LinkResolverSettingsRepository>()
     val defaultPath = remember { settingsRepository.settings.value.defaultDownloadDir }
     val state = remember { AddDownloadState(defaultPath) }
 
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
 
-    fun fetch() {
-        if (!state.canFetch || state.isFetching) return
+    // Defined before fetch() because fetch() references it (Kotlin local functions must be
+    // declared before their first use). Resolves a page link to a direct URL, then fetches.
+    fun resolveAndFetch(source: String, handler: LoadedResolver) {
+        state.showHandlerChoice = false
         state.isFetching = true
         scope.launch {
-            if (state.isBatch) {
+            registry.resolve(handler, source)
+                .onSuccess { resolved ->
+                    state.resolvedDirectUrl = resolved.directUrl
+                    val fetched = onFetchMetadata(resolved.directUrl)
+                    state.metadata = fetched ?: DownloadMetadata(
+                        name = resolved.fileName
+                            ?: source.substringAfterLast('/').substringBefore('?')
+                                .ifBlank { "download" },
+                        totalSize = resolved.sizeBytes,
+                        files = null
+                    )
+                    state.step = 2
+                }
+                .onFailure { e ->
+                    state.fetchError = e.message ?: "Couldn't resolve the link"
+                }
+            state.isFetching = false
+        }
+    }
+
+    fun fetch() {
+        if (!state.canFetch || state.isFetching) return
+        state.fetchError = null
+
+        // A batch downloads directly: each entry is fetched in parallel, no link handling.
+        if (state.isBatch) {
+            state.isFetching = true
+            scope.launch {
                 state.step = 2
                 state.batchItems.forEach { item ->
                     launch {
@@ -70,11 +104,34 @@ fun AddDownloadDialog(
                         }
                     }
                 }
-            } else {
-                state.metadata = onFetchMetadata(state.source)
-                state.step = 2
+                state.isFetching = false
             }
-            state.isFetching = false
+            return
+        }
+
+        val source = state.source
+        val isHttp = source.startsWith("http://", ignoreCase = true) ||
+                source.startsWith("https://", ignoreCase = true)
+        val handlers = if (isHttp) registry.enabledHandlers(source) else emptyList()
+
+        when {
+            // No handler claims this link: resolve it the normal way (direct HTTP / torrent).
+            handlers.isEmpty() -> {
+                state.isFetching = true
+                scope.launch {
+                    state.metadata = onFetchMetadata(source)
+                    state.step = 2
+                    state.isFetching = false
+                }
+            }
+            // A single handler and the user opted out of being asked: use it directly.
+            handlers.size == 1 && !resolverSettings.settings.value.alwaysAskHandler ->
+                resolveAndFetch(source, handlers[0])
+            // Several matches (or always-ask): let the user pick.
+            else -> {
+                state.handlerChoices = handlers
+                state.showHandlerChoice = true
+            }
         }
     }
 
@@ -106,7 +163,7 @@ fun AddDownloadDialog(
             }
         } else {
             onAdd(
-                state.source,
+                state.effectiveSource,
                 state.destination.text,
                 state.metadata?.name,
                 if (state.metadata?.files != null) state.selectedFileIndices.toList()
@@ -173,6 +230,14 @@ fun AddDownloadDialog(
             confirmText = confirmText,
             onConfirm = onConfirm,
             confirmEnabled = confirmEnabled
+        )
+    }
+
+    if (state.showHandlerChoice) {
+        HandlerChoiceDialog(
+            handlers = state.handlerChoices,
+            onDismiss = { state.showHandlerChoice = false },
+            onConfirm = { handler -> resolveAndFetch(state.source, handler) }
         )
     }
 }

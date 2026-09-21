@@ -16,6 +16,7 @@ repositories {
 
 dependencies {
     implementation(project(":download-engine"))
+    implementation(project(":link-resolver"))
     implementation(project(":i18n"))
     implementation(project(":filepicker"))
     

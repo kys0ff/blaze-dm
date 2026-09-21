@@ -6,8 +6,18 @@ import org.blaze.engine.settings.DownloadSettings
 enum class SettingsCategory {
     GENERAL,
     DOWNLOADS,
-    FILES
+    FILES,
+    EXTENSIONS
 }
+
+/** UI-facing snapshot of a registered link handler. */
+data class HandlerUiState(
+    val id: String,
+    val displayName: String,
+    val description: String,
+    val enabled: Boolean,
+    val isPlugin: Boolean
+)
 
 data class SettingsState(
     val currentCategory: SettingsCategory = SettingsCategory.GENERAL,
@@ -28,5 +38,8 @@ data class SettingsState(
     val retryDelaySecondsError: String? = null,
     val maxRedirectsError: String? = null,
     val maxPeerConnectionsError: String? = null,
-    val seedTimeLimitMinutesError: String? = null
+    val seedTimeLimitMinutesError: String? = null,
+    val handlers: List<HandlerUiState> = emptyList(),
+    val alwaysAskHandler: Boolean = true,
+    val extensionDir: String = ""
 )

@@ -25,7 +25,9 @@ val screenModelModule = module {
 
     factory {
         SettingsScreenModel(
-            settingsRepository = get()
+            settingsRepository = get(),
+            resolverRegistry = get(),
+            resolverSettingsRepository = get()
         )
     }
 }

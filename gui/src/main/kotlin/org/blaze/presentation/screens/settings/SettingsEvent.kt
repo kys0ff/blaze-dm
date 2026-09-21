@@ -41,7 +41,14 @@ sealed interface SettingsEvent {
     data class UpdateDefaultDownloadDir(val path: String) : SettingsEvent
     data class UpdateAskWhereToSave(val enabled: Boolean) : SettingsEvent
     data class UpdateFileConflictBehavior(val behavior: FileConflictBehavior) : SettingsEvent
-    
+
+    // Link handlers / extensions
+    data class ToggleHandler(val id: String, val enabled: Boolean) : SettingsEvent
+    data class UpdateAlwaysAskHandler(val enabled: Boolean) : SettingsEvent
+    data class InstallExtension(val jarPath: String) : SettingsEvent
+    data class RemoveExtension(val id: String) : SettingsEvent
+    data object ReloadHandlers : SettingsEvent
+
     data object SaveSettings : SettingsEvent
     data object ResetSettings : SettingsEvent
 }

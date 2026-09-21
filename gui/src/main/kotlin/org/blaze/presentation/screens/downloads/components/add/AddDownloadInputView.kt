@@ -158,6 +158,7 @@ fun AddDownloadInputView(
             val kind = if (isBatch) null else sourceKind(state.url.text)
             when {
                 fileError != null -> FieldHint(fileError!!, HintLevel.Error)
+                state.fetchError != null -> FieldHint(state.fetchError!!, HintLevel.Error)
                 isBatch -> Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically

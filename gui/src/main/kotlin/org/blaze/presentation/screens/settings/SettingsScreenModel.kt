@@ -6,12 +6,19 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.resolver.core.LinkResolverRegistry
+import org.blaze.resolver.core.LinkResolverSettingsRepository
+import org.blaze.resolver.core.ResolverSource
+import java.nio.file.Path
 
 class SettingsScreenModel(
-    private val settingsRepository: EngineSettingsRepository
+    private val settingsRepository: EngineSettingsRepository,
+    private val resolverRegistry: LinkResolverRegistry,
+    private val resolverSettingsRepository: LinkResolverSettingsRepository
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -19,7 +26,38 @@ class SettingsScreenModel(
 
     init {
         resetLocalState()
+        screenModelScope.launch {
+            combine(resolverRegistry.handlers, resolverSettingsRepository.settings) { handlers, settings ->
+                HandlersSnapshot(
+                    handlers = handlers.map { loaded ->
+                        HandlerUiState(
+                            id = loaded.resolver.id,
+                            displayName = loaded.resolver.displayName,
+                            description = loaded.resolver.description,
+                            enabled = loaded.resolver.id !in settings.disabledHandlers,
+                            isPlugin = loaded.source == ResolverSource.PLUGIN
+                        )
+                    },
+                    alwaysAsk = settings.alwaysAskHandler,
+                    extensionDir = settings.extensionDir
+                )
+            }.collect { snapshot ->
+                _state.update {
+                    it.copy(
+                        handlers = snapshot.handlers,
+                        alwaysAskHandler = snapshot.alwaysAsk,
+                        extensionDir = snapshot.extensionDir
+                    )
+                }
+            }
+        }
     }
+
+    private data class HandlersSnapshot(
+        val handlers: List<HandlerUiState>,
+        val alwaysAsk: Boolean,
+        val extensionDir: String
+    )
 
     private fun resetLocalState() {
         val currentSettings = settingsRepository.settings.value
@@ -168,6 +206,21 @@ class SettingsScreenModel(
             is SettingsEvent.UpdateFileConflictBehavior -> _state.update {
                 it.copy(settings = it.settings.copy(fileConflictBehavior = event.behavior))
             }
+
+            is SettingsEvent.ToggleHandler -> screenModelScope.launch {
+                resolverRegistry.setEnabled(event.id, event.enabled)
+            }
+            is SettingsEvent.UpdateAlwaysAskHandler -> screenModelScope.launch {
+                resolverRegistry.setAlwaysAsk(event.enabled)
+            }
+            is SettingsEvent.InstallExtension -> screenModelScope.launch {
+                resolverRegistry.install(Path.of(event.jarPath))
+            }
+            is SettingsEvent.RemoveExtension -> screenModelScope.launch {
+                resolverRegistry.uninstall(event.id)
+            }
+            SettingsEvent.ReloadHandlers -> resolverRegistry.reload()
+
             SettingsEvent.SaveSettings -> {
                 val s = _state.value
                 val seedingEnabled = s.settings.enableSeeding

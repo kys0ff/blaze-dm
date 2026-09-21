@@ -83,6 +83,12 @@ interface BlazeStrings {
             val overwriteAction: String
             val renameAction: String
             val skipAction: String
+
+            val handlerChoiceTitle: String
+            val handlerChoicePrompt: String
+            val resolveAction: String
+            val resolvingLink: String
+            val noHandlerForLink: String
         }
 
         val status: Status
@@ -199,6 +205,24 @@ interface BlazeStrings {
         val renameOption: String
         val validationPositiveNumber: String
         val validationNonNegativeNumber: String
+
+        val handlers: Handlers
+        interface Handlers {
+            val category: String
+            val supportedSitesHeader: String
+            val supportedSitesDesc: String
+            val alwaysAskLabel: String
+            val alwaysAskDesc: String
+            val extensionsDirHeader: String
+            val extensionsDirLabel: String
+            val extensionsDirDesc: String
+            val installAction: String
+            val reloadAction: String
+            val removeAction: String
+            val emptyHandlers: String
+            val builtinTag: String
+            val pluginTag: String
+        }
     }
     
     interface Errors {

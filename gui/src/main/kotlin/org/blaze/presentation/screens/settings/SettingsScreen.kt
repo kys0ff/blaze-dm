@@ -78,6 +78,7 @@ class SettingsScreen : Screen {
         val strings = blazeStrings
 
         var showDirPicker by remember { mutableStateOf(false) }
+        var showJarPicker by remember { mutableStateOf(false) }
         val scrollState = rememberScrollState()
 
         val speedLimitEnabled = state.settings.globalSpeedLimitEnabled
@@ -112,7 +113,8 @@ class SettingsScreen : Screen {
                     val categories = listOf(
                         SettingsCategory.GENERAL to strings.settings.generalCategory,
                         SettingsCategory.DOWNLOADS to strings.settings.downloadsCategory,
-                        SettingsCategory.FILES to strings.settings.filesCategory
+                        SettingsCategory.FILES to strings.settings.filesCategory,
+                        SettingsCategory.EXTENSIONS to strings.settings.handlers.category
                     )
 
                     categories.forEach { (category, label) ->
@@ -374,6 +376,113 @@ class SettingsScreen : Screen {
                                     }
                                 }
 
+                                SettingsCategory.EXTENSIONS -> {
+                                    val hStrings = strings.settings.handlers
+                                    val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+
+                                    SettingsSection(hStrings.supportedSitesHeader) {
+                                        Text(
+                                            text = hStrings.supportedSitesDesc,
+                                            style = infoStyle,
+                                            color = JewelTheme.globalColors.text.info
+                                        )
+
+                                        if (state.handlers.isEmpty()) {
+                                            Text(hStrings.emptyHandlers)
+                                        } else {
+                                            state.handlers.forEach { handler ->
+                                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        CheckboxRow(
+                                                            text = handler.displayName,
+                                                            checked = handler.enabled,
+                                                            onCheckedChange = { checked ->
+                                                                screenModel.onEvent(
+                                                                    SettingsEvent.ToggleHandler(handler.id, checked)
+                                                                )
+                                                            },
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        Text(
+                                                            text = if (handler.isPlugin) hStrings.pluginTag else hStrings.builtinTag,
+                                                            style = infoStyle,
+                                                            color = JewelTheme.globalColors.text.info
+                                                        )
+                                                        if (handler.isPlugin) {
+                                                            OutlinedButton(
+                                                                onClick = {
+                                                                    screenModel.onEvent(
+                                                                        SettingsEvent.RemoveExtension(handler.id)
+                                                                    )
+                                                                }
+                                                            ) {
+                                                                Text(hStrings.removeAction)
+                                                            }
+                                                        }
+                                                    }
+                                                    Text(
+                                                        text = handler.description,
+                                                        style = infoStyle,
+                                                        color = JewelTheme.globalColors.text.info,
+                                                        modifier = Modifier.padding(start = DependentIndent)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        CheckboxRow(
+                                            text = hStrings.alwaysAskLabel,
+                                            checked = state.alwaysAskHandler,
+                                            onCheckedChange = { checked ->
+                                                screenModel.onEvent(
+                                                    SettingsEvent.UpdateAlwaysAskHandler(checked)
+                                                )
+                                            }
+                                        )
+                                        Text(
+                                            text = hStrings.alwaysAskDesc,
+                                            style = infoStyle,
+                                            color = JewelTheme.globalColors.text.info,
+                                            modifier = Modifier.padding(start = DependentIndent)
+                                        )
+
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedButton(onClick = { showJarPicker = true }) {
+                                                Text(hStrings.installAction)
+                                            }
+                                            OutlinedButton(
+                                                onClick = { screenModel.onEvent(SettingsEvent.ReloadHandlers) }
+                                            ) {
+                                                Text(hStrings.reloadAction)
+                                            }
+                                        }
+                                    }
+
+                                    SettingsSection(hStrings.extensionsDirHeader) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text(text = hStrings.extensionsDirLabel)
+                                            TextField(
+                                                value = TextFieldValue(state.extensionDir),
+                                                onValueChange = {},
+                                                enabled = false,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Text(
+                                                text = hStrings.extensionsDirDesc,
+                                                style = infoStyle,
+                                                color = JewelTheme.globalColors.text.info
+                                            )
+                                        }
+                                    }
+                                }
+
                                 SettingsCategory.FILES -> {
                                     SettingsSection(strings.settings.destinationHeader) {
                                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -482,6 +591,19 @@ class SettingsScreen : Screen {
                 onPick = { path ->
                     screenModel.onEvent(SettingsEvent.UpdateDefaultDownloadDir(path.toString()))
                 }
+            )
+        }
+
+        if (showJarPicker) {
+            FilePickerDialog(
+                title = strings.settings.handlers.installAction,
+                mode = FilePickerMode.File,
+                onDismiss = { showJarPicker = false },
+                onPick = { path ->
+                    showJarPicker = false
+                    screenModel.onEvent(SettingsEvent.InstallExtension(path.toString()))
+                },
+                fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
             )
         }
     }

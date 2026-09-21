@@ -74,6 +74,12 @@ object EnStrings : BlazeStrings {
             override val overwriteAction = "Overwrite"
             override val renameAction = "Rename"
             override val skipAction = "Skip"
+
+            override val handlerChoiceTitle = "Choose link handler"
+            override val handlerChoicePrompt = "More than one handler can process this link. Which one should be used?"
+            override val resolveAction = "Resolve"
+            override val resolvingLink = "Resolving link..."
+            override val noHandlerForLink = "No installed handler can process this link."
         }
 
         override val status = object : BlazeStrings.Downloads.Status {
@@ -188,6 +194,23 @@ object EnStrings : BlazeStrings {
         override val renameOption = "Rename the file automatically"
         override val validationPositiveNumber = "Must be a positive number greater than 0"
         override val validationNonNegativeNumber = "Must be a non-negative number (0 or greater)"
+
+        override val handlers = object : BlazeStrings.Settings.Handlers {
+            override val category = "Link Handlers"
+            override val supportedSitesHeader = "Supported sites"
+            override val supportedSitesDesc = "Handlers turn page links (like MediaFire shares) into direct download links."
+            override val alwaysAskLabel = "Always ask which handler to use when several match"
+            override val alwaysAskDesc = "When off, a single matching handler is used automatically."
+            override val extensionsDirHeader = "Extensions"
+            override val extensionsDirLabel = "Extensions folder"
+            override val extensionsDirDesc = "Handler jars dropped into this folder are loaded at startup."
+            override val installAction = "Install extension..."
+            override val reloadAction = "Reload"
+            override val removeAction = "Remove"
+            override val emptyHandlers = "No handlers are installed."
+            override val builtinTag = "Built-in"
+            override val pluginTag = "Extension"
+        }
     }
     
     override val errors = object : BlazeStrings.Errors {
