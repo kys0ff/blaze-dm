@@ -9,6 +9,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import org.blaze.engine.api.DownloadError
@@ -73,6 +74,7 @@ class HttpNetworkClient(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 send(HttpNetworkEvent.Error(DownloadError.NetworkFailure(e.message ?: "Unknown network error")))
             }
 

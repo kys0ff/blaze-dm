@@ -3,6 +3,7 @@ package org.blaze.engine.core
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.HttpTimeoutConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -98,7 +99,13 @@ class DownloadManager(
     companion object {
         fun createDefaultHttpClient(): HttpClient = HttpClient(CIO) {
             install(HttpTimeout) {
-                requestTimeoutMillis = 60_000
+                // No absolute cap on the whole call: a streaming download of a large or
+                // slow file can legitimately take longer than any fixed timeout, and a
+                // finite request timeout would kill it mid-body with "Request timeout has
+                // expired" on every attempt. Dead connections are still detected by the
+                // socket (read-inactivity) timeout below, which surfaces as a retryable
+                // network error and triggers auto-retry.
+                requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
                 connectTimeoutMillis = 15_000
                 socketTimeoutMillis = 60_000
             }
