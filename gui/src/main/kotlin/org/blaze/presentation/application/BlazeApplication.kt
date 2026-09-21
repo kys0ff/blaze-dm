@@ -13,10 +13,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.blaze.data.AppSettingsRepository
+import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.settings.EngineSettingsRepository
@@ -88,8 +90,37 @@ fun ApplicationScope.BlazeApplication() {
         exitApplication()
     }
 
+    // Derive just enough download state to keep the tray menu honest: only offer
+    // "Pause All" when something is still transferring/queued and "Resume All"
+    // when something is paused. `distinctUntilChanged` collapses the frequent
+    // progress ticks into the handful of transitions that actually matter, so the
+    // tray is only rebuilt when an item must appear or disappear.
+    val trayControls by downloadRepository.downloads
+        .map { downloads ->
+            TrayDownloadControls(
+                canPauseAll = downloads.any {
+                    it.state == DownloadState.DOWNLOADING || it.state == DownloadState.QUEUED
+                },
+                canResumeAll = downloads.any { it.state == DownloadState.PAUSED },
+            )
+        }
+        .distinctUntilChanged()
+        .collectAsState(initial = TrayDownloadControls())
+
     // Blaze's tray identity, artwork and menu; the :tray library stays app-agnostic.
-    val trayConfig = remember(strings) {
+    val trayConfig = remember(strings, trayControls) {
+        val downloadItems = buildList {
+            if (trayControls.canPauseAll) {
+                add(TrayMenuItem.Item(strings.tray.pauseAll) {
+                    appScope.launch { downloadRepository.pauseAll() }
+                })
+            }
+            if (trayControls.canResumeAll) {
+                add(TrayMenuItem.Item(strings.tray.resumeAll) {
+                    appScope.launch { downloadRepository.resumeAll() }
+                })
+            }
+        }
         TrayConfig(
             id = "org.blaze.Downloader",
             title = "Blaze",
@@ -99,12 +130,7 @@ fun ApplicationScope.BlazeApplication() {
                     hiddenLabel = strings.tray.show,
                     shownLabel = strings.tray.hide,
                 ) { windowVisible = !windowVisible },
-                TrayMenuItem.Item(strings.tray.pauseAll) {
-                    appScope.launch { downloadRepository.pauseAll() }
-                },
-                TrayMenuItem.Item(strings.tray.resumeAll) {
-                    appScope.launch { downloadRepository.resumeAll() }
-                },
+            ) + downloadItems + listOf(
                 TrayMenuItem.Separator,
                 TrayMenuItem.Item(strings.tray.quit) { quitApp() },
             ),
@@ -138,3 +164,13 @@ fun ApplicationScope.BlazeApplication() {
         }
     }
 }
+
+/**
+ * Minimal snapshot of download state used to decide which queue actions the tray
+ * menu should expose. A data class so `distinctUntilChanged` only re-emits when a
+ * flag actually flips, keeping tray rebuilds tied to real state changes.
+ */
+private data class TrayDownloadControls(
+    val canPauseAll: Boolean = false,
+    val canResumeAll: Boolean = false,
+)
