@@ -18,6 +18,7 @@ fun DownloadsToolbar(
     hasActiveDownloads: Boolean,
     hasPausedDownloads: Boolean,
     hasCompletedDownloads: Boolean,
+    searchQuery: String,
     onEvent: (DownloadsEvent) -> Unit,
     onAddDownload: () -> Unit,
 ) {
@@ -25,6 +26,14 @@ fun DownloadsToolbar(
     ToolWindowHeader(
         title = strings.downloads.title,
         actions = {
+            DownloadsSearchField(
+                query = searchQuery,
+                onQueryChange = { onEvent(DownloadsEvent.SearchChanged(it)) },
+            )
+            Divider(
+                Orientation.Vertical,
+                modifier = Modifier.height(16.dp).padding(horizontal = 4.dp)
+            )
             ToolbarIconButton(
                 key = AllIconsKeys.General.Add,
                 tooltip = strings.downloads.toolbar.add,

@@ -10,8 +10,6 @@ import java.awt.Dimension
 fun BlazeWindow(
     windowState: WindowState,
     onCloseRequest: () -> Unit,
-    isDark: Boolean,
-    onToggleDark: () -> Unit,
 ) {
     DecoratedWindow(
         onCloseRequest = onCloseRequest,
@@ -22,10 +20,7 @@ fun BlazeWindow(
             window.minimumSize = Dimension(760, 480)
         }
 
-        BlazeTitleBar(
-            isDark = isDark,
-            onToggleDark = onToggleDark,
-        )
+        BlazeTitleBar()
 
         BlazeContent()
     }

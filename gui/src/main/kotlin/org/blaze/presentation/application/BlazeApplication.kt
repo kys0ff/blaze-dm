@@ -6,13 +6,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.settings.EngineSettingsRepository
@@ -40,7 +38,6 @@ fun ApplicationScope.BlazeApplication() {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val coroutineScope = rememberCoroutineScope()
 
     val windowState = rememberWindowState(
         size = DpSize(1100.dp, 720.dp),
@@ -57,13 +54,6 @@ fun ApplicationScope.BlazeApplication() {
                         engine.shutdown()
                     }
                     exitApplication()
-                },
-                isDark = isDark,
-                onToggleDark = {
-                    // The title-bar toggle pins an explicit theme; "Follow system" is only
-                    // selectable from Settings. Persist so the choice survives restarts.
-                    val next = if (isDark) ThemeMode.LIGHT else ThemeMode.DARK
-                    coroutineScope.launch { settingsRepository.updateSettings { it.copy(themeMode = next) } }
                 },
             )
         }

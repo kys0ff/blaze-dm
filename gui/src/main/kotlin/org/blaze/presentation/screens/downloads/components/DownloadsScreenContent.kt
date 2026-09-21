@@ -132,6 +132,7 @@ fun DownloadsScreenContent(
             hasActiveDownloads = hasActive,
             hasPausedDownloads = hasPaused,
             hasCompletedDownloads = hasCompleted,
+            searchQuery = state.searchQuery,
             onEvent = onEvent,
             onAddDownload = { showAddDialog = true }
         )
