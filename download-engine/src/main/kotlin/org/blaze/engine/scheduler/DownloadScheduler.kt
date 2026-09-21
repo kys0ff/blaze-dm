@@ -113,7 +113,10 @@ class DownloadScheduler(
                 }
             } catch (_: Exception) {
             } finally {
-                jobs.remove(id)
+                // Only remove if it's still this job
+                jobs.compute(id) { _, current ->
+                    if (current == coroutineContext[Job]) null else current
+                }
                 scope.launch { processQueue() }
             }
         }

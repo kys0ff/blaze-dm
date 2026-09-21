@@ -64,13 +64,13 @@ class DownloadExecutorImpl(
             val delayMs = retryPolicy.getNextDelay(currentTask.error ?: DownloadError.Unknown("Unknown error"), currentTask.retryCount)
             if (delayMs != null) {
                 logger.info("Scheduling retry for ${currentTask.id} in ${delayMs}ms (retry ${currentTask.retryCount + 1})")
-                send(
-                    currentTask.copy(
-                        state = DownloadState.Queued,
-                        scheduledAt = Instant.now().plusMillis(delayMs),
-                        retryCount = currentTask.retryCount + 1
-                    )
+                val retryingTask = currentTask.copy(
+                    state = DownloadState.Queued,
+                    scheduledAt = Instant.now().plusMillis(delayMs),
+                    retryCount = currentTask.retryCount + 1
                 )
+                currentTask = retryingTask
+                send(retryingTask)
             }
         }
     }
