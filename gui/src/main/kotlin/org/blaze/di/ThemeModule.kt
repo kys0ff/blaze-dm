@@ -1,6 +1,7 @@
 package org.blaze.di
 
 import org.blaze.theming.builtin.DefaultThemeProvider
+import org.blaze.theming.builtin.MidnightThemeProvider
 import org.blaze.theming.builtin.TealThemeProvider
 import org.blaze.theming.core.ThemePluginLoader
 import org.blaze.theming.core.ThemeRegistry
@@ -14,7 +15,7 @@ val themeModule = module {
 
     single {
         ThemeRegistry(
-            builtIns = listOf(DefaultThemeProvider(), TealThemeProvider()),
+            builtIns = listOf(DefaultThemeProvider(), TealThemeProvider(), MidnightThemeProvider()),
             pluginLoader = get(),
             settingsRepository = get()
         )
