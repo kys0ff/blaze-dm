@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.compose")
+    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kotlinCompose)
+    alias(libs.plugins.jetbrainsCompose)
 }
 
 group = "org.blaze"
@@ -14,8 +14,8 @@ repositories {
 
 dependencies {
     implementation(compose.desktop.currentOs)
-    implementation("io.insert-koin:koin-core:4.2.2")
-    implementation("io.insert-koin:koin-compose:4.2.2")
+    implementation(libs.koin.core)
+    implementation(libs.koin.compose)
 }
 
 kotlin {

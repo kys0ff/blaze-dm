@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm") version "2.4.20"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20"
-    id("org.jetbrains.compose") version "1.12.0"
+    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kotlinCompose)
+    alias(libs.plugins.jetbrainsCompose)
 }
 
 group = "org.blaze"
@@ -13,10 +13,6 @@ repositories {
     maven("https://www.jetbrains.com/intellij-repository/releases")
 }
 
-val jewelVersion = "0.41.0-262.10968.63"
-val voyagerVersion = "2.2.21-1.10.3"
-val koinVersion = "4.2.2"
-
 dependencies {
     implementation(project(":i18n"))
 
@@ -24,16 +20,16 @@ dependencies {
         exclude(group = "org.jetbrains.compose.material")
     }
 
-    implementation("org.jetbrains.jewel:jewel-int-ui-standalone:$jewelVersion")
-    implementation("com.jetbrains.intellij.platform:icons:262.10315.125")
+    implementation(libs.jewel.int.ui.standalone)
+    implementation(libs.intellij.platform.icons)
 
-    implementation("cafe.adriel.voyager:voyager-navigator:$voyagerVersion")
-    implementation("cafe.adriel.voyager:voyager-screenmodel:$voyagerVersion")
-    implementation("cafe.adriel.voyager:voyager-transitions:$voyagerVersion")
-    implementation("cafe.adriel.voyager:voyager-koin:$voyagerVersion")
+    implementation(libs.voyager.navigator)
+    implementation(libs.voyager.screenmodel)
+    implementation(libs.voyager.transitions)
+    implementation(libs.voyager.koin)
 
-    implementation("io.insert-koin:koin-core:$koinVersion")
-    implementation("io.insert-koin:koin-compose:$koinVersion")
+    implementation(libs.koin.core)
+    implementation(libs.koin.compose)
 
     testImplementation(kotlin("test"))
 }
