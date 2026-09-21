@@ -25,13 +25,13 @@ import org.blaze.i18n.LocalBlazeStrings
 import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.getStrings
 import org.blaze.platform.tray.AppTrayIcon
+import org.blaze.presentation.application.components.BlazeWindow
+import org.blaze.presentation.theme.BlazeTheme
+import org.blaze.theming.core.ThemeRegistry
 import org.blaze.tray.api.TrayConfig
 import org.blaze.tray.api.TrayMenuItem
 import org.blaze.tray.api.TrayService
 import org.blaze.tray.compose.TrayHost
-import org.blaze.presentation.application.components.BlazeWindow
-import org.blaze.presentation.theme.BlazeTheme
-import org.blaze.theming.core.ThemeRegistry
 import org.koin.compose.koinInject
 
 @Composable
@@ -51,7 +51,7 @@ fun ApplicationScope.BlazeApplication() {
         ThemeMode.DARK -> true
     }
 
-    // Resolve the active colour theme (built-in + plugin) for the current light/dark mode.
+    // Resolve the active color theme (built-in + plugin) for the current light/dark mode.
     // Observing both flows makes the palette recompute when the selection changes or a
     // theme jar is installed / removed.
     val themeRegistry = koinInject<ThemeRegistry>()

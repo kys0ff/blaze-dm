@@ -15,7 +15,7 @@ internal data class SniMenuEntry(
 /**
  * Pure menu-state holder for the SNI tray: knows the current entries and how to
  * render them into the `a{sv}` layout dicts of `com.canonical.dbusmenu`. No D-Bus
- * plumbing lives here, so the whole menu behaviour is unit-testable.
+ * plumbing lives here, so the whole menu behavior is unit-testable.
  *
  * Ids are positional (1-based, in menu order) and stable while the installed
  * [TrayConfig.menu] shape does not change, because hosts cache layouts and

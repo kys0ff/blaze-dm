@@ -23,7 +23,7 @@ class SniIconPixmapTest {
     @Test
     fun `pixels are big-endian argb row-major`() {
         val image = BufferedImage(2, 1, BufferedImage.TYPE_INT_ARGB)
-        image.setRGB(0, 0, 0x11223344.toInt())
+        image.setRGB(0, 0, 0x11223344)
         image.setRGB(1, 0, 0xAABBCCDD.toInt())
 
         val bytes = SniIconPixmap.argbBytes(image).map { it.toInt() and 0xFF }
