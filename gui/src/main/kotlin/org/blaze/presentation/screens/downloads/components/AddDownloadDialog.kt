@@ -1,46 +1,32 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.IdeDialogActions
+import org.blaze.presentation.components.IdeDialogTitle
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadListView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
-import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 import org.koin.compose.koinInject
 
@@ -136,92 +122,57 @@ fun AddDownloadDialog(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     val strings = blazeStrings
-    val shape = RoundedCornerShape(8.dp)
+    val dStrings = strings.downloads.dialogs
 
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .width(460.dp)
-                .clip(shape)
-                .background(JewelTheme.globalColors.panelBackground)
-                .border(1.dp, JewelTheme.globalColors.borders.normal, shape)
-                .onPreviewKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                        onDismiss()
-                        true
-                    } else {
-                        false
-                    }
-                }
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = if (state.isBatch) strings.downloads.dialogs.batchTitle else strings.downloads.dialogs.addTitle,
-                style = JewelTheme.defaultTextStyle.copy(
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+    // The primary action label/handler depend on the current step, so resolve them once.
+    val (confirmText, onConfirm, confirmEnabled) = if (state.step == 1) {
+        Triple(dStrings.addDownload, ::fetch, state.canFetch && !state.isFetching)
+    } else {
+        val enabled = if (state.isBatch) {
+            state.batchItems.any { it.isSelected }
+        } else {
+            state.metadata?.files == null || state.selectedFileIndices.isNotEmpty()
+        }
+        Triple(dStrings.addAction, ::submit, enabled)
+    }
+
+    // Focus stays on the source field (managed above), so the shell must not grab it.
+    IdeDialog(onDismiss = onDismiss, requestFocus = false) {
+        IdeDialogTitle(if (state.isBatch) dStrings.batchTitle else dStrings.addTitle)
+
+        when {
+            state.step == 1 -> AddDownloadInputView(
+                state = state,
+                focusRequester = focusRequester,
+                askWhereToSave = settingsRepository.settings.value.askWhereToSave,
+                onFetch = ::fetch
             )
 
-            if (state.step == 1) {
-                AddDownloadInputView(
-                    state = state,
-                    focusRequester = focusRequester,
-                    askWhereToSave = settingsRepository.settings.value.askWhereToSave,
-                    onFetch = ::fetch
-                )
-            } else if (state.isBatch) {
-                AddDownloadListView(state = state)
-            } else {
-                AddDownloadMetadataView(state = state)
-            }
+            state.isBatch -> AddDownloadListView(state = state)
 
-            if (state.isFetching) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    IndeterminateHorizontalProgressBar(modifier = Modifier.fillMaxWidth())
-                    Text(
-                        text = strings.downloads.dialogs.fetchingMetadata,
-                        style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
-                    )
-                }
-            }
+            else -> AddDownloadMetadataView(state = state)
+        }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
+        if (state.isFetching) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(onClick = onDismiss) {
-                    Text(strings.common.cancel)
-                }
-                Spacer(Modifier.width(8.dp))
-                if (state.step == 1) {
-                    DefaultButton(
-                        onClick = ::fetch,
-                        enabled = state.canFetch && !state.isFetching
-                    ) {
-                        Text(strings.downloads.dialogs.addDownload)
-                    }
-                } else {
-                    DefaultButton(
-                        onClick = ::submit,
-                        enabled = if (state.isBatch) {
-                            state.batchItems.any { it.isSelected }
-                        } else {
-                            state.metadata?.files == null || state.selectedFileIndices.isNotEmpty()
-                        }
-                    ) {
-                        Text(strings.downloads.dialogs.addAction)
-                    }
-                }
+                IndeterminateHorizontalProgressBar(modifier = Modifier.fillMaxWidth())
+                Text(
+                    text = dStrings.fetchingMetadata,
+                    style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+                )
             }
         }
+
+        IdeDialogActions(
+            dismissText = strings.common.cancel,
+            onDismiss = onDismiss,
+            confirmText = confirmText,
+            onConfirm = onConfirm,
+            confirmEnabled = confirmEnabled
+        )
     }
 }

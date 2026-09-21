@@ -531,7 +531,7 @@ private fun SettingsNavItem(
 
     val background = when {
         isSelected -> colors.backgroundSelectedActive
-        hovered -> JewelTheme.globalColors.text.normal.copy(alpha = 0.07f)
+        hovered -> IdeColors.hover
         else -> Color.Transparent
     }
     val contentColor = if (isSelected) colors.contentSelectedActive else Color.Unspecified
