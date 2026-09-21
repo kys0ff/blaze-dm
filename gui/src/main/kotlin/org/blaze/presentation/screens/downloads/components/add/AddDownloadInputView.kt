@@ -43,7 +43,7 @@ import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
-import org.blaze.presentation.theme.IdeColors
+import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatSize
 import org.blaze.i18n.BlazeStrings
 import org.blaze.resolver.core.LinkResolverRegistry
@@ -410,8 +410,8 @@ private fun FieldHint(text: String, level: HintLevel) {
         style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
         color = when (level) {
             HintLevel.Info -> JewelTheme.globalColors.text.info
-            HintLevel.Warning -> IdeColors.warning
-            HintLevel.Error -> IdeColors.error
+            HintLevel.Warning -> BlazeColors.warning
+            HintLevel.Error -> BlazeColors.error
         }
     )
 }

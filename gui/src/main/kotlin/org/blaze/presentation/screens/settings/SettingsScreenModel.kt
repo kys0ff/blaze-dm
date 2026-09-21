@@ -12,15 +12,21 @@ import kotlinx.coroutines.launch
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.presentation.screens.settings.state.HandlerUiState
 import org.blaze.presentation.screens.settings.state.SettingsState
+import org.blaze.presentation.screens.settings.state.ThemeUiState
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
 import org.blaze.resolver.core.ResolverSource
+import org.blaze.theming.core.ThemeRegistry
+import org.blaze.theming.core.ThemeSettingsRepository
+import org.blaze.theming.core.ThemeSource
 import java.nio.file.Path
 
 class SettingsScreenModel(
     private val settingsRepository: EngineSettingsRepository,
     private val resolverRegistry: LinkResolverRegistry,
-    private val resolverSettingsRepository: LinkResolverSettingsRepository
+    private val resolverSettingsRepository: LinkResolverSettingsRepository,
+    private val themeRegistry: ThemeRegistry,
+    private val themeSettingsRepository: ThemeSettingsRepository
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -54,7 +60,36 @@ class SettingsScreenModel(
                 }
             }
         }
+        screenModelScope.launch {
+            combine(
+                themeRegistry.themes,
+                themeRegistry.selectedThemeId,
+                themeSettingsRepository.settings
+            ) { themes, selectedId, settings ->
+                ThemesSnapshot(
+                    themes = themes.map { loaded ->
+                        ThemeUiState(
+                            id = loaded.provider.id,
+                            displayName = loaded.provider.displayName,
+                            description = loaded.provider.description,
+                            active = loaded.provider.id == selectedId,
+                            isPlugin = loaded.source == ThemeSource.PLUGIN
+                        )
+                    },
+                    themesDir = settings.extensionDir
+                )
+            }.collect { snapshot ->
+                _state.update {
+                    it.copy(themes = snapshot.themes, themesDir = snapshot.themesDir)
+                }
+            }
+        }
     }
+
+    private data class ThemesSnapshot(
+        val themes: List<ThemeUiState>,
+        val themesDir: String
+    )
 
     private data class HandlersSnapshot(
         val handlers: List<HandlerUiState>,
@@ -229,6 +264,17 @@ class SettingsScreenModel(
                 resolverRegistry.uninstall(event.id)
             }
             SettingsEvent.ReloadHandlers -> resolverRegistry.reload()
+
+            is SettingsEvent.SelectTheme -> screenModelScope.launch {
+                themeRegistry.select(event.id)
+            }
+            is SettingsEvent.InstallTheme -> screenModelScope.launch {
+                themeRegistry.install(Path.of(event.jarPath))
+            }
+            is SettingsEvent.RemoveTheme -> screenModelScope.launch {
+                themeRegistry.uninstall(event.id)
+            }
+            SettingsEvent.ReloadThemes -> themeRegistry.reload()
 
             SettingsEvent.SaveSettings -> {
                 val s = _state.value

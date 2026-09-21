@@ -20,6 +20,7 @@ import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.getStrings
 import org.blaze.presentation.application.components.BlazeWindow
 import org.blaze.presentation.theme.BlazeTheme
+import org.blaze.theming.core.ThemeRegistry
 import org.koin.compose.koinInject
 
 @Composable
@@ -39,6 +40,16 @@ fun ApplicationScope.BlazeApplication() {
         ThemeMode.DARK -> true
     }
 
+    // Resolve the active colour theme (built-in + plugin) for the current light/dark mode.
+    // Observing both flows makes the palette recompute when the selection changes or a
+    // theme jar is installed / removed.
+    val themeRegistry = koinInject<ThemeRegistry>()
+    val selectedThemeId by themeRegistry.selectedThemeId.collectAsState()
+    val themes by themeRegistry.themes.collectAsState()
+    val palette = remember(selectedThemeId, themes, isDark) {
+        themeRegistry.paletteFor(isDark)
+    }
+
     val windowState = rememberWindowState(
         size = DpSize(1100.dp, 720.dp),
     )
@@ -46,7 +57,7 @@ fun ApplicationScope.BlazeApplication() {
     val engine = koinInject<DownloadEngine>()
 
     CompositionLocalProvider(LocalBlazeStrings provides strings) {
-        BlazeTheme(isDark = isDark) {
+        BlazeTheme(palette = palette, isDark = isDark) {
             BlazeWindow(
                 windowState = windowState,
                 onCloseRequest = {

@@ -27,7 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.theme.IdeColors
+import org.blaze.presentation.theme.BlazeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -91,7 +91,7 @@ private fun SidebarRow(
 
     val background = when {
         isSelected -> style.colors.backgroundSelectedActive
-        hovered -> IdeColors.hover
+        hovered -> BlazeColors.hover
         else -> Color.Transparent
     }
     val contentColor = if (isSelected) style.colors.contentSelectedActive else Color.Unspecified

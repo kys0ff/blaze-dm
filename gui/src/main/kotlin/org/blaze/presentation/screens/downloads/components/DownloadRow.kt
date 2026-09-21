@@ -42,7 +42,7 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.theme.IdeColors
+import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
 import org.blaze.presentation.util.formatSpeed
@@ -103,7 +103,7 @@ fun DownloadRow(
     // ── Colors ────────────────────────────────────────────────────────────────
     val background = when {
         isSelected -> listColors.backgroundSelectedActive
-        hovered -> IdeColors.hover
+        hovered -> BlazeColors.hover
         else -> Color.Transparent
     }
     val primary = if (isSelected) listColors.contentSelectedActive else Color.Unspecified
@@ -222,7 +222,7 @@ fun DownloadRow(
                             Text(
                                 text = error.toFriendlyMessage(strings),
                                 style = smallText,
-                                color = if (isSelected) primary else IdeColors.error,
+                                color = if (isSelected) primary else BlazeColors.error,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)

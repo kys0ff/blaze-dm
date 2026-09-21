@@ -15,19 +15,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.theme.IdeColors
+import org.blaze.presentation.theme.BlazeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 
 @Composable
 internal fun DownloadState.indicatorColor(): Color = when (this) {
     DownloadState.QUEUED -> JewelTheme.globalColors.text.info
-    DownloadState.DOWNLOADING -> IdeColors.accent
-    DownloadState.PAUSED -> IdeColors.warning
-    DownloadState.COMPLETED -> IdeColors.success
-    DownloadState.FAILED -> IdeColors.error
+    DownloadState.DOWNLOADING -> BlazeColors.accent
+    DownloadState.PAUSED -> BlazeColors.warning
+    DownloadState.COMPLETED -> BlazeColors.success
+    DownloadState.FAILED -> BlazeColors.error
     DownloadState.REMOVING -> JewelTheme.globalColors.text.disabled
-    DownloadState.SEEDING -> IdeColors.warning
+    DownloadState.SEEDING -> BlazeColors.warning
 }
 
 @Composable

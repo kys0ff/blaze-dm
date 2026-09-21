@@ -41,7 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.theme.IdeColors
+import org.blaze.presentation.theme.BlazeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Link
@@ -123,7 +123,7 @@ private fun NotificationBalloon(
     val isError = notification.type == NotificationType.ERROR
     val panelColor = JewelTheme.globalColors.panelBackground
     val borderColor = if (isError) {
-        IdeColors.error.copy(alpha = 0.6f)
+        BlazeColors.error.copy(alpha = 0.6f)
     } else {
         JewelTheme.globalColors.borders.normal
     }
@@ -145,7 +145,7 @@ private fun NotificationBalloon(
                 .then(
                     if (isError) {
                         Modifier.background(
-                            IdeColors.error.copy(alpha = 0.08f),
+                            BlazeColors.error.copy(alpha = 0.08f),
                         )
                     } else {
                         Modifier

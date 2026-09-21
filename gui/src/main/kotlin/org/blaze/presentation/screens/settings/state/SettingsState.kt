@@ -25,5 +25,7 @@ data class SettingsState(
     val seedTimeLimitMinutesError: String? = null,
     val handlers: List<HandlerUiState> = emptyList(),
     val alwaysAskHandler: Boolean = true,
-    val extensionDir: String = ""
+    val extensionDir: String = "",
+    val themes: List<ThemeUiState> = emptyList(),
+    val themesDir: String = ""
 )

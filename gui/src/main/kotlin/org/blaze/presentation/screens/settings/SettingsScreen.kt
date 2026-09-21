@@ -48,12 +48,12 @@ import org.blaze.engine.settings.LogLevel
 import org.blaze.engine.settings.ThemeMode
 import org.blaze.i18n.blazeStrings
 import org.blaze.logging.LogConfigurator
-import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ExtensionIcon
+import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.settings.state.SettingsCategory
-import org.blaze.presentation.theme.IdeColors
+import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.openInFileManager
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -88,6 +88,7 @@ class SettingsScreen : Screen {
 
         var showDirPicker by remember { mutableStateOf(false) }
         var showJarPicker by remember { mutableStateOf(false) }
+        var showThemeJarPicker by remember { mutableStateOf(false) }
         val scrollState = rememberScrollState()
 
         val speedLimitEnabled = state.settings.globalSpeedLimitEnabled
@@ -124,6 +125,7 @@ class SettingsScreen : Screen {
                         SettingsCategory.DOWNLOADS to strings.settings.downloadsCategory,
                         SettingsCategory.FILES to strings.settings.filesCategory,
                         SettingsCategory.EXTENSIONS to strings.settings.handlers.category,
+                        SettingsCategory.THEMES to strings.settings.themes.category,
                         SettingsCategory.LOGS to strings.settings.logsCategory
                     )
 
@@ -498,6 +500,93 @@ class SettingsScreen : Screen {
                                     }
                                 }
 
+                                SettingsCategory.THEMES -> {
+                                    val tStrings = strings.settings.themes
+                                    val themeInfoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+
+                                    SettingsSection(tStrings.colorThemeHeader) {
+                                        Text(
+                                            text = tStrings.colorThemeDesc,
+                                            style = themeInfoStyle,
+                                            color = JewelTheme.globalColors.text.info
+                                        )
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            state.themes.forEach { theme ->
+                                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        RadioButtonRow(
+                                                            text = theme.displayName,
+                                                            selected = theme.active,
+                                                            onClick = {
+                                                                screenModel.onEvent(
+                                                                    SettingsEvent.SelectTheme(theme.id)
+                                                                )
+                                                            },
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        Text(
+                                                            text = if (theme.isPlugin) tStrings.pluginTag else tStrings.builtinTag,
+                                                            style = themeInfoStyle,
+                                                            color = JewelTheme.globalColors.text.info
+                                                        )
+                                                        if (theme.isPlugin) {
+                                                            OutlinedButton(
+                                                                onClick = {
+                                                                    screenModel.onEvent(
+                                                                        SettingsEvent.RemoveTheme(theme.id)
+                                                                    )
+                                                                }
+                                                            ) {
+                                                                Text(tStrings.removeAction)
+                                                            }
+                                                        }
+                                                    }
+                                                    Text(
+                                                        text = theme.description,
+                                                        style = themeInfoStyle,
+                                                        color = JewelTheme.globalColors.text.info,
+                                                        modifier = Modifier.padding(start = DependentIndent)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    SettingsSection(tStrings.themesDirHeader) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedButton(onClick = { showThemeJarPicker = true }) {
+                                                Text(tStrings.installAction)
+                                            }
+                                            OutlinedButton(
+                                                onClick = { screenModel.onEvent(SettingsEvent.ReloadThemes) }
+                                            ) {
+                                                Text(tStrings.reloadAction)
+                                            }
+                                        }
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text(text = tStrings.themesDirLabel)
+                                            TextField(
+                                                value = TextFieldValue(state.themesDir),
+                                                onValueChange = {},
+                                                enabled = false,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Text(
+                                                text = tStrings.themesDirDesc,
+                                                style = themeInfoStyle,
+                                                color = JewelTheme.globalColors.text.info
+                                            )
+                                        }
+                                    }
+                                }
+
                                 SettingsCategory.FILES -> {
                                     SettingsSection(strings.settings.destinationHeader) {
                                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -701,6 +790,19 @@ class SettingsScreen : Screen {
                 fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
             )
         }
+
+        if (showThemeJarPicker) {
+            FilePickerDialog(
+                title = strings.settings.themes.installAction,
+                mode = FilePickerMode.File,
+                onDismiss = { showThemeJarPicker = false },
+                onPick = { path ->
+                    showThemeJarPicker = false
+                    screenModel.onEvent(SettingsEvent.InstallTheme(path.toString()))
+                },
+                fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
+            )
+        }
     }
 }
 
@@ -748,7 +850,7 @@ private fun SettingsNavItem(
 
     val background = when {
         isSelected -> colors.backgroundSelectedActive
-        hovered -> IdeColors.hover
+        hovered -> BlazeColors.hover
         else -> Color.Transparent
     }
     val contentColor = if (isSelected) colors.contentSelectedActive else Color.Unspecified
@@ -782,7 +884,7 @@ private fun SettingsNavItem(
                     modifier = Modifier
                         .size(7.dp)
                         .clip(CircleShape)
-                        .background(IdeColors.error)
+                        .background(BlazeColors.error)
                 )
             }
         }
@@ -819,7 +921,7 @@ private fun NumberField(
         if (showError) {
             Text(
                 text = error,
-                color = IdeColors.error,
+                color = BlazeColors.error,
                 style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
             )
         }

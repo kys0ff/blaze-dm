@@ -55,6 +55,12 @@ sealed interface SettingsEvent {
     data class RemoveExtension(val id: String) : SettingsEvent
     data object ReloadHandlers : SettingsEvent
 
+    // Themes / theme extensions
+    data class SelectTheme(val id: String) : SettingsEvent
+    data class InstallTheme(val jarPath: String) : SettingsEvent
+    data class RemoveTheme(val id: String) : SettingsEvent
+    data object ReloadThemes : SettingsEvent
+
     data object SaveSettings : SettingsEvent
     data object ResetSettings : SettingsEvent
 }

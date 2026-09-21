@@ -8,6 +8,7 @@ import org.blaze.di.loggingModule
 import org.blaze.di.repositoryModule
 import org.blaze.di.resolverModule
 import org.blaze.di.screenModelModule
+import org.blaze.di.themeModule
 import org.blaze.di.useCaseModule
 import org.blaze.i18n.i18nModule
 import org.blaze.logging.LogConfigurator
@@ -24,6 +25,7 @@ fun main() {
             loggingModule,
             repositoryModule,
             resolverModule,
+            themeModule,
             useCaseModule,
             screenModelModule,
             i18nModule,

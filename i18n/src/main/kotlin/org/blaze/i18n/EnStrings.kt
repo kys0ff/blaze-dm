@@ -222,7 +222,7 @@ object EnStrings : BlazeStrings {
         override val handlers = object : BlazeStrings.Settings.Handlers {
             override val category = "Link Handlers"
             override val supportedSitesHeader = "Supported sites"
-            override val supportedSitesDesc = "Handlers turn page links (like MediaFire shares) into direct download links."
+            override val supportedSitesDesc = "Handlers turn page links into direct download links."
             override val alwaysAskLabel = "Always ask which handler to use when several match"
             override val alwaysAskDesc = "When off, the first matching handler is used automatically. A single matching handler is always used without asking."
             override val extensionsDirHeader = "Extensions"
@@ -232,6 +232,21 @@ object EnStrings : BlazeStrings {
             override val reloadAction = "Reload"
             override val removeAction = "Remove"
             override val emptyHandlers = "No handlers are installed."
+            override val builtinTag = "Built-in"
+            override val pluginTag = "Extension"
+        }
+
+        override val themes = object : BlazeStrings.Settings.Themes {
+            override val category = "Themes"
+            override val colorThemeHeader = "Color theme"
+            override val colorThemeDesc = "Pick a theme to restyle Blaze's accent and surfaces. Add more by installing theme extensions."
+            override val activeRadio = "Active"
+            override val themesDirHeader = "Theme extensions"
+            override val themesDirLabel = "Themes folder"
+            override val themesDirDesc = "Theme jars dropped into this folder are loaded at startup."
+            override val installAction = "Install theme..."
+            override val reloadAction = "Reload"
+            override val removeAction = "Remove"
             override val builtinTag = "Built-in"
             override val pluginTag = "Extension"
         }

@@ -249,6 +249,22 @@ interface BlazeStrings {
             val builtinTag: String
             val pluginTag: String
         }
+
+        val themes: Themes
+        interface Themes {
+            val category: String
+            val colorThemeHeader: String
+            val colorThemeDesc: String
+            val activeRadio: String
+            val themesDirHeader: String
+            val themesDirLabel: String
+            val themesDirDesc: String
+            val installAction: String
+            val reloadAction: String
+            val removeAction: String
+            val builtinTag: String
+            val pluginTag: String
+        }
     }
     
     interface Errors {
