@@ -4,6 +4,10 @@ import org.blaze.data.AppSettingsRepository
 import org.blaze.platform.autostart.AutoStartCoordinator
 import org.blaze.platform.autostart.AutoStartService
 import org.blaze.platform.autostart.AutoStartServiceFactory
+import org.blaze.platform.clipboard.AwtSystemClipboard
+import org.blaze.platform.clipboard.SystemClipboard
+import org.blaze.platform.files.SystemFileService
+import org.blaze.platform.files.SystemFileServiceFactory
 import org.blaze.platform.taskbar.TaskbarProgressService
 import org.blaze.platform.taskbar.TaskbarProgressServiceFactory
 import org.koin.dsl.module
@@ -23,4 +27,8 @@ val platformModule = module {
     single { AutoStartCoordinator(appSettingsRepository = get(), service = get()) }
 
     single<TaskbarProgressService> { TaskbarProgressServiceFactory.create() }
+
+    single<SystemFileService> { SystemFileServiceFactory.create() }
+
+    single<SystemClipboard> { AwtSystemClipboard() }
 }

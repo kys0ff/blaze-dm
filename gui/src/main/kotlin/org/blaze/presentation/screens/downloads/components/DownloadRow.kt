@@ -6,6 +6,9 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ContextMenuArea
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -42,6 +45,7 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
+import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
@@ -77,19 +81,16 @@ private fun DownloadState.iconKey(): IconKey = when (this) {
     else -> AllIconsKeys.Actions.Download
 }
 
-@OptIn(ExperimentalJewelApi::class)
+@OptIn(ExperimentalJewelApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DownloadRow(
     download: Download,
-    onPause: () -> Unit,
-    onResume: () -> Unit,
-    onRemove: () -> Unit,
-    onRetry: () -> Unit,
-    onCancel: () -> Unit,
+    actions: DownloadRowActions,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onSelect: () -> Unit = {},
-    hideResume: Boolean = false
+    hideResume: Boolean = false,
+    capabilities: DownloadCapabilities = DownloadCapabilities()
 ) {
     var showFileList by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
@@ -150,6 +151,12 @@ fun DownloadRow(
 
     val smallText = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
+    // Right-click anywhere on the row opens the state-aware context menu. The row's own
+    // gestures (select on click, open on double-click) live on the inner Row, so the
+    // secondary-button detector installed by ContextMenuArea and the primary clicks coexist.
+    ContextMenuArea(
+        items = { buildDownloadContextMenu(download, capabilities, strings, actions, hideResume) }
+    ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -162,7 +169,12 @@ fun DownloadRow(
                 .clip(ListItemShape)
                 .background(background)
                 .hoverable(interaction)
-                .clickable(interactionSource = interaction, indication = null, onClick = onSelect)
+                .combinedClickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onClick = onSelect,
+                    onDoubleClick = { if (isCompleted) actions.openFile() },
+                )
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -249,16 +261,16 @@ fun DownloadRow(
                         }
                         when (download.state) {
                             DownloadState.DOWNLOADING, DownloadState.SEEDING ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Pause, strings.downloads.actions.pause, onPause)
+                                ToolbarIconButton(AllIconsKeys.Actions.Pause, strings.downloads.actions.pause, actions.pause)
 
                             DownloadState.PAUSED, DownloadState.QUEUED -> {
                                 if (!hideResume || download.state != DownloadState.QUEUED) {
-                                    ToolbarIconButton(AllIconsKeys.Actions.Resume, strings.downloads.actions.resume, onResume)
+                                    ToolbarIconButton(AllIconsKeys.Actions.Resume, strings.downloads.actions.resume, actions.resume)
                                 }
                             }
 
                             DownloadState.FAILED ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Restart, strings.downloads.actions.retry, onRetry)
+                                ToolbarIconButton(AllIconsKeys.Actions.Restart, strings.downloads.actions.retry, actions.retry)
 
                             else -> {}
                         }
@@ -267,9 +279,9 @@ fun DownloadRow(
                             download.state == DownloadState.PAUSED ||
                             download.state == DownloadState.QUEUED
                         ) {
-                            ToolbarIconButton(AllIconsKeys.Actions.Cancel, strings.downloads.actions.cancel, onCancel)
+                            ToolbarIconButton(AllIconsKeys.Actions.Cancel, strings.downloads.actions.cancel, actions.cancel)
                         }
-                        ToolbarIconButton(AllIconsKeys.Actions.GC, strings.downloads.actions.remove, onRemove)
+                        ToolbarIconButton(AllIconsKeys.Actions.GC, strings.downloads.actions.remove, actions.remove)
                     }
                 } else if (!isCompleted && !isIndeterminate) {
                     Text(
@@ -334,5 +346,6 @@ fun DownloadRow(
                 }
             }
         }
+    }
     }
 }

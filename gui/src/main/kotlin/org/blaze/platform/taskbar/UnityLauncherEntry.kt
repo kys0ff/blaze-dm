@@ -20,7 +20,6 @@ import org.freedesktop.dbus.types.Variant
  * dbus-java can derive the signal's interface name from the enclosing type. Method
  * names keep the wire casing because dbus-java reflects on `Method.getName()`.
  */
-@Suppress("FunctionName")
 @DBusInterfaceName("com.canonical.Unity.LauncherEntry")
 interface UnityLauncherEntry : DBusInterface {
 

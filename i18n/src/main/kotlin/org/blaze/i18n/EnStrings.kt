@@ -112,6 +112,11 @@ object EnStrings : BlazeStrings {
             override val cancel = "Cancel"
             override val remove = "Remove"
             override val showFiles = "Show files"
+            override val openFile = "Open"
+            override val showInFolder = "Show in folder"
+            override val openSourceLink = "Open source link in browser"
+            override val copyLink = "Copy download link"
+            override val copyFilePath = "Copy file location"
         }
     }
 

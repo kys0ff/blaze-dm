@@ -1,8 +1,10 @@
 package org.blaze.presentation.screens.downloads
 
+import androidx.compose.foundation.LocalContextMenuRepresentation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,6 +17,7 @@ import org.blaze.presentation.components.notifications.NotificationHost
 import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.screens.downloads.components.DownloadsScreenContent
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
+import org.jetbrains.jewel.ui.component.ContextMenuRepresentation
 
 class DownloadsScreen : Screen {
     @OptIn(ExperimentalJewelApi::class)
@@ -35,19 +38,23 @@ class DownloadsScreen : Screen {
 
         val settings by screenModel.settingsRepository.settings.collectAsState()
 
-        Box(Modifier.fillMaxSize()) {
-            DownloadsScreenContent(
-                state = state,
-                onEvent = screenModel::onEvent,
-                onFetchMetadata = { url -> screenModel.fetchMetadata(url) },
-                onResolveDestinationPath = { url, savePath, name -> screenModel.resolveDestinationPath(url, savePath, name) },
-                fileConflictBehavior = settings.fileConflictBehavior,
-            )
+        // Route every row's right-click menu through Jewel's themed popup instead of the
+        // default lightweight Compose representation.
+        CompositionLocalProvider(LocalContextMenuRepresentation provides ContextMenuRepresentation) {
+            Box(Modifier.fillMaxSize()) {
+                DownloadsScreenContent(
+                    state = state,
+                    onEvent = screenModel::onEvent,
+                    onFetchMetadata = { url -> screenModel.fetchMetadata(url) },
+                    onResolveDestinationPath = { url, savePath, name -> screenModel.resolveDestinationPath(url, savePath, name) },
+                    fileConflictBehavior = settings.fileConflictBehavior,
+                )
 
-            NotificationHost(
-                state = notifications,
-                modifier = Modifier.align(Alignment.BottomEnd),
-            )
+                NotificationHost(
+                    state = notifications,
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                )
+            }
         }
     }
 }

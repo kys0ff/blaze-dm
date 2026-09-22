@@ -19,7 +19,9 @@ val screenModelModule = module {
             retryDownload = get(),
             pauseAllDownloads = get(),
             resumeAllDownloads = get(),
-            clearCompletedDownloads = get()
+            clearCompletedDownloads = get(),
+            systemFileService = get(),
+            clipboard = get()
         )
     }
 

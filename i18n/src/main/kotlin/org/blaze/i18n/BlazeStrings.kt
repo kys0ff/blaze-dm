@@ -125,6 +125,11 @@ interface BlazeStrings {
             val cancel: String
             val remove: String
             val showFiles: String
+            val openFile: String
+            val showInFolder: String
+            val openSourceLink: String
+            val copyLink: String
+            val copyFilePath: String
         }
     }
 

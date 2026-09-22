@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.blaze.domain.models.Download
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.usecase.AddDownloadUseCase
 import org.blaze.domain.usecase.CancelDownloadUseCase
@@ -24,6 +25,9 @@ import org.blaze.domain.usecase.ResumeAllDownloadsUseCase
 import org.blaze.domain.usecase.ResumeDownloadUseCase
 import org.blaze.domain.usecase.RetryDownloadUseCase
 import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.platform.clipboard.SystemClipboard
+import org.blaze.platform.files.SystemFileService
+import java.nio.file.Path
 
 class DownloadsScreenModel(
     getDownloads: GetDownloadsUseCase,
@@ -38,10 +42,20 @@ class DownloadsScreenModel(
     private val retryDownload: RetryDownloadUseCase,
     private val pauseAllDownloads: PauseAllDownloadsUseCase,
     private val resumeAllDownloads: ResumeAllDownloadsUseCase,
-    private val clearCompletedDownloads: ClearCompletedDownloadsUseCase
+    private val clearCompletedDownloads: ClearCompletedDownloadsUseCase,
+    private val systemFileService: SystemFileService,
+    private val clipboard: SystemClipboard
 ) : ScreenModel {
 
     private val _searchQuery = MutableStateFlow("")
+
+    /** Capabilities are fixed for the host; resolved once so the row menu can hide unsupported actions. */
+    private val capabilities = DownloadCapabilities(
+        canOpenFiles = systemFileService.canOpenFiles,
+        canRevealInFolder = systemFileService.canRevealInFolder,
+        canBrowseLinks = systemFileService.canBrowseLinks,
+        canCopy = clipboard.isSupported
+    )
 
     val state: StateFlow<DownloadsState> = combine(
         getDownloads(),
@@ -52,6 +66,7 @@ class DownloadsScreenModel(
             downloads = downloads,
             searchQuery = query,
             maxConcurrentDownloads = settings.maxConcurrentDownloads,
+            capabilities = capabilities,
             filteredDownloads = if (query.isBlank()) {
                 downloads
             } else {
@@ -61,7 +76,7 @@ class DownloadsScreenModel(
                 }
             }
         )
-    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), DownloadsState())
+    }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), DownloadsState(capabilities = capabilities))
 
     private val _effects = MutableSharedFlow<DownloadsEffect>()
     val effects = _effects.asSharedFlow()
@@ -151,7 +166,53 @@ class DownloadsScreenModel(
                 _effects.emit(DownloadsEffect.ShowError("Failed to clear completed downloads: ${e.message}"))
             }
         }
+
+        is DownloadsEvent.OpenFile -> runDesktop(event.id) { download ->
+            systemFileService.openPath(download.destinationPath())
+        }
+
+        is DownloadsEvent.ShowInFolder -> runDesktop(event.id) { download ->
+            systemFileService.revealInFolder(download.destinationPath())
+        }
+
+        is DownloadsEvent.OpenSourceLink -> runDesktop(event.id) { download ->
+            if (download.url.startsWith("http://", ignoreCase = true) ||
+                download.url.startsWith("https://", ignoreCase = true)
+            ) {
+                systemFileService.openInBrowser(download.url)
+            } else {
+                Result.failure(IllegalStateException("No web link to open for this download"))
+            }
+        }
+
+        is DownloadsEvent.CopyDownloadLink -> runDesktop(event.id) { download ->
+            clipboard.copy(download.url)
+        }
+
+        is DownloadsEvent.CopyFileLocation -> runDesktop(event.id) { download ->
+            clipboard.copy(download.destinationPath().toAbsolutePath().normalize().toString())
+        }
     }
+
+    /**
+     * Shared plumbing for the desktop-integration actions: resolve the download by id, run the
+     * [action] and surface any failure as an error notification. Keeps each event branch focused
+     * on choosing the target rather than repeating lookup and error handling.
+     */
+    private fun runDesktop(id: String, action: suspend (Download) -> Result<Unit>) {
+        val download = state.value.downloads.find { it.id == id } ?: return
+        screenModelScope.launch {
+            action(download).onFailure { error ->
+                _effects.emit(DownloadsEffect.ShowError(error.message ?: "The action could not be completed"))
+            }
+        }
+    }
+
+    /**
+     * The on-disk target for Open / Show-in-folder / Copy-location. HTTP downloads resolve to the
+     * file itself, while a torrent's destination is the folder its selected files live under.
+     */
+    private fun Download.destinationPath(): Path = Path.of(savePath)
 
     suspend fun fetchMetadata(url: String): DownloadMetadata? = fetchMetadataUseCase(url)
 

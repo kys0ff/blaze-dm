@@ -154,7 +154,8 @@ fun DownloadsScreenContent(
                 onEvent = onEvent,
                 onRemoveRequested = handleRemoveRequest,
                 onSelect = { id -> selectedId = id },
-                hideResumeForQueued = hideResumeForQueued
+                hideResumeForQueued = hideResumeForQueued,
+                capabilities = state.capabilities
             )
         }
     }

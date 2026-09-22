@@ -21,4 +21,11 @@ sealed interface DownloadsEvent {
     data object PauseAll : DownloadsEvent
     data object ResumeAll : DownloadsEvent
     data object ClearCompleted : DownloadsEvent
+
+    // Desktop integration actions surfaced from the row's right-click menu / double-click.
+    data class OpenFile(val id: String) : DownloadsEvent
+    data class ShowInFolder(val id: String) : DownloadsEvent
+    data class OpenSourceLink(val id: String) : DownloadsEvent
+    data class CopyDownloadLink(val id: String) : DownloadsEvent
+    data class CopyFileLocation(val id: String) : DownloadsEvent
 }

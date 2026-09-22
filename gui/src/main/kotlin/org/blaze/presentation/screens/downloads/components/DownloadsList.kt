@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 
@@ -22,6 +23,7 @@ fun DownloadsList(
     onRemoveRequested: (Download) -> Unit,
     onSelect: (String) -> Unit,
     hideResumeForQueued: Boolean,
+    capabilities: DownloadCapabilities = DownloadCapabilities(),
     modifier: Modifier = Modifier
 ) {
     VerticallyScrollableContainer(listState, modifier = modifier.fillMaxSize()) {
@@ -31,16 +33,26 @@ fun DownloadsList(
             contentPadding = PaddingValues(vertical = 4.dp)
         ) {
             items(downloads, key = { it.id }) { download ->
+                val id = download.id
+                val actions = DownloadRowActions(
+                    pause = { onEvent(DownloadsEvent.Pause(id)) },
+                    resume = { onEvent(DownloadsEvent.Resume(id)) },
+                    retry = { onEvent(DownloadsEvent.Retry(id)) },
+                    cancel = { onEvent(DownloadsEvent.Cancel(id)) },
+                    remove = { onRemoveRequested(download) },
+                    openFile = { onEvent(DownloadsEvent.OpenFile(id)) },
+                    showInFolder = { onEvent(DownloadsEvent.ShowInFolder(id)) },
+                    openSourceLink = { onEvent(DownloadsEvent.OpenSourceLink(id)) },
+                    copyLink = { onEvent(DownloadsEvent.CopyDownloadLink(id)) },
+                    copyFileLocation = { onEvent(DownloadsEvent.CopyFileLocation(id)) },
+                )
                 DownloadRow(
                     download = download,
-                    onPause = { onEvent(DownloadsEvent.Pause(download.id)) },
-                    onResume = { onEvent(DownloadsEvent.Resume(download.id)) },
-                    onRemove = { onRemoveRequested(download) },
-                    onRetry = { onEvent(DownloadsEvent.Retry(download.id)) },
-                    onCancel = { onEvent(DownloadsEvent.Cancel(download.id)) },
+                    actions = actions,
                     isSelected = download.id == selectedId,
                     onSelect = { onSelect(download.id) },
-                    hideResume = hideResumeForQueued && (download.state == DownloadState.QUEUED)
+                    hideResume = hideResumeForQueued && (download.state == DownloadState.QUEUED),
+                    capabilities = capabilities
                 )
             }
         }
