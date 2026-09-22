@@ -10,7 +10,7 @@ import org.blaze.platform.api.PlatformIdentity
 val BlazePlatformIdentity = PlatformIdentity(
     appId = "org.blaze",
     appName = "Blaze",
-    description = "Blaze download manager",
+    description = "A cross-platform, blazingly fast download manager",
     genericName = "Download Manager",
     categories = "Network;FileTransfer;",
     mainClass = "org.blaze.MainKt",

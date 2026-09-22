@@ -77,11 +77,16 @@ compose.desktop {
                 TargetFormat.Msi,
                 TargetFormat.Deb,
                 TargetFormat.AppImage,
-                TargetFormat.Rpm
+                TargetFormat.Rpm,
             )
 
-            packageName = "org.blaze"
+            packageName = "Blaze"
             packageVersion = "1.0.0"
+
+            // Packaging metadata consumed by jpackage (deb/rpm/msi/dmg/AppImage).
+            description = "Blaze — a cross-platform, blazingly fast download manager."
+            vendor = "kys0ff"
+            copyright = "© 2026 kys0ff. All rights reserved."
 
             modules("java.net.http")
 
