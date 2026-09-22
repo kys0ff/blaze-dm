@@ -140,6 +140,10 @@ internal class SniTrayService : TrayService {
 
         override fun Scroll(delta: Int, orientation: String) = Unit
 
+        // D-Bus Properties.Get is generic over the caller's expected type; the stored
+        // Variant is deserialized to whatever `A` the peer requests, so this cast cannot
+        // be made statically type-safe.
+        @Suppress("UNCHECKED_CAST")
         override fun <A : Any> Get(iface: String, propName: String): A =
             sniProperties(iface)[propName] as A?
                 ?: throw UnknownProperty("Unknown SNI property: $propName")
@@ -228,6 +232,8 @@ internal class SniTrayService : TrayService {
 
         override fun SendEvent(id: Int, eventId: String, data: Variant<*>, timestamp: UInt32) = Unit
 
+        // Same generic-`A` D-Bus property contract as ItemImpl.Get above.
+        @Suppress("UNCHECKED_CAST")
         override fun <A : Any> Get(iface: String, propName: String): A =
             menuProperties(iface)[propName] as A?
                 ?: throw UnknownProperty("Unknown dbusmenu property: $propName")

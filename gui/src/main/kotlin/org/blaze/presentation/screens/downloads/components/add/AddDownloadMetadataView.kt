@@ -51,7 +51,7 @@ fun AddDownloadMetadataView(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(strings.common.name, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
-                Text(metadata.name ?: strings.common.unknown, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(metadata.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(dStrings.size, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
@@ -77,7 +77,7 @@ fun AddDownloadMetadataView(
                             style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
                             color = JewelTheme.globalColors.text.info,
                             modifier = Modifier.clickable {
-                                state.selectedFileIndices = metadata.files!!.map { it.index }.toSet()
+                                state.selectedFileIndices = metadata.files.map { it.index }.toSet()
                             }
                         )
                         Text(
@@ -99,7 +99,7 @@ fun AddDownloadMetadataView(
                         .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp))
                         .padding(4.dp)
                 ) {
-                    items(metadata.files!!) { file ->
+                    items(metadata.files) { file ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

@@ -194,8 +194,10 @@ class DownloadRepositoryImpl(
     private fun DownloadTask.toGuiDownload(): Download {
         val torrentRequest = request as? DownloadRequest.Torrent
         val selectedIndices = torrentRequest?.fileIndices?.toSet()
+        val allFiles = files
+        val fraction = progress
 
-        val guiFiles = files?.mapIndexed { idx, f ->
+        val guiFiles = allFiles?.mapIndexed { idx, f ->
             SelectedFile(f.path, f.size, idx)
         }
 
@@ -205,8 +207,8 @@ class DownloadRepositoryImpl(
             guiFiles
         }
 
-        val totalSelectedSize = if (selectedIndices != null && files != null) {
-            files!!.filterIndexed { idx, _ -> selectedIndices.contains(idx) }.sumOf { it.size }
+        val totalSelectedSize = if (selectedIndices != null && allFiles != null) {
+            allFiles.filterIndexed { idx, _ -> selectedIndices.contains(idx) }.sumOf { it.size }
         } else {
             totalBytes
         }
@@ -222,8 +224,8 @@ class DownloadRepositoryImpl(
             totalSize = totalSelectedSize,
             downloadedSize = if (state == DownloadState.Completed || state == DownloadState.Seeding) {
                 totalSelectedSize ?: downloadedBytes
-            } else if (downloadedBytes == 0L && totalSelectedSize != null && progress != null && progress!! > 0f) {
-                (progress!! * totalSelectedSize).toLong()
+            } else if (downloadedBytes == 0L && totalSelectedSize != null && fraction != null && fraction > 0f) {
+                (fraction * totalSelectedSize).toLong()
             } else {
                 downloadedBytes
             },

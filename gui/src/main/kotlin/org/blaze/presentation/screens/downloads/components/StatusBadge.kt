@@ -31,7 +31,7 @@ internal fun DownloadState.indicatorColor(): Color = when (this) {
     DownloadState.SEEDING -> BlazeColors.warning
 }
 
-/** Localized status text for a download state, shared by the badge and the details dialog. */
+/** Localized status text for a download state, shared by the badge and the details' dialog. */
 fun DownloadState.label(strings: BlazeStrings): String = when (this) {
     DownloadState.QUEUED -> strings.downloads.status.queued
     DownloadState.DOWNLOADING -> strings.downloads.status.downloading

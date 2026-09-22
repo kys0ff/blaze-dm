@@ -3,6 +3,7 @@ package org.blaze.platform.clipboard
 import org.slf4j.LoggerFactory
 import java.awt.GraphicsEnvironment
 import java.awt.Toolkit
+import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.awt.EventQueue
 
@@ -30,6 +31,17 @@ class AwtSystemClipboard : SystemClipboard {
             Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
         }.getOrThrow()
     }.onFailure { logger.warn("Failed to copy text to the clipboard", it) }
+
+    // Reading does not transfer clipboard ownership, so it is safe to do off the EDT.
+    override fun paste(): String? {
+        if (GraphicsEnvironment.isHeadless()) return null
+        return runCatching {
+            Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
+        }.getOrElse {
+            logger.debug("No plain text available on the clipboard", it)
+            null
+        }
+    }
 
     private fun runOnEdt(action: () -> Unit): Result<Unit> = runCatching {
         if (EventQueue.isDispatchThread()) {

@@ -30,7 +30,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -38,14 +37,15 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
+import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatSize
-import org.blaze.i18n.BlazeStrings
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -56,6 +56,7 @@ import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.koin.compose.koinInject
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.milliseconds
@@ -64,20 +65,20 @@ import kotlin.time.Duration.Companion.milliseconds
  * Strings that aren't in blazeStrings yet. Move them there when you get a chance.
  */
 private object Fallback {
-    const val paste = "Paste from clipboard"
-    const val clear = "Clear"
-    const val advanced = "Advanced options"
-    const val magnet = "Magnet link"
-    const val torrent = "Torrent file"
-    const val web = "HTTP link"
-    const val emptyFile = "No links found in this file"
+    const val PASTE = "Paste from clipboard"
+    const val CLEAR = "Clear"
+    const val ADVANCED = "Advanced options"
+    const val MAGNET = "Magnet link"
+    const val TORRENT = "Torrent file"
+    const val WEB = "HTTP link"
+    const val EMPTY_FILE = "No links found in this file"
     fun links(n: Int) = "$n links"
     fun readFailed(reason: String?) = "Couldn't read the file${reason?.let { ": $it" } ?: ""}"
     fun freeSpace(size: String) = "Free space: $size"
-    const val willCreate = "Folder doesn't exist yet and will be created"
-    const val notDirectory = "This path is a file, not a folder"
-    const val notWritable = "This folder isn't writable"
-    const val invalidPath = "Invalid path"
+    const val WILL_CREATE = "Folder doesn't exist yet and will be created"
+    const val NOT_DIR = "This path is a file, not a folder"
+    const val NOT_WRITABLE = "This folder isn't writable"
+    const val INVALID_PATH = "Invalid path"
 }
 
 @OptIn(ExperimentalJewelApi::class)
@@ -111,7 +112,7 @@ fun AddDownloadInputView(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val showWarning = !isBatch && state.url.text.isNotBlank() && !state.looksSupported
-                val clipboard = LocalClipboardManager.current
+                val clipboard = koinInject<SystemClipboard>()
 
                 TextField(
                     value = state.url,
@@ -131,16 +132,16 @@ fun AddDownloadInputView(
                     trailingIcon = {
                         if (state.url.text.isEmpty()) {
                             ToolbarIconButton(
-                                key = AllIconsKeys.Actions.MenuPaste, tooltip = Fallback.paste,
+                                key = AllIconsKeys.Actions.MenuPaste, tooltip = Fallback.PASTE,
                                 onClick = {
-                                    clipboard.getText()?.text?.let { state.applyPastedText(it) }
+                                    clipboard.paste()?.let { state.applyPastedText(it) }
                                     fileError = null
                                 }
                             )
                         } else {
                             ToolbarIconButton(
                                 key = AllIconsKeys.General.Close,
-                                tooltip = Fallback.clear,
+                                tooltip = Fallback.CLEAR,
                                 onClick = {
                                     state.clearSource()
                                     fileError = null
@@ -168,7 +169,7 @@ fun AddDownloadInputView(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FieldHint(Fallback.links(state.batchItems.size), HintLevel.Info)
-                    Link(text = Fallback.clear, onClick = { state.clearSource() })
+                    Link(text = Fallback.CLEAR, onClick = { state.clearSource() })
                 }
 
                 !state.looksSupported && state.url.text.isNotBlank() ->
@@ -220,18 +221,18 @@ fun AddDownloadInputView(
                             )
                         }
 
-                    DestinationStatus.WillCreate -> FieldHint(Fallback.willCreate, HintLevel.Info)
+                    DestinationStatus.WillCreate -> FieldHint(Fallback.WILL_CREATE, HintLevel.Info)
                     DestinationStatus.NotADirectory -> FieldHint(
-                        Fallback.notDirectory,
+                        Fallback.NOT_DIR,
                         HintLevel.Error
                     )
 
                     DestinationStatus.NotWritable -> FieldHint(
-                        Fallback.notWritable,
+                        Fallback.NOT_WRITABLE,
                         HintLevel.Error
                     )
 
-                    DestinationStatus.Invalid -> FieldHint(Fallback.invalidPath, HintLevel.Error)
+                    DestinationStatus.Invalid -> FieldHint(Fallback.INVALID_PATH, HintLevel.Error)
                     DestinationStatus.Empty -> {}
                 }
             }
@@ -239,7 +240,7 @@ fun AddDownloadInputView(
 
         // ── Advanced (collapsed unless a delay is already set) ───────────────
         CollapsibleSection(
-            title = Fallback.advanced,
+            title = Fallback.ADVANCED,
             expanded = showAdvanced,
             onToggle = { showAdvanced = !showAdvanced }
         ) {
@@ -283,7 +284,7 @@ fun AddDownloadInputView(
             title = dStrings.selectSourceFile,
             fileFilter = { path ->
                 val ext = path.toFile().extension.lowercase()
-                ext == "torrent" || ext == "txt"
+                ext == "TORRENT" || ext == "txt"
             }
         )
     }
@@ -322,7 +323,7 @@ private fun AddDownloadState.applyPastedText(raw: String) {
 private fun AddDownloadState.loadSourceFile(path: Path): String? {
     val file = path.toFile()
     if (!file.extension.equals("txt", ignoreCase = true)) {
-        // .torrent and friends: use the path as the source
+        // .TORRENT and friends: use the path as the source
         setSource(listOf(path.toString()), "")
         return null
     }
@@ -332,7 +333,7 @@ private fun AddDownloadState.loadSourceFile(path: Path): String? {
         .filter { it.isNotEmpty() && !it.startsWith("#") } // allow comments in link lists
         .distinct()
 
-    if (urls.isEmpty()) return Fallback.emptyFile
+    if (urls.isEmpty()) return Fallback.EMPTY_FILE
     setSource(urls, file.name)
     return null
 }
@@ -340,12 +341,12 @@ private fun AddDownloadState.loadSourceFile(path: Path): String? {
 private fun sourceKind(text: String): String? {
     val t = text.trim()
     return when {
-        t.startsWith("magnet:", ignoreCase = true) -> Fallback.magnet
-        t.endsWith(".torrent", ignoreCase = true) -> Fallback.torrent
+        t.startsWith("MAGNET:", ignoreCase = true) -> Fallback.MAGNET
+        t.endsWith(".TORRENT", ignoreCase = true) -> Fallback.TORRENT
         t.startsWith("http://", ignoreCase = true) || t.startsWith(
             "https://",
             ignoreCase = true
-        ) -> Fallback.web
+        ) -> Fallback.WEB
 
         else -> null
     }

@@ -20,6 +20,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Exercises [LogConfigurator] against the real logback context configured by the app's
@@ -53,7 +54,7 @@ class LogConfiguratorTest {
         runBlocking {
             val repository = EngineSettingsRepository(tempDir)
             LogConfigurator(repository, tempDir).start(scope)
-            delay(500) // let the collector pick up the initial value
+            delay(500.milliseconds) // let the collector pick up the initial value
 
             val root = rootLogger()
             // Default settings: INFO, file logging on (FILE appender attached from logback.xml).
@@ -65,12 +66,12 @@ class LogConfiguratorTest {
             savedFileAppender = root.getAppender("FILE")
 
             repository.updateSettings { it.copy(logLevel = LogLevel.DEBUG, fileLoggingEnabled = false) }
-            delay(500)
+            delay(500.milliseconds)
             assertEquals(Level.DEBUG, root.level)
             assertNull(root.getAppender("FILE"), "FILE appender should be detached when file logging is off")
 
             repository.updateSettings { it.copy(logLevel = LogLevel.OFF, fileLoggingEnabled = true) }
-            delay(500)
+            delay(500.milliseconds)
             assertEquals(Level.OFF, root.level)
             // Regression guard: a detached appender must be re-attachable (unlike a stopped
             // FileAppender, which closes its output stream permanently).
@@ -84,7 +85,7 @@ class LogConfiguratorTest {
             val repository = EngineSettingsRepository(tempDir)
             val configurator = LogConfigurator(repository, tempDir)
             configurator.start(scope)
-            delay(500)
+            delay(500.milliseconds)
             assertTrue(Files.isDirectory(configurator.logDir))
         }
     }

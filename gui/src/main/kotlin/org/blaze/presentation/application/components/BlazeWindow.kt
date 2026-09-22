@@ -34,7 +34,7 @@ fun BlazeWindow(
         // The title-bar minimize button (Linux) sets `window.extendedState = ICONIFIED`,
         // which is invisible to the app's `windowVisible` state: the tray keeps reading
         // the window as visible (still offering "Hide Window"), and the leftover ICONIFIED
-        // state later stops a tray "Show" from re-mapping the frame. Fold the minimize into
+        // state later stops a tray "Show" from re-mapping the frame. Fold to minimize into
         // the single hide-to-tray model: un-iconify and report it as hidden.
         // NOTE: `windowStateChanged` is a WindowStateListener callback, so the adapter must
         // be registered with addWindowStateListener (addWindowListener alone never fires it).
