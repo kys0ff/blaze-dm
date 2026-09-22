@@ -13,7 +13,7 @@ import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 
 /**
- * Blaze's tray artwork: the application icon (`/app-icon.png` from this module's
+ * Blaze's tray artwork: the application icon (`/tray-icon.png` from this module's
  * resources) scaled on demand to whatever pixel size the tray backend asks for.
  * If the asset is missing or unreadable, the Blaze flame is drawn with Java2D instead,
  * so the tray never ends up blank.
@@ -21,7 +21,7 @@ import javax.imageio.ImageIO
  */
 object AppTrayIcon {
 
-    private const val RESOURCE = "/app-icon.png"
+    private const val RESOURCE = "/tray-icon.png"
 
     /** Size used for the drawn-flame fallback when the PNG asset is unavailable. */
     private const val FALLBACK_ICON_SIZE = 256

@@ -45,10 +45,11 @@ internal class SniTrayService : TrayService {
                 openConnection().getRemoteObject(
                     DBUS_BUS, DBUS_PATH, DBus::class.java, false,
                 ).NameHasOwner(WATCHER_BUS)
-            }.getOrDefault(false).also {
-                supportedCache = it
-                if (!it) closeConnection()
-            }
+            }.onFailure { logger.info("StatusNotifierWatcher probe failed; assuming no tray support", it) }
+                .getOrDefault(false).also {
+                    supportedCache = it
+                    if (!it) closeConnection()
+                }
         }
 
     override fun install(config: TrayConfig) {
