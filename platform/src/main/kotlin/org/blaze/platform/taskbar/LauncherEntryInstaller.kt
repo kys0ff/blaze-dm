@@ -107,13 +107,14 @@ class LauncherEntryInstaller(
     }
 
     /**
-     * Copy the bundled PNG into a stable location and return its absolute path for the
-     * desktop entry to reference. Returns null when no asset is configured or the copy
-     * fails, letting callers fall back to the packaging layout's own icon path.
+     * Copy the bundled icon into a stable location and return its absolute path for the
+     * desktop entry to reference. The installed file keeps the source extension (e.g.
+     * `svg`/`png`). Returns null when no asset is configured or the copy fails, letting
+     * callers fall back to the packaging layout's own icon path.
      */
     private fun installIconFile(): String? {
         val bytes = runCatching { iconBytes() }.getOrNull() ?: return null
-        val target = iconDir.resolve("${identity.appId}.png")
+        val target = iconDir.resolve("${identity.appId}.${iconExtension()}")
         val installed = runCatching {
             if (!Files.exists(target) || !Files.readAllBytes(target).contentEquals(bytes)) {
                 Files.createDirectories(iconDir)
@@ -126,6 +127,13 @@ class LauncherEntryInstaller(
         }
         return if (installed) target.toAbsolutePath().toString() else null
     }
+
+    /** File extension to publish under, taken from the configured icon resource. */
+    private fun iconExtension(): String =
+        identity.iconResource?.substringAfterLast('.', missingDelimiterValue = "")
+            ?.lowercase()
+            ?.takeIf { it.isNotEmpty() }
+            ?: "png"
 
     /** Pure jpackage-layout sniffing: `<app>/bin/<name>` above an `<app>/lib/app` tree. */
     private fun parsePackagedLauncher(command: String): PackagedLauncher? {
@@ -175,9 +183,9 @@ class LauncherEntryInstaller(
         private fun defaultDesktopDir(): Path =
             Paths.get(System.getProperty("user.home"), ".local", "share", "applications")
 
-        /** A conventional hicolor size dir; the themed lookup finds it via any size. */
+        /** Scalable icons (e.g. SVG) go here; the absolute path bypasses theme caching. */
         private fun defaultIconDir(): Path =
-            Paths.get(System.getProperty("user.home"), ".local", "share", "icons", "hicolor", "256x256", "apps")
+            Paths.get(System.getProperty("user.home"), ".local", "share", "icons", "hicolor", "scalable", "apps")
 
         /** Reads the identity's bundled icon PNG from the classpath (null when unset). */
         private fun iconResourceLoader(resource: String?): () -> ByteArray? = {

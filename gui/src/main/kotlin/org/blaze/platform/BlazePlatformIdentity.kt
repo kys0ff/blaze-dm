@@ -15,5 +15,5 @@ val BlazePlatformIdentity = PlatformIdentity(
     categories = "Network;FileTransfer;",
     mainClass = "org.blaze.MainKt",
     executableName = "blaze",
-    iconResource = "/app-icon.png",
+    iconResource = "/app-icon.svg",
 )
