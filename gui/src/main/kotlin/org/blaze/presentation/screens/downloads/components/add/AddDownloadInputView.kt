@@ -282,9 +282,10 @@ fun AddDownloadInputView(
             },
             mode = FilePickerMode.File,
             title = dStrings.selectSourceFile,
+            supportedExtensions = listOf("torrent", "txt"),
             fileFilter = { path ->
                 val ext = path.toFile().extension.lowercase()
-                ext == "TORRENT" || ext == "txt"
+                ext == "torrent" || ext == "txt"
             }
         )
     }

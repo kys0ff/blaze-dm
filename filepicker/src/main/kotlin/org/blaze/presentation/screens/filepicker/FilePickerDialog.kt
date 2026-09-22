@@ -39,6 +39,13 @@ fun FilePickerDialog(
     initialPath: Path? = null,
     confirmText: String? = null,
     fileFilter: (Path) -> Boolean = { true },
+    /**
+     * File extensions the caller allows picking (e.g. `["torrent", "txt"]`). When non-empty
+     * and in [FilePickerMode.File], the dialog shows them as a "Supported types:" hint so the
+     * user knows up front what's selectable. This is display-only; [fileFilter] still decides
+     * what's actually accepted.
+     */
+    supportedExtensions: List<String> = emptyList(),
 ) {
     val strings = blazeStrings
     val fStrings = strings.filePicker
@@ -114,6 +121,12 @@ fun FilePickerDialog(
             strings = strings
         )
 
+        val supportedLabel = if (!directoriesOnly && supportedExtensions.isNotEmpty()) {
+            fStrings.supportedTypes(
+                supportedExtensions.joinToString(", ") { ".${it.lowercase().removePrefix(".")}" }
+            )
+        } else null
+
         Text(
             text = state.inputState.problem
                 ?: if (directoriesOnly) {
@@ -126,6 +139,17 @@ fun FilePickerDialog(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+
+        // List the pickable extensions so the user knows what to look for even before erring.
+        if (supportedLabel != null) {
+            Text(
+                text = supportedLabel,
+                style = small,
+                color = secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
 
         IdeDialogActions(
             dismissText = strings.common.cancel,

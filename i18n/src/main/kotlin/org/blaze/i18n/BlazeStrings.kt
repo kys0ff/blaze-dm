@@ -163,6 +163,8 @@ interface BlazeStrings {
         val pathPlaceholder: String
         val hintFolder: String
         val hintFile: String
+        /** Shown in File mode when the caller lists the pickable types, e.g. "Supported types: .torrent, .txt". */
+        fun supportedTypes(extensions: String): String
 
         val newFolderTitle: String
         val newFolderName: String

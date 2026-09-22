@@ -148,6 +148,7 @@ object EnStrings : BlazeStrings {
         override val pathPlaceholder = "Path"
         override val hintFolder = "Select a folder in the tree, or type a path above."
         override val hintFile = "Select a file in the tree, or type a path above."
+        override fun supportedTypes(extensions: String) = "Supported types: $extensions"
 
         override val newFolderTitle = "New folder"
         override val newFolderName = "Name:"

@@ -45,12 +45,17 @@ class PluginLoader {
             }
             loaders += loader
 
-            runCatching {
-                ServiceLoader.load(LinkResolver::class.java, loader).forEach { resolver ->
-                    resolvers += LoadedResolver(resolver, ResolverSource.PLUGIN, jar)
+            // Iterate provider-by-provider so one broken class (a throwing constructor, a
+            // missing dependency) doesn't hide the other handlers the same jar declares.
+            val iterator = ServiceLoader.load(LinkResolver::class.java, loader).iterator()
+            while (runCatching { iterator.hasNext() }.getOrElse {
+                    logger.error("Failed to scan resolvers in {}", jar, it); false
+                }) {
+                val resolver = runCatching { iterator.next() }.getOrElse {
+                    logger.error("Failed to instantiate a resolver from {}", jar, it); continue
                 }
-            }.onFailure {
-                logger.error("Failed to load resolvers from {}", jar, it)
+                // Wrap in a sandbox so a runtime bug inside the plugin can't crash the app.
+                resolvers += LoadedResolver(SafeLinkResolver(resolver, jar), ResolverSource.PLUGIN, jar)
             }
         }
 

@@ -45,12 +45,17 @@ class ThemePluginLoader {
             }
             loaders += loader
 
-            runCatching {
-                ServiceLoader.load(BlazeThemeProvider::class.java, loader).forEach { provider ->
-                    themes += LoadedTheme(provider, ThemeSource.PLUGIN, jar)
+            // Iterate provider-by-provider so one broken class (a throwing constructor, a
+            // missing dependency) doesn't hide the other themes the same jar declares.
+            val iterator = ServiceLoader.load(BlazeThemeProvider::class.java, loader).iterator()
+            while (runCatching { iterator.hasNext() }.getOrElse {
+                    logger.error("Failed to scan theme providers in {}", jar, it); false
+                }) {
+                val provider = runCatching { iterator.next() }.getOrElse {
+                    logger.error("Failed to instantiate a theme provider from {}", jar, it); continue
                 }
-            }.onFailure {
-                logger.error("Failed to load themes from {}", jar, it)
+                // Wrap in a sandbox so a runtime bug inside the plugin can't crash the app.
+                themes += LoadedTheme(SafeThemeProvider(provider, jar), ThemeSource.PLUGIN, jar)
             }
         }
 
