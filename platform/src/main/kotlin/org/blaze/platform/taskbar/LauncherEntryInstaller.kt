@@ -31,20 +31,39 @@ class LauncherEntryInstaller(
     private val identity: PlatformIdentity,
     private val desktopDir: Path = defaultDesktopDir(),
     private val launcherCommand: String? = defaultLauncherCommand(),
+    private val iconDir: Path = defaultIconDir(),
+    private val iconBytes: () -> ByteArray? = iconResourceLoader(identity.iconResource),
     private val kServiceCacheRefresher: () -> Unit = ::refreshKServiceCache,
 ) {
 
     private val logger = LoggerFactory.getLogger(LauncherEntryInstaller::class.java)
 
     /**
-     * Creates or refreshes the desktop entry. Quietly does nothing when this run is not
-     * a packaged app launch or the entry is already up to date.
+     * Publish the icon and create or refresh the desktop entry.
+     *
+     * The bundled PNG is copied into a stable, persistent location the app controls and
+     * the desktop entry's `Icon=` is pinned to that **absolute path** (not a themed
+     * name, which needs the icon-theme cache to have been rebuilt, and not the ephemeral
+     * `/opt` install path, which disappears on dev runs / after an uninstall). A packaged
+     * launch writes the entry as before; a plain `gradle run` writes no new entry, yet
+     * repairs a stale one left over from an earlier install whose `Icon=` path has since
+     * gone missing - otherwise Plasma matches that dead entry to the window (via
+     * `StartupWMClass`) and blanks the taskbar icon in favour of the window's own
+     * `_NET_WM_ICON`.
      */
     fun ensureInstalled() {
-        val command = launcherCommand ?: return
-        val launcher = parsePackagedLauncher(command) ?: return
+        val iconPath = installIconFile()
+        val launcher = launcherCommand?.let { parsePackagedLauncher(it) }
 
-        val content = desktopEntryContent(launcher)
+        if (launcher != null) {
+            installPackagedEntry(launcher, iconPath)
+        } else {
+            repairExistingEntryIcon(iconPath)
+        }
+    }
+
+    private fun installPackagedEntry(launcher: PackagedLauncher, iconPath: String?) {
+        val content = desktopEntryContent(launcher, iconPath)
         val target = desktopDir.resolve(identity.desktopFileName)
         runCatching {
             if (Files.exists(target) && Files.readString(target) == content) return
@@ -55,6 +74,57 @@ class LauncherEntryInstaller(
             // very first progress update already resolves.
             kServiceCacheRefresher()
         }.onFailure { logger.warn("Could not install the desktop entry at {}", target, it) }
+    }
+
+    /**
+     * Re-point an existing desktop entry's `Icon=` at [iconPath]. Only touches an entry
+     * that is already present (so dev runs never create a fresh menu item) and whose icon
+     * does not already point at [iconPath].
+     */
+    private fun repairExistingEntryIcon(iconPath: String?) {
+        if (iconPath == null) return
+        val target = desktopDir.resolve(identity.desktopFileName)
+        runCatching {
+            if (!Files.exists(target)) return
+            val existing = Files.readString(target)
+            val repaired = setIconLine(existing, iconPath)
+            if (repaired == existing) return
+            Files.writeString(target, repaired)
+            logger.info("Repointed the existing desktop entry icon to {}", iconPath)
+            kServiceCacheRefresher()
+        }.onFailure { logger.warn("Could not repair the desktop entry at {}", target, it) }
+    }
+
+    /** Replace (or insert) the desktop entry's `Icon=` key with `Icon=[icon]`. */
+    private fun setIconLine(content: String, icon: String): String {
+        val line = "Icon=$icon"
+        val regex = Regex("(?m)^Icon=.*$")
+        return if (regex.containsMatchIn(content)) {
+            regex.replace(content, line)
+        } else {
+            buildString { append(content.trimEnd()).append('\n').append(line).append('\n') }
+        }
+    }
+
+    /**
+     * Copy the bundled PNG into a stable location and return its absolute path for the
+     * desktop entry to reference. Returns null when no asset is configured or the copy
+     * fails, letting callers fall back to the packaging layout's own icon path.
+     */
+    private fun installIconFile(): String? {
+        val bytes = runCatching { iconBytes() }.getOrNull() ?: return null
+        val target = iconDir.resolve("${identity.appId}.png")
+        val installed = runCatching {
+            if (!Files.exists(target) || !Files.readAllBytes(target).contentEquals(bytes)) {
+                Files.createDirectories(iconDir)
+                Files.write(target, bytes)
+            }
+            true
+        }.getOrElse {
+            logger.warn("Could not install the launcher icon at {}", target, it)
+            false
+        }
+        return if (installed) target.toAbsolutePath().toString() else null
     }
 
     /** Pure jpackage-layout sniffing: `<app>/bin/<name>` above an `<app>/lib/app` tree. */
@@ -74,7 +144,7 @@ class LauncherEntryInstaller(
         )
     }
 
-    private fun desktopEntryContent(launcher: PackagedLauncher): String = buildString {
+    private fun desktopEntryContent(launcher: PackagedLauncher, iconPath: String?): String = buildString {
         appendLine("[Desktop Entry]")
         appendLine("Type=Application")
         appendLine("Version=1.0")
@@ -82,7 +152,12 @@ class LauncherEntryInstaller(
         appendLine("GenericName=${identity.genericName}")
         appendLine("Comment=${identity.genericName}")
         appendLine("Exec=${launcher.executable}")
-        if (Files.exists(launcher.icon)) appendLine("Icon=${launcher.icon}")
+        // Prefer the stable absolute path we just published; fall back to the packaging
+        // layout's own PNG only when that could not be written.
+        when {
+            iconPath != null -> appendLine("Icon=$iconPath")
+            Files.exists(launcher.icon) -> appendLine("Icon=${launcher.icon}")
+        }
         appendLine("Terminal=false")
         appendLine("Categories=${identity.categories}")
         // java.awt on X11 builds WM_CLASS from the main class name with dots replaced
@@ -99,6 +174,19 @@ class LauncherEntryInstaller(
     private companion object {
         private fun defaultDesktopDir(): Path =
             Paths.get(System.getProperty("user.home"), ".local", "share", "applications")
+
+        /** A conventional hicolor size dir; the themed lookup finds it via any size. */
+        private fun defaultIconDir(): Path =
+            Paths.get(System.getProperty("user.home"), ".local", "share", "icons", "hicolor", "256x256", "apps")
+
+        /** Reads the identity's bundled icon PNG from the classpath (null when unset). */
+        private fun iconResourceLoader(resource: String?): () -> ByteArray? = {
+            resource?.let { path ->
+                runCatching {
+                    LauncherEntryInstaller::class.java.getResourceAsStream(path)?.use { it.readAllBytes() }
+                }.getOrNull()
+            }
+        }
 
         private fun defaultLauncherCommand(): String? =
             ProcessHandle.current().info().command().orElse(null)

@@ -14,8 +14,11 @@ import org.blaze.di.useCaseModule
 import org.blaze.i18n.i18nModule
 import org.blaze.logging.LogConfigurator
 import org.blaze.platform.BlazePlatformIdentity
+import org.blaze.platform.api.OsType
+import org.blaze.platform.api.detectOsType
 import org.blaze.platform.autostart.AutoStartCoordinator
 import org.blaze.platform.di.desktopPlatformModule
+import org.blaze.platform.taskbar.LauncherEntryInstaller
 import org.blaze.presentation.application.BlazeApplication
 import org.blaze.presentation.screens.filepicker.di.filePickerModule
 import org.blaze.tray.di.trayModule
@@ -47,6 +50,13 @@ fun main() {
 
     // Reconcile the run-at-startup OS registration with the persisted setting (repairs drift).
     koin.get<AutoStartCoordinator>().sync()
+
+    // Ensure the launcher/icon desktop registration is healthy before the window maps, so
+    // the taskbar shows the app icon even on a plain `gradle run` (a stale `.desktop` from
+    // an earlier install would otherwise win over the window's own icon and show blank).
+    if (detectOsType() == OsType.LINUX) {
+        runCatching { koin.get<LauncherEntryInstaller>().ensureInstalled() }
+    }
 
     application {
         BlazeApplication()

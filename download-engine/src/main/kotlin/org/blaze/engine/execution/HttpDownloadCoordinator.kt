@@ -270,7 +270,7 @@ class HttpDownloadCoordinator(
         // meaningful against the chunk size it was recorded with. Choosing the layout here (rather
         // than after a connections-based bail-out) is what lets a single-connection resume of a
         // previously-segmented download reuse its chunks instead of throwing them away.
-        var plan = if (usable) {
+        val plan = if (usable) {
             HttpTransferPlanner.Plan(persisted.chunkSize, chunkCountFor(total, persisted.chunkSize))
         } else {
             HttpTransferPlanner.plan(total, connections, settings.httpChunkSizeMb * 1024L * 1024L)

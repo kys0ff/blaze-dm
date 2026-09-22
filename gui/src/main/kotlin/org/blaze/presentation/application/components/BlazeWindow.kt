@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.window.WindowState
+import org.blaze.platform.tray.AppTrayIcon
 import org.jetbrains.jewel.window.DecoratedWindow
 import java.awt.Dimension
 import java.awt.Frame
@@ -25,6 +26,9 @@ fun BlazeWindow(
     ) {
         LaunchedEffect(window) {
             window.minimumSize = Dimension(760, 480)
+            // No `.desktop` entry matches an IDE launch, so the taskbar reads the icon
+            // from the frame's `_NET_WM_ICON`; AWT only sets that from `iconImage`.
+            window.iconImage = AppTrayIcon.windowIcon()
         }
 
         // The title-bar minimize button (Linux) sets `window.extendedState = ICONIFIED`,

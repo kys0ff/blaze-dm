@@ -3,6 +3,7 @@ package org.blaze.platform.tray
 import org.slf4j.LoggerFactory
 import java.awt.Color
 import java.awt.Graphics2D
+import java.awt.Image
 import java.awt.LinearGradientPaint
 import java.awt.RenderingHints
 import java.awt.geom.Area
@@ -21,6 +22,9 @@ import javax.imageio.ImageIO
 object AppTrayIcon {
 
     private const val RESOURCE = "/app-icon.png"
+
+    /** Size used for the drawn-flame fallback when the PNG asset is unavailable. */
+    private const val FALLBACK_ICON_SIZE = 256
 
     private val logger = LoggerFactory.getLogger(AppTrayIcon::class.java)
 
@@ -50,6 +54,14 @@ object AppTrayIcon {
         }
         return result
     }
+
+    /**
+     * Full-resolution icon for the window/taskbar. X11 surfaces this as the frame's
+     * `_NET_WM_ICON`, which is what the taskbar falls back to when no `.desktop` entry
+     * matches (e.g. running from an IDE). Returns the raw asset when present, otherwise
+     * the flame rendered at [FALLBACK_ICON_SIZE].
+     */
+    fun windowIcon(): Image = source ?: image(FALLBACK_ICON_SIZE)
 
     private fun load(): BufferedImage? =
         runCatching {

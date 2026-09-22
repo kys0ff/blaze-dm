@@ -101,4 +101,83 @@ class LauncherEntryInstallerTest {
         assertFalse(Files.exists(desktopDir.resolve(TEST_IDENTITY.desktopFileName)))
         assertEquals(0, refreshes)
     }
+
+    @Test
+    fun `packaged launch pins the installed icon path and copies the png`() {
+        val (root, appDir) = tempDirs()
+        val desktopDir = root.resolve("applications")
+        val iconDir = root.resolve("icons")
+
+        LauncherEntryInstaller(
+            identity = TEST_IDENTITY,
+            desktopDir = desktopDir,
+            launcherCommand = appDir.resolve("bin").resolve("org.blaze").toString(),
+            iconDir = iconDir,
+            iconBytes = { byteArrayOf(1, 2, 3) },
+            kServiceCacheRefresher = {},
+        ).ensureInstalled()
+
+        val installed = iconDir.resolve("${TEST_IDENTITY.appId}.png")
+        val content = Files.readString(desktopDir.resolve(TEST_IDENTITY.desktopFileName))
+        assertTrue(
+            content.contains("Icon=${installed.toAbsolutePath()}"),
+            "icon referenced by the installed absolute path",
+        )
+        assertTrue(Files.exists(installed), "the bundled png should be copied to the stable location")
+    }
+
+    @Test
+    fun `dev launch repairs a stale existing entry icon to the installed path`() {
+        val (root, _) = tempDirs()
+        val desktopDir = root.resolve("applications")
+        Files.createDirectories(desktopDir)
+        val target = desktopDir.resolve(TEST_IDENTITY.desktopFileName)
+        Files.writeString(
+            target,
+            buildString {
+                appendLine("[Desktop Entry]")
+                appendLine("Type=Application")
+                appendLine("Name=Blaze")
+                appendLine("Exec=/opt/org.blaze/bin/org.blaze")
+                appendLine("Icon=/opt/org.blaze/lib/org.blaze.png")
+                appendLine("StartupWMClass=${TEST_IDENTITY.windowManagerClass}")
+            },
+        )
+        val iconDir = root.resolve("icons")
+
+        LauncherEntryInstaller(
+            identity = TEST_IDENTITY,
+            desktopDir = desktopDir,
+            launcherCommand = null,
+            iconDir = iconDir,
+            iconBytes = { byteArrayOf(1, 2, 3) },
+            kServiceCacheRefresher = {},
+        ).ensureInstalled()
+
+        val content = Files.readString(target)
+        assertTrue(
+            content.contains("Icon=${iconDir.resolve("${TEST_IDENTITY.appId}.png").toAbsolutePath()}"),
+            "the dead icon path is repointed to the installed one",
+        )
+        assertFalse(content.contains("/opt/org.blaze/lib/org.blaze.png"), "the stale path is gone")
+        assertTrue(content.contains("Exec=/opt/org.blaze/bin/org.blaze"), "other keys are preserved")
+        assertTrue(content.contains("StartupWMClass=${TEST_IDENTITY.windowManagerClass}"))
+    }
+
+    @Test
+    fun `dev launch installs no fresh desktop entry even with a themed icon`() {
+        val (root, _) = tempDirs()
+        val desktopDir = root.resolve("applications")
+
+        LauncherEntryInstaller(
+            identity = TEST_IDENTITY,
+            desktopDir = desktopDir,
+            launcherCommand = null,
+            iconDir = root.resolve("icons"),
+            iconBytes = { byteArrayOf(1, 2, 3) },
+            kServiceCacheRefresher = {},
+        ).ensureInstalled()
+
+        assertFalse(Files.exists(desktopDir.resolve(TEST_IDENTITY.desktopFileName)))
+    }
 }

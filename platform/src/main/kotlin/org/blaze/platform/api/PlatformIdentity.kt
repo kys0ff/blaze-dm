@@ -32,6 +32,14 @@ data class PlatformIdentity(
      * cannot report its own command (e.g. `blaze`).
      */
     val executableName: String = appId.substringAfterLast('.'),
+    /**
+     * Classpath location of the app's PNG icon (e.g. `/app-icon.png`). When present,
+     * the desktop entry pins its `Icon=` to a themed name backed by this asset
+     * installed into the hicolor theme, so the launcher/taskbar icon keeps resolving
+     * no matter where (or whether) the app is installed. Null leaves the icon to the
+     * packaging layout alone.
+     */
+    val iconResource: String? = null,
 ) {
     init {
         require(APP_ID_PATTERN.matches(appId)) { "appId must be a reverse-DNS id like 'org.blaze', got '$appId'" }
