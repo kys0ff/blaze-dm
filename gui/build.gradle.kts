@@ -22,7 +22,7 @@ dependencies {
     implementation(project(":tray"))
     implementation(project(":i18n"))
     implementation(project(":filepicker"))
-    
+
     // Compose Desktop, without Compose Material — Jewel replaces it entirely.
     implementation(compose.desktop.currentOs) {
         exclude(group = "org.jetbrains.compose.material")
@@ -43,6 +43,11 @@ dependencies {
     // Koin
     implementation(libs.koin.core)
     implementation(libs.koin.compose)
+
+    // Taskbar download progress on Linux is published over D-Bus via the
+    // com.canonical.Unity.LauncherEntry protocol (KDE Plasma / GNOME read it).
+    implementation(libs.dbus.java.core)
+    implementation(libs.dbus.java.transport.native.unixsocket)
 
     // App-shell settings (app.json) are serialized locally in this module.
     implementation(libs.kotlinx.serialization.json)
@@ -68,27 +73,32 @@ kotlin {
 compose.desktop {
     application {
         mainClass = "org.blaze.MainKt"
+        jvmArgs += "--enable-native-access=ALL-UNNAMED"
 
         nativeDistributions {
             targetFormats(
                 TargetFormat.Dmg,
                 TargetFormat.Msi,
-                TargetFormat.Deb
+                TargetFormat.Deb,
+                TargetFormat.AppImage,
+                TargetFormat.Rpm
             )
 
             packageName = "org.blaze"
             packageVersion = "1.0.0"
 
+            modules("java.net.http")
+
             linux {
-                iconFile = rootProject.file("src/main/resources/app-icon.png")
+                iconFile = file("src/main/resources/app-icon.png")
             }
 
             windows {
-                iconFile = rootProject.file("src/main/resources/app-icon.ico")
+                iconFile = file("src/main/resources/app-icon.ico")
             }
 
             macOS {
-                iconFile = rootProject.file("src/main/resources/app-icon.icns")
+                iconFile = file("src/main/resources/app-icon.icns")
             }
         }
     }

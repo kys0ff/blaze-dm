@@ -13,6 +13,7 @@ import org.blaze.presentation.application.components.BlazeWindow
  * - [rememberBlazeStrings]  - locale-driven UI strings,
  * - [rememberAppShell]      - window lifecycle (visibility, close-to-tray, quit),
  * - [AppTrayHost]           - system-tray wiring on top of the `:tray` library,
+ * - [AppTaskbarProgress]    - aggregate download progress on the taskbar / dock icon,
  * - [AppTheme]              - theme-mode + palette resolution on top of `BlazeTheme`.
  */
 @Composable
@@ -21,6 +22,7 @@ fun ApplicationScope.BlazeApplication() {
     val shell = rememberAppShell()
 
     AppTrayHost(strings = strings, shell = shell)
+    AppTaskbarProgress()
 
     CompositionLocalProvider(LocalBlazeStrings provides strings) {
         AppTheme {
