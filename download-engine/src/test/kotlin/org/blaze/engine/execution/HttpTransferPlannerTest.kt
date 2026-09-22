@@ -34,6 +34,23 @@ class HttpTransferPlannerTest {
     }
 
     @Test
+    fun `a large file yields many more units than connections so the tail stays parallelisable`() {
+        // The case for *late* chunk-splitting is that a transfer runs down to a handful of big
+        // chunks and one slow connection serialises the finish. The planner already refuses that:
+        // it clamps chunk size so a normal file decomposes into ~connections*8 units regardless of
+        // the configured chunk size, so the last megabytes are spread over several workers. That
+        // structural floor is why runtime takeover/splitting is not worth its coordination cost.
+        val total = 512L * mib
+        val connections = 8
+        // Even an absurdly large preferred chunk size is clamped down to keep the tail divisible.
+        val plan = HttpTransferPlanner.plan(total, connections, preferredChunkBytes = 64 * mib)
+        assertTrue(
+            plan.chunkCount >= connections * 8,
+            "expected >= ${connections * 8} units for the tail to spread over, got ${plan.chunkCount}"
+        )
+    }
+
+    @Test
     fun `a small file is split enough to keep every connection busy`() {
         val plan = HttpTransferPlanner.plan(16 * mib, connections = 4, preferredChunkBytes = 8 * mib)
         assertTrue(plan.chunkCount >= 4, "expected at least one chunk per connection, got ${plan.chunkCount}")

@@ -39,7 +39,29 @@ class TestHttpServer(
      * distinguish "the client opened one socket and reused it" from "a fresh socket per chunk",
      * which is where the connection-establishment cost of a segmented transfer lives on a WAN.
      */
-    private val keepAlive: Boolean = false
+    private val keepAlive: Boolean = false,
+    /**
+     * The first N ranged bodies are written as headers and then *hang* (deliver no body bytes)
+     * for [hangMillis]. Models a connection that is neither fast nor cleanly dead - the exact case
+     * the stalled-worker watchdog must catch while other connections keep making progress.
+     */
+    @Volatile var hangFirstBodies: Int = 0,
+    @Volatile var hangMillis: Long = 15_000L,
+    /**
+     * Requests whose byte range reaches [slowTailFromByte] are served at [slowTailBytesPerSec]
+     * while every other range runs at full speed. This is the deterministic "one connection is far
+     * slower than the rest" tail a segmented download can end on, used to measure (and then bound)
+     * tail latency instead of guessing about it.
+     */
+    @Volatile var slowTailFromByte: Long = -1L,
+    @Volatile var slowTailBytesPerSec: Long = 0L,
+    /**
+     * Wall-clock time each freshly accepted TCP connection "costs" before its first response - a
+     * stand-in for the round-trip expense of connection establishment (TCP handshake plus, on a real
+     * WAN, a TLS handshake). Charged once per socket, so a keep-alive client that reuses sockets pays
+     * it a handful of times while a `Connection: close` client pays it on every chunk request.
+     */
+    @Volatile var connectDelayMillis: Long = 0L
 ) : AutoCloseable {
     private val server = ServerSocket(0)
     private val running = AtomicBoolean(true)
@@ -55,6 +77,11 @@ class TestHttpServer(
     /** Accepted TCP sockets; compare against [requestCount] to prove or disprove connection reuse. */
     val connectionCount = AtomicInteger(0)
     private val bodiesServed = AtomicInteger(0)
+    private val hangsUsed = AtomicInteger(0)
+
+    /** Concurrently-served requests, peaked; used to prove the pool really runs N ways. */
+    private val inflight = AtomicInteger(0)
+    val maxConcurrentRequests = AtomicInteger(0)
 
     val port: Int get() = server.localPort
     val url: String get() = "http://127.0.0.1:$port/file.bin"
@@ -76,6 +103,14 @@ class TestHttpServer(
     }
 
     private fun handle(socket: Socket) {
+        if (connectDelayMillis > 0) {
+            try {
+                Thread.sleep(connectDelayMillis)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
+            }
+        }
         socket.use {
             try {
                 val input: InputStream = it.getInputStream()
@@ -93,6 +128,16 @@ class TestHttpServer(
 
     /** Handles one request. Returns false when the connection must be closed after this request. */
     private fun serveOne(reader: BufferedReader, out: OutputStream, requestLine: String): Boolean {
+        val active = inflight.incrementAndGet()
+        maxConcurrentRequests.accumulateAndGet(active) { a, b -> maxOf(a, b) }
+        try {
+            return serveOneInternal(reader, out, requestLine)
+        } finally {
+            inflight.decrementAndGet()
+        }
+    }
+
+    private fun serveOneInternal(reader: BufferedReader, out: OutputStream, requestLine: String): Boolean {
         val method = requestLine.substringBefore(' ').uppercase()
         var range: String? = null
         while (true) {
@@ -138,8 +183,23 @@ class TestHttpServer(
                         }.toByteArray(StandardCharsets.ISO_8859_1)
                     )
                     out.flush()
-                    val cut = bodiesServed.getAndIncrement() < cutFirstBodies
-                    stream(out, payload, from, length, cutAfter = if (cut) length / 3 else Long.MAX_VALUE)
+                    if (length > 1 && hangsUsed.getAndIncrement() < hangFirstBodies) {
+                        // Headers are on the wire, then the socket goes quiet: the client is parked
+                        // in a body read that never yields a byte. Never hangs the 1-byte probe.
+                        try {
+                            Thread.sleep(hangMillis)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                        return false
+                    }
+                    val cut = length > 1 && bodiesServed.getAndIncrement() < cutFirstBodies
+                    val slow = slowTailFromByte in 0 until payload.size.toLong() && to >= slowTailFromByte
+                    stream(
+                        out, payload, from, length,
+                        cutAfter = if (cut) length / 3 else Long.MAX_VALUE,
+                        rate = if (slow) slowTailBytesPerSec else perConnectionBytesPerSec
+                    )
                 }
             }
         }
@@ -166,10 +226,11 @@ class TestHttpServer(
         data: ByteArray,
         from: Long,
         length: Long,
-        cutAfter: Long = Long.MAX_VALUE
+        cutAfter: Long = Long.MAX_VALUE,
+        rate: Long = perConnectionBytesPerSec
     ) {
         val chunk = 8 * 1024
-        val deadline = if (perConnectionBytesPerSec > 0) System.nanoTime() else 0L
+        val deadline = if (rate > 0) System.nanoTime() else 0L
         var sent = 0L
         var index = from
         while (sent < length) {
@@ -184,8 +245,8 @@ class TestHttpServer(
             index += size
             sent += size
             bytesServed.addAndGet(size.toLong())
-            if (perConnectionBytesPerSec > 0) {
-                val allowedNanos = sent * 1_000_000_000L / perConnectionBytesPerSec
+            if (rate > 0) {
+                val allowedNanos = sent * 1_000_000_000L / rate
                 val wait = deadline + allowedNanos - System.nanoTime()
                 if (wait > 0) {
                     try {

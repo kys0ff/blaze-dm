@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -12,12 +13,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadRequest
+import org.blaze.engine.metrics.EngineMetrics
 import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.network.toDownloadError
 import org.blaze.engine.persistence.HttpResumeState
 import org.blaze.engine.retry.isRetryable
-import org.blaze.engine.metrics.EngineMetrics
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.storage.FileStorage
 import org.blaze.engine.storage.PositionedWriter
@@ -29,11 +30,12 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.BitSet
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicIntegerArray
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicIntegerArray
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicLongArray
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicReferenceArray
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -79,6 +81,7 @@ class HttpDownloadCoordinator(
         onProgress: suspend (Progress) -> Unit
     ): Outcome = withContext(Dispatchers.IO) {
         val resumeFrom = sizeOf(partial)
+        val statePath = storage.getResumeStateFile(destination).toPath()
 
         if (settings.httpAccelerationEnabled && connections > 1) {
             val probe = client.probe(request)
@@ -90,6 +93,27 @@ class HttpDownloadCoordinator(
                 segmented(request, destination, partial, probe, connections, onProgress)
             } else {
                 singleStream(request, destination, partial, resumeFrom, probe.totalBytes, onProgress)
+            }
+        } else if (readResumeState(statePath) != null) {
+            // A previous accelerated run left a chunked, *sparse* partial. Its file size is the
+            // whole length (it was pre-allocated up-front), so a single-stream resume keyed off that
+            // size would either fail on a 416 or - worse than failing - trust unwritten holes as a
+            // contiguous prefix and finalize a corrupt file. The sidecar is the only trustworthy
+            // record of which bytes really exist, so honor the chunk map even though the caller now
+            // asked for a single connection: run the segmented path with however many workers fit.
+            val probe = client.probe(request)
+            if (probe.status == RANGE_NOT_SATISFIABLE && resumeFrom > 0) {
+                return@withContext Outcome.Success(resumeFrom, resumeFrom)
+            }
+            if (probe.acceptsRanges && probe.totalBytes > 0) {
+                segmented(request, destination, partial, probe, connections.coerceAtLeast(1), onProgress)
+            } else {
+                // The ranges the sidecar's bytes were read with can no longer be served; the chunk
+                // map is useless, so start clean instead of mis-resuming.
+                logger.warn("Cannot resume the chunked partial for {} (server no longer supports ranges); restarting", destination.fileName)
+                runCatching { storage.delete(statePath) }
+                runCatching { storage.delete(partial) }
+                singleStream(request, destination, partial, 0L, probe.totalBytes, onProgress)
             }
         } else {
             singleStream(request, destination, partial, resumeFrom, totalHint = -1L, onProgress)
@@ -114,15 +138,28 @@ class HttpDownloadCoordinator(
     ): Outcome {
         var offset = resumeFrom
         var restarted = false
+        val statePath = storage.getResumeStateFile(destination).toPath()
 
         while (true) {
             val result = streamOnce(request, partial, offset, totalHint, onProgress)
-            if (result is StreamOutcome.RangeIgnored && !restarted) {
-                // What is on disk was written against a range the server does not honour; keeping
-                // it would shift every byte, so start over instead of producing a corrupt file.
-                logger.warn("Server ignored the resume range for {}; restarting from byte 0", destination.fileName)
+            // Two ways the resume position we chose turns out to be bogus, and both are only
+            // repairable by starting over (deleting first, so a leftover sparse/shifted body can
+            // never be mistaken for a valid contiguous prefix):
+            //  - RangeIgnored: the server answered a resume range with the whole body; appending it
+            //    at `offset` would shift every byte.
+            //  - RangeUnsupported (HTTP 416) with offset > 0: our `offset` is at/over the server's
+            //    EOF. Without a sidecar we cannot tell a genuinely-complete file from a sparse
+            //    segmented remnant, and shipping an assumed-complete holey file is far worse than a
+            //    re-download, so restart instead of failing the way a naive resume used to.
+            val restartNeeded = !restarted && offset > 0 && when (result) {
+                is StreamOutcome.RangeIgnored -> true
+                is StreamOutcome.Failed -> result.error is DownloadError.RangeUnsupported
+                else -> false
+            }
+            if (restartNeeded) {
+                logger.warn("Resuming {} from byte {} is not honoured by the server; restarting from byte 0", destination.fileName, offset)
                 runCatching { storage.delete(partial) }
-                runCatching { storage.delete(storage.getResumeStateFile(destination).toPath()) }
+                runCatching { storage.delete(statePath) }
                 offset = 0L
                 restarted = true
                 continue
@@ -217,44 +254,63 @@ class HttpDownloadCoordinator(
     ): Outcome {
         val total = probe.totalBytes
         val statePath = storage.getResumeStateFile(destination).toPath()
-        var plan = HttpTransferPlanner.plan(total, connections, settings.httpChunkSizeMb * 1024L * 1024L)
+        val persisted = readResumeState(statePath)
+
+        // A sidecar is only usable if it describes *this* file and the partial still holds every
+        // byte it vouches for. A segmented partial is preallocated to the full length before any
+        // chunk is committed, so a file shorter than `total` means the data was truncated/deleted
+        // since the last save - trusting the bitset would leave permanent holes, so start over.
+        val matchesFile = persisted != null &&
+            persisted.totalBytes == total &&
+            persisted.validator.orEmpty() == probe.validator.orEmpty()
+        val damaged = matchesFile && sizeOf(partial) < total
+        val usable = matchesFile && !damaged
+
+        // When the sidecar is usable we MUST keep its exact chunk layout: "chunk 7 done" is only
+        // meaningful against the chunk size it was recorded with. Choosing the layout here (rather
+        // than after a connections-based bail-out) is what lets a single-connection resume of a
+        // previously-segmented download reuse its chunks instead of throwing them away.
+        var plan = if (usable) {
+            HttpTransferPlanner.Plan(persisted.chunkSize, chunkCountFor(total, persisted.chunkSize))
+        } else {
+            HttpTransferPlanner.plan(total, connections, settings.httpChunkSizeMb * 1024L * 1024L)
+        }
+
+        if (persisted != null && !usable) {
+            logger.warn(
+                "Stored resume state for {} cannot be reused ({}); restarting the transfer",
+                destination.fileName,
+                if (damaged) "the partial file is shorter than it describes" else "it no longer matches the server"
+            )
+            runCatching { storage.delete(statePath) }
+            runCatching { storage.delete(partial) }
+        }
+
         if (plan.chunkCount < 2) return singleStream(request, destination, partial, sizeOf(partial), total, onProgress)
 
         val completed = CompletedChunks(plan.chunkCount)
-        val persisted = readResumeState(statePath)
-        when {
-            persisted == null -> {
-                // No sidecar: a contiguous prefix (e.g. from an earlier single-stream attempt or a
-                // crash) is still safe to reuse chunk-by-chunk.
-                val contiguous = sizeOf(partial)
-                if (contiguous in 1 until total) {
-                    var chunks = 0
-                    while (chunks < plan.chunkCount && plan.endOf(chunks, total) < contiguous) {
-                        completed.markDone(chunks)
-                        chunks++
-                    }
-                    logger.info(
-                        "Reusing {} completed chunks ({} bytes) of {} from the existing partial file",
-                        chunks, contiguous, destination.fileName
-                    )
-                }
+        if (usable) {
+            val restored = persisted.toBitSet()
+            for (index in 0 until minOf(plan.chunkCount, restored.size())) {
+                if (restored.get(index)) completed.markDone(index)
             }
-
-            persisted.totalBytes == total && persisted.validator.orEmpty() == probe.validator.orEmpty() -> {
-                // Keep the original chunk layout, otherwise "chunk 7 done" would mean something else.
-                plan = HttpTransferPlanner.Plan(persisted.chunkSize, chunkCountFor(total, persisted.chunkSize))
-                if (plan.chunkCount < 2) return singleStream(request, destination, partial, sizeOf(partial), total, onProgress)
-                val restored = persisted.toBitSet()
-                for (index in 0 until minOf(plan.chunkCount, restored.size())) {
-                    if (restored.get(index)) completed.markDone(index)
+        } else if (persisted == null) {
+            // No sidecar at all: a *contiguous* prefix (an earlier single-stream attempt, or a crash
+            // before any chunked write) is still safe to reuse chunk-by-chunk. We only trust a
+            // prefix strictly shorter than the file - a full-length partial could be a sparse
+            // segmented remnant whose middle was never written, which is exactly what we refuse to
+            // guess about, so it is left for the usable-sidecar path or a clean restart.
+            val contiguous = sizeOf(partial)
+            if (contiguous in 1 until total) {
+                var chunks = 0
+                while (chunks < plan.chunkCount && plan.endOf(chunks, total) < contiguous) {
+                    completed.markDone(chunks)
+                    chunks++
                 }
-            }
-
-            else -> {
-                // The server is serving a different file than the one the state describes.
-                logger.warn("Stored resume state for {} no longer matches the server; restarting the transfer", destination.fileName)
-                runCatching { storage.delete(statePath) }
-                runCatching { storage.delete(partial) }
+                logger.info(
+                    "Reusing {} completed chunks ({} bytes) of {} from the existing partial file",
+                    chunks, contiguous, destination.fileName
+                )
             }
         }
 
@@ -283,6 +339,7 @@ class HttpDownloadCoordinator(
             return Outcome.Failure(e.toFileSystemError())
         }
 
+        val workerCount = minOf(connections, plan.chunkCount)
         val counted = AtomicLong(base)
         val nextChunk = AtomicInteger(0)
         val reclaimed = ConcurrentLinkedQueue<Int>()
@@ -290,12 +347,21 @@ class HttpDownloadCoordinator(
         val chunkAttempts = AtomicIntegerArray(plan.chunkCount)
         val completedCount = AtomicInteger(completed.cardinality())
         val error = AtomicReference<DownloadError?>(null)
-        val lastActivity = AtomicLongArray(connections.coerceAtLeast(1))
+        val lastActivity = AtomicLongArray(workerCount)
         val liveWorkers = AtomicInteger(0)
+        // Per-slot handle to the worker's *currently running request only*. The watchdog cancels
+        // this - never the worker coroutine - so a stalled connection is torn down and its chunk
+        // re-queued while the worker itself stays alive to pick up more work. Dropping the whole
+        // worker job (the old behavior) shrank the pool on every stall and never grew it back.
+        val inFlightStream = AtomicReferenceArray<Job?>(workerCount)
+        // Tail diagnostics: the moment the pool last had more than one connection alive. The span
+        // from there to completion is how long the download spent waiting on a single connection -
+        // the "last 1-5%" cost that chunked planning is supposed to bound.
+        val lastMultiActiveNs = AtomicLong(System.nanoTime())
+        metrics.recordPeakWorkers(workerCount)
 
         try {
             supervisorScope {
-                val workerCount = minOf(connections, plan.chunkCount)
                 // The handles must be the launched coroutines' own jobs: a standalone Job() never
                 // completes by itself, so joining one would block forever.
                 val jobs = Array(workerCount) { index ->
@@ -316,7 +382,8 @@ class HttpDownloadCoordinator(
                                 counted = counted,
                                 completedCount = completedCount,
                                 error = error,
-                                lastActivity = lastActivity
+                                lastActivity = lastActivity,
+                                inFlightStream = inFlightStream
                             )
                         } finally {
                             liveWorkers.decrementAndGet()
@@ -328,7 +395,9 @@ class HttpDownloadCoordinator(
                 val saver = launch {
                     persistPeriodically(statePath, total, plan.chunkSize, probe.validator, completed, writer)
                 }
-                val watchdog = launch { supervise(this, jobs, lastActivity, counted, chunkBytes, liveWorkers, error) }
+                val watchdog = launch {
+                    supervise(this, inFlightStream, lastActivity, workerCount, liveWorkers, lastMultiActiveNs, error)
+                }
 
                 jobs.forEach { it.join() }
                 reporter.cancel()
@@ -341,6 +410,10 @@ class HttpDownloadCoordinator(
         }
 
         writeResumeState(statePath, total, plan.chunkSize, probe.validator, completed)
+
+        if (workerCount >= 2) {
+            metrics.recordTailMillis((System.nanoTime() - lastMultiActiveNs.get()) / 1_000_000L)
+        }
 
         val failure = error.get()
         val allDone = completedCount.get() >= plan.chunkCount
@@ -371,16 +444,12 @@ class HttpDownloadCoordinator(
         counted: AtomicLong,
         completedCount: AtomicInteger,
         error: AtomicReference<DownloadError?>,
-        lastActivity: AtomicLongArray
+        lastActivity: AtomicLongArray,
+        inFlightStream: AtomicReferenceArray<Job?>
     ) {
-        var inFlight = -1
         try {
-            while (error.get() == null) {
-                if (inFlight < 0) {
-                    inFlight = claim(plan, completed, nextChunk, reclaimed, completedCount) ?: return
-                }
-                val chunk = inFlight
-                inFlight = -1
+            while (error.get() == null && currentCoroutineContext().isActive) {
+                val chunk = claim(plan, completed, nextChunk, reclaimed, completedCount) ?: return
                 if (completed.isDone(chunk)) continue
 
                 val start = plan.startOf(chunk)
@@ -388,21 +457,44 @@ class HttpDownloadCoordinator(
                 var position = start
                 lastActivity.set(index, System.nanoTime())
 
-                val result = client.stream(
-                    request = request,
-                    start = start,
-                    end = end,
-                    onHead = {},
-                    sink = { buffer, length ->
-                        limiter.acquire(length)
-                        writer.writeAt(position, buffer, 0, length)
-                        position += length
-                        metrics.recordBytes(length.toLong())
-                        chunkBytes.addAndGet(chunk, length.toLong())
-                        counted.addAndGet(length.toLong())
-                        lastActivity.set(index, System.nanoTime())
+                val result = try {
+                    // A child scope whose Job the watchdog can cancel without killing this worker.
+                    supervisorScope {
+                        val handle = coroutineContext[Job]
+                        inFlightStream.set(index, handle)
+                        try {
+                            client.stream(
+                                request = request,
+                                start = start,
+                                end = end,
+                                onHead = {},
+                                sink = { buffer, length ->
+                                    limiter.acquire(length)
+                                    writer.writeAt(position, buffer, 0, length)
+                                    position += length
+                                    metrics.recordBytes(length.toLong())
+                                    chunkBytes.addAndGet(chunk, length.toLong())
+                                    counted.addAndGet(length.toLong())
+                                    lastActivity.set(index, System.nanoTime())
+                                }
+                            )
+                        } finally {
+                            inFlightStream.set(index, null)
+                        }
                     }
-                )
+                } catch (e: CancellationException) {
+                    // The only way to get here while this worker is still active is a watchdog
+                    // stall-abort (a global pause/cancel also cancels this coroutine, so `isActive`
+                    // would be false and we rethrow). Hand the chunk back through the *same*
+                    // accounting as any other failure: the bytes read so far are rolled out of the
+                    // progress total and the attempt counter is charged, so a host that stalls every
+                    // connection exhausts MAX_CHUNK_ATTEMPTS and fails instead of looping forever.
+                    if (!currentCoroutineContext().isActive) throw e
+                    discard(chunk, chunkBytes, counted)
+                    if (error.get() != null) return
+                    requeue(chunk, DownloadError.NetworkFailure("Stalled connection dropped"), chunkAttempts, reclaimed, error)
+                    continue
+                }
 
                 when (result) {
                     is HttpNetworkClient.StreamResult.Success -> markDone(chunk, completed, completedCount)
@@ -431,17 +523,13 @@ class HttpDownloadCoordinator(
                 }
             }
         } catch (e: CancellationException) {
-            // Stalled-worker drop: hand the unfinished chunk back to the pool.
-            if (inFlight >= 0) {
-                discard(inFlight, chunkBytes, counted)
-                reclaimed.offer(inFlight)
-            }
             throw e
         } catch (e: Exception) {
             // A write that failed (disk full, channel closed) must end the transfer as a normal
             // failure instead of tearing down the supervisor scope with an unhandled exception.
-            if (inFlight >= 0) discard(inFlight, chunkBytes, counted)
             error.compareAndSet(null, e.toFileSystemError())
+        } finally {
+            inFlightStream.set(index, null)
         }
     }
 
@@ -527,60 +615,55 @@ class HttpDownloadCoordinator(
     }
 
     /**
-     * Drops a connection that stopped delivering bytes while others keep going, so its chunk can
-     * be picked up by someone faster. The last living worker is never dropped: a genuinely dead
-     * socket is already covered by the client's read-inactivity timeout.
+     * Detects a stalled connection and tears down only that request, so its chunk goes back into
+     * the pool for a healthier connection while the worker itself keeps going.
+     *
+     * Stall is judged *per slot* from [lastActivity], not on aggregate progress: with the old
+     * global check, one dead connection was only noticed once *every* connection had ground to a
+     * halt, so a single stalled worker holding a chunk while the others finished went unnoticed
+     * until the very tail. Watching each socket also lets the last remaining worker be recovered
+     * - cancelling just its request and re-queueing the chunk is safe now that the worker survives.
      */
     private suspend fun supervise(
         scope: CoroutineScope,
-        jobs: Array<Job>,
+        inFlightStream: AtomicReferenceArray<Job?>,
         lastActivity: AtomicLongArray,
-        counted: AtomicLong,
-        chunkBytes: AtomicLongArray,
+        workerCount: Int,
         liveWorkers: AtomicInteger,
+        lastMultiActiveNs: AtomicLong,
         error: AtomicReference<DownloadError?>
     ) {
         val stallNs = settings.httpStalledConnectionSeconds * 1_000_000_000L
-        var lastCounted = counted.get()
-        var lastChangeNs = System.nanoTime()
 
         while (scope.isActive) {
             delay(WATCHDOG_INTERVAL_MS.milliseconds)
             val now = System.nanoTime()
 
             if (error.get() != null) {
-                jobs.forEach { if (it.isActive) it.cancel() }
+                // Unblock any worker parked on a dead socket so the pool drains and the joins return.
+                for (index in 0 until workerCount) inFlightStream.get(index)?.cancel()
                 return
             }
 
-            val value = counted.get()
-            if (value != lastCounted) {
-                lastCounted = value
-                lastChangeNs = now
-                continue
-            }
-            if (now - lastChangeNs < stallNs) continue
-            if (liveWorkers.get() <= 1) continue
+            // Bookmark the last time more than one connection was live, for tail accounting.
+            if (liveWorkers.get() >= 2) lastMultiActiveNs.set(now)
 
-            var victim = -1
-            var victimActivity = Long.MAX_VALUE
-            for (index in jobs.indices) {
-                if (!jobs[index].isActive) continue
-                val activity = lastActivity.get(index)
-                if (activity < victimActivity) {
-                    victimActivity = activity
-                    victim = index
-                }
-            }
-            if (victim >= 0) {
+            if (liveWorkers.get() <= 0) return
+
+            for (index in 0 until workerCount) {
+                val handle = inFlightStream.get(index) ?: continue
+                if (!handle.isActive) continue
+                if (now - lastActivity.get(index) < stallNs) continue
                 logger.warn(
                     "Connection {} delivered nothing for over {}s; dropping it and re-queueing its chunk",
-                    victim,
+                    index,
                     settings.httpStalledConnectionSeconds
                 )
-                lastChangeNs = now
                 metrics.recordStalledWorkerDrop()
-                jobs[victim].cancel()
+                // Push the clock forward so we do not re-abort the same slot until it has had a
+                // chance to notice the cancellation, re-queue and start a fresh request.
+                lastActivity.set(index, now)
+                handle.cancel()
             }
         }
     }
