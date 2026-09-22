@@ -86,6 +86,22 @@ object EnStrings : BlazeStrings {
                 "Will be resolved using the $name extension."
             override fun handlerWillAsk(count: Int) =
                 "$count extensions can process this link — you'll be asked which one to use."
+
+            override val details = object : BlazeStrings.Downloads.Dialogs.Details {
+                override val title = "Download details"
+                override val name = "Name"
+                override val status = "Status"
+                override val location = "Save to"
+                override val source = "Source link"
+                override val size = "Size"
+                override val speed = "Speed"
+                override val eta = "Time remaining"
+                override val peers = "Peers"
+                override val added = "Added"
+                override val scheduled = "Scheduled to start"
+                override val files = "Files"
+                override val error = "Error"
+            }
         }
 
         override val status = object : BlazeStrings.Downloads.Status {
@@ -117,6 +133,7 @@ object EnStrings : BlazeStrings {
             override val openSourceLink = "Open source link in browser"
             override val copyLink = "Copy download link"
             override val copyFilePath = "Copy file location"
+            override val showDetails = "Show details"
         }
     }
 

@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.domain.models.DownloadState
+import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.BlazeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -30,18 +31,21 @@ internal fun DownloadState.indicatorColor(): Color = when (this) {
     DownloadState.SEEDING -> BlazeColors.warning
 }
 
+/** Localized status text for a download state, shared by the badge and the details dialog. */
+fun DownloadState.label(strings: BlazeStrings): String = when (this) {
+    DownloadState.QUEUED -> strings.downloads.status.queued
+    DownloadState.DOWNLOADING -> strings.downloads.status.downloading
+    DownloadState.PAUSED -> strings.downloads.status.paused
+    DownloadState.COMPLETED -> strings.downloads.status.completed
+    DownloadState.FAILED -> strings.downloads.status.error
+    DownloadState.REMOVING -> strings.downloads.status.cancelling
+    DownloadState.SEEDING -> strings.downloads.status.seeding
+}
+
 @Composable
 fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier) {
     val strings = blazeStrings
-    val text = when (state) {
-        DownloadState.QUEUED -> strings.downloads.status.queued
-        DownloadState.DOWNLOADING -> strings.downloads.status.downloading
-        DownloadState.PAUSED -> strings.downloads.status.paused
-        DownloadState.COMPLETED -> strings.downloads.status.completed
-        DownloadState.FAILED -> strings.downloads.status.error
-        DownloadState.REMOVING -> strings.downloads.status.cancelling
-        DownloadState.SEEDING -> strings.downloads.status.seeding
-    }
+    val text = state.label(strings)
 
     Row(
         modifier = modifier,

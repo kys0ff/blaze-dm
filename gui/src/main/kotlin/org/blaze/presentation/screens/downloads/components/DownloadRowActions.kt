@@ -17,4 +17,5 @@ class DownloadRowActions(
     val openSourceLink: () -> Unit,
     val copyLink: () -> Unit,
     val copyFileLocation: () -> Unit,
+    val showDetails: () -> Unit,
 )

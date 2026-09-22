@@ -97,6 +97,24 @@ interface BlazeStrings {
             fun handlerWillBeUsed(name: String): String
             /** Shown inline under the URL field when several handlers match and picker is on. */
             fun handlerWillAsk(count: Int): String
+
+            val details: Details
+            /** Field labels for the read-only "Download details" dialog. */
+            interface Details {
+                val title: String
+                val name: String
+                val status: String
+                val location: String
+                val source: String
+                val size: String
+                val speed: String
+                val eta: String
+                val peers: String
+                val added: String
+                val scheduled: String
+                val files: String
+                val error: String
+            }
         }
 
         val status: Status
@@ -130,6 +148,7 @@ interface BlazeStrings {
             val openSourceLink: String
             val copyLink: String
             val copyFilePath: String
+            val showDetails: String
         }
     }
 

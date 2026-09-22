@@ -21,6 +21,7 @@ fun DownloadsList(
     listState: LazyListState,
     onEvent: (DownloadsEvent) -> Unit,
     onRemoveRequested: (Download) -> Unit,
+    onShowDetailsRequested: (String) -> Unit,
     onSelect: (String) -> Unit,
     hideResumeForQueued: Boolean,
     capabilities: DownloadCapabilities = DownloadCapabilities(),
@@ -45,6 +46,7 @@ fun DownloadsList(
                     openSourceLink = { onEvent(DownloadsEvent.OpenSourceLink(id)) },
                     copyLink = { onEvent(DownloadsEvent.CopyDownloadLink(id)) },
                     copyFileLocation = { onEvent(DownloadsEvent.CopyFileLocation(id)) },
+                    showDetails = { onShowDetailsRequested(id) },
                 )
                 DownloadRow(
                     download = download,

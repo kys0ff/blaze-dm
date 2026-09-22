@@ -77,6 +77,10 @@ fun buildDownloadContextMenu(
         }
         divider()
 
+        // ── Details (always available) ────────────────────────────────────────
+        add(option(labels.showDetails, AllIconsKeys.General.ShowInfos, actions.showDetails))
+        divider()
+
         // ── Removal ───────────────────────────────────────────────────────────
         add(option(labels.remove, AllIconsKeys.Actions.GC, actions.remove))
     }

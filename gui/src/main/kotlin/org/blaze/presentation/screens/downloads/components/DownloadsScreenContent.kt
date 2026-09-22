@@ -30,6 +30,7 @@ fun DownloadsScreenContent(
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var downloadToRemove by remember { mutableStateOf<Download?>(null) }
+    var detailsId by remember { mutableStateOf<String?>(null) }
     var conflictData by remember { mutableStateOf<ConflictData?>(null) }
     var selectedId by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
@@ -127,6 +128,17 @@ fun DownloadsScreenContent(
         )
     }
 
+    // Resolve by id so the dialog keeps showing live progress while the download runs; if the
+    // download is removed/cleared meanwhile, nothing renders and the dialog effectively closes.
+    detailsId?.let { id ->
+        state.downloads.find { it.id == id }?.let { download ->
+            DownloadDetailsDialog(
+                download = download,
+                onDismiss = { detailsId = null }
+            )
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         DownloadsToolbar(
             hasActiveDownloads = hasActive,
@@ -153,6 +165,7 @@ fun DownloadsScreenContent(
                 listState = listState,
                 onEvent = onEvent,
                 onRemoveRequested = handleRemoveRequest,
+                onShowDetailsRequested = { id -> detailsId = id },
                 onSelect = { id -> selectedId = id },
                 hideResumeForQueued = hideResumeForQueued,
                 capabilities = state.capabilities
