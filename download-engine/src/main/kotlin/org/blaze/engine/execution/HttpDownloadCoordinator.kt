@@ -2,11 +2,13 @@ package org.blaze.engine.execution
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadRequest
@@ -75,21 +77,23 @@ class HttpDownloadCoordinator(
         partial: Path,
         connections: Int,
         onProgress: suspend (Progress) -> Unit
-    ): Outcome {
+    ): Outcome = withContext(Dispatchers.IO) {
         val resumeFrom = sizeOf(partial)
 
         if (settings.httpAccelerationEnabled && connections > 1) {
             val probe = client.probe(request)
             if (probe.status == RANGE_NOT_SATISFIABLE && resumeFrom > 0) {
                 // The bytes we already have go beyond the end of the file: it is complete.
-                return Outcome.Success(resumeFrom, resumeFrom)
+                return@withContext Outcome.Success(resumeFrom, resumeFrom)
             }
             if (probe.acceptsRanges && probe.totalBytes >= settings.httpMinParallelSizeBytes) {
-                return segmented(request, destination, partial, probe, connections, onProgress)
+                segmented(request, destination, partial, probe, connections, onProgress)
+            } else {
+                singleStream(request, destination, partial, resumeFrom, probe.totalBytes, onProgress)
             }
-            return singleStream(request, destination, partial, resumeFrom, probe.totalBytes, onProgress)
+        } else {
+            singleStream(request, destination, partial, resumeFrom, totalHint = -1L, onProgress)
         }
-        return singleStream(request, destination, partial, resumeFrom, totalHint = -1L, onProgress)
     }
 
     // ---------------------------------------------------------------- single stream

@@ -25,6 +25,7 @@ logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.
 
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
+ktor-client-java = { group = "io.ktor", name = "ktor-client-java", version.ref = "ktor" }
 ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock", version.ref = "ktor" }
 
 bt-core = { group = "com.github.atomashpolskiy", name = "bt-core", version.ref = "bt" }

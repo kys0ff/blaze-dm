@@ -1,11 +1,9 @@
 package org.blaze.engine.benchmark
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.HttpTimeoutConfig
 import kotlinx.coroutines.runBlocking
 import org.blaze.engine.api.DownloadRequest
+import org.blaze.engine.core.DownloadManager
 import org.blaze.engine.execution.HttpDownloadCoordinator
 import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
@@ -38,14 +36,7 @@ class HttpThroughputBenchmark {
     private val storage = DefaultFileStorage()
     private val dir: Path = Files.createTempDirectory("blaze-http-bench")
 
-    private val client = HttpClient(CIO) {
-        install(HttpTimeout) {
-            requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
-            connectTimeoutMillis = 5_000
-            socketTimeoutMillis = 30_000
-        }
-        followRedirects = false
-    }
+    private val client: HttpClient = DownloadManager.createDefaultHttpClient()
 
     @AfterTest
     fun tearDown() {

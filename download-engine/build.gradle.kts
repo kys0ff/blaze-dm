@@ -19,6 +19,10 @@ dependencies {
     // Ktor for HTTP downloads
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
+    // Production HTTP engine: unlike CIO, the JDK HttpClient pools and reuses keep-alive
+    // connections (and speaks HTTP/2), so a segmented download does not open a fresh
+    // TCP+TLS socket per chunk. CIO stays on the classpath for the tests that want it.
+    implementation(libs.ktor.client.java)
     
     // BitTorrent
     implementation(libs.bt.core)

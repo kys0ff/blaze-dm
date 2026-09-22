@@ -1,7 +1,7 @@
 package org.blaze.engine.core
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.java.Java
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.HttpTimeoutConfig
 import kotlinx.coroutines.CoroutineScope
@@ -137,14 +137,26 @@ class DownloadManager(
         /** Upper bound on how often the whole download list is re-serialized to disk. */
         private val PERSIST_DEBOUNCE = 1.seconds
 
-        fun createDefaultHttpClient(): HttpClient = HttpClient(CIO) {
+        /**
+         * The production HTTP client.
+         *
+         * It deliberately uses the JDK's own [java.net.http.HttpClient] engine rather than Ktor's
+         * CIO engine: CIO opens a brand-new TCP connection for *every* request (verified - two
+         * sequential keep-alive GETs use two sockets), so a segmented download would pay a full
+         * TCP - and on a real host, TLS - handshake for each of its dozens of chunk requests, and
+         * the abandoned sockets pile up in TIME_WAIT. The JDK client pools and reuses keep-alive
+         * connections and speaks HTTP/2, so the workers reuse sockets instead.
+         *
+         * The JDK client has no per-socket read-inactivity timeout, so a stalled transfer is caught
+         * by the segmented path's watchdog (see HttpDownloadCoordinator) rather than by
+         * socketTimeoutMillis; the connect timeout still bounds dead hosts.
+         */
+        fun createDefaultHttpClient(): HttpClient = HttpClient(Java) {
             install(HttpTimeout) {
                 // No absolute cap on the whole call: a streaming download of a large or
                 // slow file can legitimately take longer than any fixed timeout, and a
                 // finite request timeout would kill it mid-body with "Request timeout has
-                // expired" on every attempt. Dead connections are still detected by the
-                // socket (read-inactivity) timeout below, which surfaces as a retryable
-                // network error and triggers auto-retry.
+                // expired" on every attempt.
                 requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
                 connectTimeoutMillis = 15_000
                 socketTimeoutMillis = 60_000

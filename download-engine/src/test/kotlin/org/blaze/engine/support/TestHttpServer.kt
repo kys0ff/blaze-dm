@@ -32,7 +32,14 @@ class TestHttpServer(
      * that drops *some* connections while the rest of the transfer is fine - the download has to
      * recover by re-reading those chunks, not by failing.
      */
-    private val cutFirstBodies: Int = 0
+    private val cutFirstBodies: Int = 0,
+    /**
+     * When true the server keeps the TCP connection open across requests (`Connection: keep-alive`)
+     * and serves several requests per socket, the way a real HTTP/1.1 server does. Lets a test
+     * distinguish "the client opened one socket and reused it" from "a fresh socket per chunk",
+     * which is where the connection-establishment cost of a segmented transfer lives on a WAN.
+     */
+    private val keepAlive: Boolean = false
 ) : AutoCloseable {
     private val server = ServerSocket(0)
     private val running = AtomicBoolean(true)
@@ -44,6 +51,9 @@ class TestHttpServer(
     /** Total body bytes pushed at clients, the cheapest way to prove a resume did not re-download. */
     val bytesServed = AtomicLong(0)
     val requestCount = AtomicLong(0)
+
+    /** Accepted TCP sockets; compare against [requestCount] to prove or disprove connection reuse. */
+    val connectionCount = AtomicInteger(0)
     private val bodiesServed = AtomicInteger(0)
 
     val port: Int get() = server.localPort
@@ -60,6 +70,7 @@ class TestHttpServer(
             } catch (_: IOException) {
                 break
             }
+            connectionCount.incrementAndGet()
             Thread { handle(socket) }.apply { isDaemon = true }.start()
         }
     }
@@ -69,65 +80,74 @@ class TestHttpServer(
             try {
                 val input: InputStream = it.getInputStream()
                 val reader = BufferedReader(input.reader(StandardCharsets.ISO_8859_1))
-                val requestLine = reader.readLine() ?: return
-                val method = requestLine.substringBefore(' ').uppercase()
-                var range: String? = null
-                while (true) {
-                    val line = reader.readLine() ?: break
-                    if (line.isEmpty()) break
-                    if (line.startsWith("Range:", ignoreCase = true)) range = line.substringAfter(':').trim()
-                }
-                requestCount.incrementAndGet()
-                rangeRequests.add(range ?: "")
-
                 val out = it.getOutputStream()
-                when {
-                    method == "HEAD" && !headAllowed -> {
-                        writeHead(out, "HTTP/1.1 405 Method Not Allowed", -1, null)
-                    }
-
-                    method == "HEAD" -> {
-                        writeHead(out, "HTTP/1.1 200 OK", payload.size.toLong(), validator)
-                    }
-
-                    // The dangerous server: it answers a range request with the whole body, which
-                    // is exactly the case that used to shift every byte and corrupt the file.
-                    range == null || !supportsRanges -> {
-                        writeHead(out, "HTTP/1.1 200 OK", payload.size.toLong(), validator)
-                        stream(out, payload, 0, payload.size.toLong())
-                    }
-
-                    else -> {
-                        val (from, to) = parseRange(range, payload.size)
-                        if (from == null) {
-                            writeHead(out, "HTTP/1.1 416 Requested Range Not Satisfiable", -1, null)
-                        } else {
-                            val length = to - from + 1
-                            out.write(
-                                buildString {
-                                    append("HTTP/1.1 206 Partial Content\r\n")
-                                    append("Content-Length: ").append(length).append("\r\n")
-                                    append("Content-Range: bytes ").append(from).append('-').append(to)
-                                        append('/').append(payload.size).append("\r\n")
-                                    append("Accept-Ranges: bytes\r\n")
-                                    if (validator != null) append("ETag: ").append(validator).append("\r\n")
-                                    append("Connection: close\r\n\r\n")
-                                }.toByteArray(StandardCharsets.ISO_8859_1)
-                            )
-                            out.flush()
-                            val cut = bodiesServed.getAndIncrement() < cutFirstBodies
-                            stream(out, payload, from, length, cutAfter = if (cut) length / 3 else Long.MAX_VALUE)
-                        }
-                    }
+                while (running.get()) {
+                    val requestLine = reader.readLine() ?: return
+                    if (!serveOne(reader, out, requestLine)) return
                 }
-                out.flush()
             } catch (_: Exception) {
                 // The client hung up mid-transfer; that is itself a scenario worth testing.
             }
         }
     }
 
-    private fun writeHead(out: OutputStream, status: String, length: Long, validator: String?) {
+    /** Handles one request. Returns false when the connection must be closed after this request. */
+    private fun serveOne(reader: BufferedReader, out: OutputStream, requestLine: String): Boolean {
+        val method = requestLine.substringBefore(' ').uppercase()
+        var range: String? = null
+        while (true) {
+            val line = reader.readLine() ?: return false
+            if (line.isEmpty()) break
+            if (line.startsWith("Range:", ignoreCase = true)) range = line.substringAfter(':').trim()
+        }
+        requestCount.incrementAndGet()
+        rangeRequests.add(range ?: "")
+
+        val connection = if (keepAlive) "keep-alive" else "close"
+        when {
+            method == "HEAD" && !headAllowed -> {
+                writeHead(out, "HTTP/1.1 405 Method Not Allowed", -1, null, connection)
+            }
+
+            method == "HEAD" -> {
+                writeHead(out, "HTTP/1.1 200 OK", payload.size.toLong(), validator, connection)
+            }
+
+            // The dangerous server: it answers a range request with the whole body, which
+            // is exactly the case that used to shift every byte and corrupt the file.
+            range == null || !supportsRanges -> {
+                writeHead(out, "HTTP/1.1 200 OK", payload.size.toLong(), validator, connection)
+                stream(out, payload, 0, payload.size.toLong())
+            }
+
+            else -> {
+                val (from, to) = parseRange(range, payload.size)
+                if (from == null) {
+                    writeHead(out, "HTTP/1.1 416 Requested Range Not Satisfiable", -1, null, connection)
+                } else {
+                    val length = to - from + 1
+                    out.write(
+                        buildString {
+                            append("HTTP/1.1 206 Partial Content\r\n")
+                            append("Content-Length: ").append(length).append("\r\n")
+                            append("Content-Range: bytes ").append(from).append('-').append(to)
+                                append('/').append(payload.size).append("\r\n")
+                            append("Accept-Ranges: bytes\r\n")
+                            if (validator != null) append("ETag: ").append(validator).append("\r\n")
+                            append("Connection: ").append(connection).append("\r\n\r\n")
+                        }.toByteArray(StandardCharsets.ISO_8859_1)
+                    )
+                    out.flush()
+                    val cut = bodiesServed.getAndIncrement() < cutFirstBodies
+                    stream(out, payload, from, length, cutAfter = if (cut) length / 3 else Long.MAX_VALUE)
+                }
+            }
+        }
+        out.flush()
+        return keepAlive
+    }
+
+    private fun writeHead(out: OutputStream, status: String, length: Long, validator: String?, connection: String = "close") {
         val header = buildString {
             append(status).append("\r\n")
             if (length >= 0) {
@@ -135,7 +155,7 @@ class TestHttpServer(
                 append("Accept-Ranges: bytes\r\n")
             }
             if (validator != null) append("ETag: ").append(validator).append("\r\n")
-            append("Connection: close\r\n\r\n")
+            append("Connection: ").append(connection).append("\r\n\r\n")
         }
         out.write(header.toByteArray(StandardCharsets.ISO_8859_1))
         out.flush()
