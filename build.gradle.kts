@@ -10,4 +10,8 @@ allprojects {
         mavenCentral()
         maven("https://www.jetbrains.com/intellij-repository/releases")
     }
+
+    configurations.all {
+        exclude(group = "org.jetbrains.intellij.deps.kotlinx")
+    }
 }
