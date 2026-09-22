@@ -11,7 +11,7 @@ import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.runBlocking
 import org.blaze.data.AppSettingsRepository
-import org.blaze.engine.api.DownloadEngine
+import org.blaze.download.api.DownloadsApi
 import org.blaze.tray.api.TrayService
 import org.koin.compose.koinInject
 
@@ -27,7 +27,7 @@ class AppShell internal constructor(
     val windowVisible: MutableState<Boolean>,
     private val appSettingsRepository: AppSettingsRepository,
     private val trayService: TrayService,
-    private val engine: DownloadEngine,
+    private val downloadsApi: DownloadsApi,
     private val exitApplication: () -> Unit,
 ) {
     /** Whether the app is in its real shutdown path (as opposed to hidden to the tray). */
@@ -52,11 +52,11 @@ class AppShell internal constructor(
     /** Fold a title-bar minimize into the single hide-to-tray model. */
     fun onMinimize() = hide()
 
-    /** Shut the download engine down cleanly and exit the Compose application. */
+    /** Shut the download service down cleanly and exit the Compose application. */
     fun quit() {
         exiting = true
         runBlocking {
-            engine.shutdown()
+            downloadsApi.shutdown()
         }
         exitApplication()
     }
@@ -78,7 +78,7 @@ fun ApplicationScope.rememberAppShell(): AppShell {
     val windowVisible = remember { mutableStateOf(true) }
     val appSettingsRepository = koinInject<AppSettingsRepository>()
     val trayService = koinInject<TrayService>()
-    val engine = koinInject<DownloadEngine>()
+    val downloadsApi = koinInject<DownloadsApi>()
 
     return remember(windowState, windowVisible) {
         AppShell(
@@ -86,7 +86,7 @@ fun ApplicationScope.rememberAppShell(): AppShell {
             windowVisible = windowVisible,
             appSettingsRepository = appSettingsRepository,
             trayService = trayService,
-            engine = engine,
+            downloadsApi = downloadsApi,
             exitApplication = ::exitApplication,
         )
     }

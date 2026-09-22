@@ -1,6 +1,6 @@
 package org.blaze.domain.models
 
-import org.blaze.engine.api.DownloadError
+import org.blaze.download.api.ApiErrorBody
 
 data class Download(
     val id: String,
@@ -15,7 +15,7 @@ data class Download(
     val addedAt: Long,
     val scheduledAt: Long? = null,
     val savePath: String,
-    val error: DownloadError? = null,
+    val error: ApiErrorBody? = null,
     val selectedFiles: List<SelectedFile>? = null,
     val progress: Float = if (totalSize != null && totalSize > 0) {
         (downloadedSize.toFloat() / totalSize).coerceIn(0f, 1f)

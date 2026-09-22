@@ -7,7 +7,7 @@ import org.koin.dsl.module
 val repositoryModule = module {
     single<DownloadRepository> {
         DownloadRepositoryImpl(
-            engine = get(),
+            api = get(),
             scope = get()
         )
     }

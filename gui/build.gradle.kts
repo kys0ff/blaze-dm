@@ -17,6 +17,9 @@ repositories {
 
 dependencies {
     implementation(project(":download-engine"))
+    // The GUI talks to the engine only through the application-level download API now.
+    implementation(project(":download-api"))
+    implementation(project(":download-service"))
     implementation(project(":link-resolver"))
     implementation(project(":theming"))
     implementation(project(":tray"))
@@ -71,13 +74,6 @@ compose.desktop {
         mainClass = "org.blaze.MainKt"
         jvmArgs += "--enable-native-access=ALL-UNNAMED"
 
-        // Compose Desktop enables ProGuard automatically for the `release` build
-        // type (shrink-only, `-dontobfuscate`), so `packageReleaseDistribution*`
-        // runs `proguardReleaseJars`. Blaze pulls in a large set of libraries with
-        // optional integrations (Guice, BitTorrent/bt, Logback servlet+mail,
-        // commons-logging, JNA, xz, dbus, Ktor engines) whose absent classes make
-        // ProGuard abort. `proguard-rules.pro` teaches it to ignore those and to
-        // keep the reflective entry points Blaze relies on.
         buildTypes {
             release {
                 proguard {
@@ -109,9 +105,6 @@ compose.desktop {
             )
 
             linux {
-                // jpackage's Linux bundlers require a raster (PNG) icon; the
-                // scalable app-icon.svg is used separately for the .desktop
-                // launcher entry, not here.
                 iconFile = file("src/main/resources/app-icon.png")
             }
 

@@ -1,6 +1,7 @@
 package org.blaze.presentation.util
 
-import org.blaze.engine.api.DownloadError
+import org.blaze.download.api.ApiErrorBody
+import org.blaze.download.api.ApiErrorCode
 import org.blaze.i18n.BlazeStrings
 import kotlin.math.ln
 import kotlin.math.pow
@@ -30,17 +31,19 @@ internal fun formatDuration(seconds: Long): String {
     }
 }
 
-internal fun DownloadError.toFriendlyMessage(strings: BlazeStrings): String = when (this) {
-    DownloadError.NetworkUnavailable -> strings.errors.networkUnavailable
-    DownloadError.Timeout -> strings.errors.timeout
-    DownloadError.Unauthorized -> strings.errors.unauthorized
-    DownloadError.NotFound -> strings.errors.notFound
-    DownloadError.DiskFull -> strings.errors.diskFull
-    DownloadError.RangeUnsupported -> strings.errors.rangeUnsupported
-    DownloadError.InvalidTorrent -> strings.errors.invalidTorrent
-    DownloadError.MetadataTimeout -> strings.errors.metadataTimeout
-    DownloadError.Cancelled -> strings.errors.cancelled
-    is DownloadError.NetworkFailure -> strings.errors.networkFailure(message)
-    is DownloadError.FileSystemError -> strings.errors.diskError(message)
-    is DownloadError.Unknown -> strings.errors.unknown(message)
+/**
+ * Turns a client-safe [ApiErrorBody] into a localized sentence.
+ *
+ * The GUI switches on the stable [ApiErrorCode] the application API exposes - never an engine exception
+ * type - so the wording stays meaningful even if the transfer implementation behind the API changes.
+ */
+internal fun ApiErrorBody.toFriendlyMessage(strings: BlazeStrings): String = when (code) {
+    ApiErrorCode.NETWORK_ERROR -> strings.errors.networkFailure(message)
+    ApiErrorCode.AUTH_REQUIRED, ApiErrorCode.PERMISSION_DENIED -> strings.errors.unauthorized
+    ApiErrorCode.DOWNLOAD_NOT_FOUND -> strings.errors.notFound
+    ApiErrorCode.INVALID_URL -> strings.errors.notFound
+    ApiErrorCode.DESTINATION_UNAVAILABLE -> strings.errors.diskError(message)
+    ApiErrorCode.INVALID_TORRENT -> strings.errors.invalidTorrent
+    ApiErrorCode.RATE_LIMITED, ApiErrorCode.SERVICE_UNAVAILABLE -> strings.errors.timeout
+    else -> strings.errors.unknown(message)
 }

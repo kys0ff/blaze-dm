@@ -18,6 +18,9 @@ dependencyResolutionManagement {
 rootProject.name = "blaze-dm"
 
 include(":download-engine")
+include(":download-api")
+include(":download-service")
+include(":cli")
 include(":link-resolver")
 include(":theming")
 include(":tray")

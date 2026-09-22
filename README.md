@@ -95,6 +95,9 @@ Blaze is a JVM desktop app, and the stack is very much on purpose:
 | Module            | Responsibility                                                                     |
 |:------------------|:-----------------------------------------------------------------------------------|
 | `download-engine` | Core download orchestration: HTTP(S), BitTorrent, scheduling, resume, portability. |
+| `download-api`    | The public, transport-agnostic **Download API** boundary — DTOs, states, events, errors, capabilities. Engine-free and serializable; every client shares it. |
+| `download-service`| The one implementation of the API on top of the engine, plus the loopback **HTTP transport**, local auth, path confinement, single-instance lock and the **headless daemon**. |
+| `cli`             | `blaze` — a pure client of the API (never touches engine internals), for scripts and automation. |
 | `link-resolver`   | Extensible link-resolution / handler system.                                       |
 | `theming`         | Plugin-based theme registry and provider safety.                                   |
 | `tray`            | App-agnostic system-tray library.                                                  |
@@ -130,6 +133,26 @@ Blaze is a JVM desktop app, and the stack is very much on purpose:
 ./gradlew build
 ./gradlew test
 ```
+
+## Programmatic access (CLI, scripts & future clients)
+
+The GUI, the CLI and any external client (a browser extension, a script, another app) all drive the **same**
+public Download API — never the engine directly. The engine is reached through one application service, exposed
+over swappable transports.
+
+```bash
+# Run the service without a desktop UI (headless daemon, loopback HTTP API + single-instance lock):
+./gradlew :download-service:run
+
+# Control it from the CLI — human output, or --json for stable machine-readable output:
+./gradlew :cli:run --args="download https://example.com/file.iso -o ~/Downloads"
+./gradlew :cli:run --args="list --json"
+./gradlew :cli:run --args="wait <id>"
+```
+
+The local API is **localhost-only and token-authenticated by default**. Full transport schema, CLI reference,
+exit codes, security model and browser-extension readiness are documented in
+**[`docs/DOWNLOAD_API.md`](docs/DOWNLOAD_API.md)**.
 
 ## License
 

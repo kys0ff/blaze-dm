@@ -14,103 +14,55 @@ import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.repository.PortableKind
-import org.blaze.engine.api.DownloadEngine
-import org.blaze.engine.api.DownloadFileMetadata
-import org.blaze.engine.api.DownloadId
-import org.blaze.engine.api.DownloadRequest
-import org.blaze.engine.api.DownloadState
-import org.blaze.engine.api.DownloadTask
-import org.blaze.engine.api.PortableDownloadInfo
-import org.blaze.engine.api.PortableTransferKind
-import org.blaze.engine.api.TorrentSource
+import org.blaze.download.api.DownloadDto
+import org.blaze.download.api.DownloadFileHint
+import org.blaze.download.api.DownloadSource
+import org.blaze.download.api.DownloadState as ApiState
+import org.blaze.download.api.NewDownloadRequest
+import org.blaze.download.api.PortableInfoDto
+import org.blaze.download.api.DownloadsApi
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.time.Instant
 import org.blaze.domain.models.DownloadState as GuiState
 
+/**
+ * The GUI's view onto the download subsystem - implemented entirely against the application-level
+ * [DownloadsApi], never the engine.
+ *
+ * Everything the window needs (the live list, lifecycle verbs, metadata probing, portable import) goes
+ * through the same boundary the CLI and a future browser bridge use, so the GUI is just another client:
+ * it maps the transport-agnostic [DownloadDto] onto its own [Download] view model and builds a
+ * [NewDownloadRequest] to add work. No coroutine scope, scheduler, worker or engine request type appears
+ * here, which is what lets the transfer implementation change without touching a single line of UI code.
+ */
 class DownloadRepositoryImpl(
-    private val engine: DownloadEngine,
-    private val scope: CoroutineScope
+    private val api: DownloadsApi,
+    private val scope: CoroutineScope,
 ) : DownloadRepository {
 
     override val downloads: Flow<List<Download>> =
-        engine.observeAllTasks()
-            .map { tasks -> tasks.map { it.toGuiDownload() } }
+        api.observe()
+            .map { dtos -> dtos.map { it.toGuiDownload() } }
             .shareIn(
                 scope = scope,
                 started = SharingStarted.Lazily,
-                replay = 1
+                replay = 1,
             )
 
     override suspend fun fetchMetadata(url: String): DownloadMetadata? {
-        val request = createRequest(url, Path.of(System.getProperty("java.io.tmpdir")), null)
-        return engine.fetchMetadata(request)?.let { meta ->
+        val request = NewDownloadRequest(source = sourceOf(url), destination = TMP_DIR, filename = null)
+        return api.probe(request)?.let { meta ->
             DownloadMetadata(
                 name = meta.name,
-                totalSize = meta.totalSize,
+                totalSize = meta.totalBytes,
                 files = meta.files?.mapIndexed { index, file ->
-                    DownloadFile(
-                        name = file.path,
-                        size = file.size,
-                        index = index
-                    )
-                }
+                    DownloadFile(name = file.path, size = file.size, index = index)
+                },
             )
         }
     }
-
-    private suspend fun createRequest(
-        url: String,
-        destinationDir: Path,
-        name: String?,
-        fileIndices: List<Int>? = null
-    ): DownloadRequest =
-        if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
-            val source = if (url.startsWith("magnet:")) {
-                TorrentSource.Magnet(url)
-            } else {
-                TorrentSource.File(Path.of(url))
-            }
-
-            val torrentName = name?.takeIf { it.isNotBlank() } ?: "Torrent"
-            val folderName = name?.takeIf { it.isNotBlank() } ?: "download"
-
-            DownloadRequest.Torrent(
-                torrentName,
-                source,
-                destinationDir.resolve(folderName),
-                fileIndices
-            )
-        } else {
-            val trimmedUrl = url.trim()
-
-            val decodedUrl = try {
-                withContext(Dispatchers.IO) {
-                    URLDecoder.decode(
-                        trimmedUrl,
-                        StandardCharsets.UTF_8.toString()
-                    )
-                }
-            } catch (_: IllegalArgumentException) {
-                trimmedUrl
-            }
-
-            val fileName = name
-                ?: decodedUrl
-                    .substringAfterLast('/')
-                    .substringBefore('?')
-                    .replace('+', ' ')
-                    .takeIf { it.isNotBlank() }
-                ?: "download"
-
-            DownloadRequest.Http(
-                fileName,
-                trimmedUrl,
-                destinationDir.resolve(fileName)
-            )
-        }
 
     override suspend fun addDownload(
         url: String,
@@ -119,98 +71,64 @@ class DownloadRepositoryImpl(
         fileIndices: List<Int>?,
         totalSize: Long?,
         files: List<DownloadFile>?,
-        scheduledAt: Long?
+        scheduledAt: Long?,
     ) {
         val destinationDir = Path.of(savePath)
-
         withContext(Dispatchers.IO) {
-            if (Files.notExists(destinationDir)) {
-                Files.createDirectories(destinationDir)
-            }
+            if (Files.notExists(destinationDir)) Files.createDirectories(destinationDir)
         }
 
-        val request = createRequest(url, destinationDir, name, fileIndices)
-        val engineFiles = files?.map { DownloadFileMetadata(path = it.name, size = it.size) }
-
-        val id = engine.enqueue(
-            request = request,
-            totalBytes = totalSize,
-            files = engineFiles,
-            scheduledAt = scheduledAt?.let { Instant.ofEpochMilli(it) }
+        val request = NewDownloadRequest(
+            source = sourceOf(url),
+            destination = savePath,
+            filename = name?.takeIf { it.isNotBlank() },
+            autoStart = true,
+            expectedSizeBytes = totalSize,
+            selectedFileIndices = fileIndices,
+            files = files?.map { DownloadFileHint(path = it.name, size = it.size) },
+            scheduledAtEpochMs = scheduledAt,
         )
-        engine.start(id)
+        api.create(request)
     }
 
-    override suspend fun getDestinationPath(url: String, savePath: String, name: String?): String {
-        return createRequest(url, Path.of(savePath), name).destination.toAbsolutePath().toString()
-    }
+    override suspend fun getDestinationPath(url: String, savePath: String, name: String?): String =
+        resolvePreview(url, savePath, name).toAbsolutePath().toString()
 
-    override suspend fun pauseDownload(id: String) {
-        engine.pause(DownloadId(id))
-    }
-
-    override suspend fun resumeDownload(id: String) {
-        engine.resume(DownloadId(id))
-    }
-
-    override suspend fun cancelDownload(id: String) {
-        engine.cancel(DownloadId(id))
-    }
-
-    override suspend fun removeDownload(id: String, deleteFile: Boolean) {
-        engine.remove(DownloadId(id), deleteFile)
-    }
-
-    override suspend fun retryDownload(id: String) {
-        engine.retry(DownloadId(id))
-    }
+    override suspend fun pauseDownload(id: String) = api.pause(id)
+    override suspend fun resumeDownload(id: String) = api.resume(id)
+    override suspend fun cancelDownload(id: String) = api.cancel(id)
+    override suspend fun retryDownload(id: String) = api.retry(id)
+    override suspend fun removeDownload(id: String, deleteFile: Boolean) = api.remove(id, deleteFile)
 
     override suspend fun pauseAll() {
-        engine.observeAllTasks().value.forEach { task ->
-            if (task.state is DownloadState.Downloading ||
-                task.state is DownloadState.Queued ||
-                task.state is DownloadState.Starting ||
-                task.state is DownloadState.Resuming ||
-                task.state is DownloadState.Verifying ||
-                task.state is DownloadState.ResolvingMetadata
-            ) {
-                engine.pause(task.id)
-            }
-        }
+        api.snapshot().forEach { if (it.state.isGuiActive()) api.pause(it.id) }
     }
 
     override suspend fun resumeAll() {
-        engine.observeAllTasks().value.forEach { task ->
-            if (task.state is DownloadState.Paused || task.state is DownloadState.Pausing) {
-                engine.resume(task.id)
-            }
-        }
+        api.snapshot().forEach { if (it.state == ApiState.PAUSED || it.state == ApiState.PAUSING) api.resume(it.id) }
     }
 
     override suspend fun clearCompleted() {
-        engine.observeAllTasks().value.forEach { task ->
-            if (task.state is DownloadState.Completed || task.state is DownloadState.Seeding) {
-                engine.remove(task.id, deleteFiles = false)
-            }
+        api.snapshot().forEach {
+            if (it.state == ApiState.COMPLETED || it.state == ApiState.SEEDING) api.remove(it.id, deleteFiles = false)
         }
     }
 
     override suspend fun detectPortable(artifactPath: String): PortableInfo? =
-        engine.detectPortableDownload(Path.of(artifactPath))?.toPortableInfo()
+        api.detectPortable(artifactPath)?.toPortableInfo()
 
     override suspend fun importPortable(artifactPath: String, destinationDir: String): Boolean {
-        val artifact = Path.of(artifactPath)
         val destination = Path.of(destinationDir)
         withContext(Dispatchers.IO) {
             if (Files.notExists(destination)) Files.createDirectories(destination)
         }
-        return engine.importPortableDownload(artifact, destination) != null
+        return api.importPortable(artifactPath, destinationDir) != null
     }
 
-    private fun PortableDownloadInfo.toPortableInfo() = PortableInfo(
+    private fun PortableInfoDto.toPortableInfo() = PortableInfo(
         kind = when (this.kind) {
-            PortableTransferKind.HTTP -> PortableKind.HTTP
-            PortableTransferKind.TORRENT -> PortableKind.TORRENT
+            org.blaze.download.api.PortableKindDto.HTTP -> PortableKind.HTTP
+            org.blaze.download.api.PortableKindDto.TORRENT -> PortableKind.TORRENT
         },
         suggestedName = suggestedName,
         source = source,
@@ -218,73 +136,98 @@ class DownloadRepositoryImpl(
         availableBytes = availableBytes,
         resumable = resumable,
         multiFile = multiFile,
-        mayRequireCredentials = mayRequireCredentials
+        mayRequireCredentials = mayRequireCredentials,
     )
 
-    private fun DownloadTask.toGuiDownload(): Download {
-        val torrentRequest = request as? DownloadRequest.Torrent
-        val selectedIndices = torrentRequest?.fileIndices?.toSet()
-        val allFiles = files
-        val fraction = progress
-
-        val guiFiles = allFiles?.mapIndexed { idx, f ->
-            SelectedFile(f.path, f.size, idx)
-        }
-
-        val filteredFiles = if (selectedIndices != null && guiFiles != null) {
-            guiFiles.filter { selectedIndices.contains(it.index) }
-        } else {
-            guiFiles
-        }
-
-        val totalSelectedSize = if (selectedIndices != null && allFiles != null) {
-            allFiles.filterIndexed { idx, _ -> selectedIndices.contains(idx) }.sumOf { it.size }
-        } else {
-            totalBytes
-        }
-
+    private fun DownloadDto.toGuiDownload(): Download {
+        val selected = files?.filter { it.selected }
+        val total = totalBytes
+        val frac = progress
         return Download(
-            id = id.value,
+            id = id,
             name = name,
-            url = when (val r = request) {
-                is DownloadRequest.Http -> r.url
-                is DownloadRequest.Torrent ->
-                    (r.torrentSource as? TorrentSource.Magnet)?.uri ?: "Local Torrent"
-            },
-            totalSize = totalSelectedSize,
-            downloadedSize = if (state == DownloadState.Completed || state == DownloadState.Seeding) {
-                totalSelectedSize ?: downloadedBytes
-            } else if (downloadedBytes == 0L && totalSelectedSize != null && fraction != null && fraction > 0f) {
-                (fraction * totalSelectedSize).toLong()
+            url = source.locator,
+            totalSize = total,
+            downloadedSize = if (state == ApiState.COMPLETED || state == ApiState.SEEDING) {
+                total ?: downloadedBytes
+            } else if (downloadedBytes == 0L && total != null && (frac ?: 0f) > 0f) {
+                (frac!! * total).toLong()
             } else {
                 downloadedBytes
             },
-            speed = downloadSpeed,
-            eta = eta?.inWholeSeconds,
+            speed = speedBytesPerSecond,
+            eta = etaSeconds,
             peers = peers,
-            state = when (state) {
-                DownloadState.Queued -> GuiState.QUEUED
-
-                DownloadState.Downloading,
-                DownloadState.Starting,
-                DownloadState.Resuming,
-                DownloadState.Verifying,
-                DownloadState.ResolvingMetadata -> GuiState.DOWNLOADING
-
-                DownloadState.Paused,
-                DownloadState.Pausing -> GuiState.PAUSED
-
-                DownloadState.Completed -> GuiState.COMPLETED
-                DownloadState.Seeding -> GuiState.SEEDING
-
-                DownloadState.Failed -> GuiState.FAILED
-                DownloadState.Cancelled -> GuiState.FAILED
-            },
-            addedAt = createdAt.toEpochMilli(),
-            scheduledAt = scheduledAt?.toEpochMilli(),
-            savePath = request.destination.toString(),
+            state = state.toGuiState(),
+            addedAt = createdAtEpochMs,
+            scheduledAt = scheduledAtEpochMs,
+            savePath = destination,
             error = error,
-            selectedFiles = filteredFiles
+            selectedFiles = selected?.mapIndexed { index, f -> SelectedFile(path = f.path, size = f.size, index = index) },
         )
     }
+
+    private fun ApiState.toGuiState(): GuiState = when (this) {
+        ApiState.QUEUED -> GuiState.QUEUED
+        ApiState.STARTING, ApiState.DOWNLOADING, ApiState.RESUMING,
+        ApiState.VERIFYING, ApiState.RESOLVING_METADATA, ApiState.COMPLETING -> GuiState.DOWNLOADING
+        ApiState.PAUSED, ApiState.PAUSING -> GuiState.PAUSED
+        ApiState.COMPLETED -> GuiState.COMPLETED
+        ApiState.SEEDING -> GuiState.SEEDING
+        ApiState.FAILED, ApiState.CANCELLED -> GuiState.FAILED
+    }
+
+    private fun ApiState.isGuiActive(): Boolean =
+        this == ApiState.DOWNLOADING || this == ApiState.QUEUED || this == ApiState.STARTING ||
+            this == ApiState.RESUMING || this == ApiState.VERIFYING || this == ApiState.RESOLVING_METADATA
+
+    companion object {
+        private const val TMP_DIR = "/tmp"
+    }
+}
+
+/** Picks the right [DownloadSource] from a raw GUI url/magnet entry, mirroring the prior repository. */
+private fun sourceOf(rawUrl: String): DownloadSource {
+    val url = rawUrl.trim()
+    return when {
+        url.startsWith("magnet:") -> DownloadSource.Magnet(url)
+        url.endsWith(".torrent") -> DownloadSource.TorrentFile(url)
+        else -> DownloadSource.Url(url)
+    }
+}
+
+/**
+ * A display-only preview of where [url] will land, matching the naming the application service applies
+ * when it builds the engine request. It never creates anything; it exists so the "Save as" dialog can
+ * echo the resulting path before the user commits.
+ */
+private fun resolvePreview(url: String, savePath: String, name: String?): Path {
+    val dir = Path.of(savePath)
+    val explicit = name?.takeIf { it.isNotBlank() }
+    return when (val source = sourceOf(url)) {
+        is DownloadSource.TorrentFile ->
+            dir.resolve(explicit ?: source.path.substringAfterLast('/').removeSuffix(".torrent").ifBlank { "download" })
+        is DownloadSource.Magnet ->
+            dir.resolve(explicit ?: deriveMagnetName(source.uri))
+        is DownloadSource.Url ->
+            dir.resolve(explicit ?: deriveHttpName(source.url))
+    }
+}
+
+private fun deriveHttpName(url: String): String {
+    val decoded = runCatching { URLDecoder.decode(url, StandardCharsets.UTF_8).ifBlank { url } }.getOrDefault(url)
+    return decoded
+        .substringAfterLast('/')
+        .substringBefore('?')
+        .replace('+', ' ')
+        .takeIf { it.isNotBlank() }
+        ?: "download"
+}
+
+private fun deriveMagnetName(uri: String): String {
+    val dn = uri.split('&', '?')
+        .firstOrNull { it.startsWith("dn=", ignoreCase = true) }
+        ?.substringAfter('=')
+        ?.let { runCatching { URLDecoder.decode(it, StandardCharsets.UTF_8) }.getOrDefault(it) }
+    return dn?.takeIf { it.isNotBlank() } ?: "torrent-download"
 }
