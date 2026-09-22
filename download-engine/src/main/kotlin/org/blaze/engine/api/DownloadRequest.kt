@@ -11,7 +11,12 @@ sealed interface DownloadRequest {
         val url: String,
         override val destination: Path,
         val headers: Map<String, String> = emptyMap(),
-        val segmentCount: Int = 1
+        /**
+         * Connections this download should use. Zero means "whatever the global setting says";
+         * a positive value is an explicit per-download choice that wins in both directions,
+         * because "fetch this stubborn server with one connection" has to be expressible.
+         */
+        val segmentCount: Int = 0
     ) : DownloadRequest
 
     data class Torrent(

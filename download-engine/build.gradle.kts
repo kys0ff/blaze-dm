@@ -35,3 +35,27 @@ dependencies {
 kotlin {
     jvmToolchain(21)
 }
+
+/**
+ * Throughput benchmarks live in the test source set because they need the fake HTTP server, but
+ * they are not part of `check`: their numbers depend on the machine. Run with
+ * `./gradlew :download-engine:httpBenchmark`.
+ */
+tasks.register<Test>("httpBenchmark") {
+    group = "verification"
+    description = "Runs the HTTP throughput benchmarks and prints before/after numbers."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    systemProperty("blaze.benchmark", "true")
+    outputs.upToDateWhen { false }
+
+    filter {
+        includeTestsMatching("org.blaze.engine.benchmark.*")
+    }
+}
+
+tasks.named<Test>("test") {
+    exclude("org/blaze/engine/benchmark/**")
+    // The transfer tests hold multi-megabyte payloads in memory on purpose.
+    maxHeapSize = "1g"
+}

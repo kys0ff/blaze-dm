@@ -17,7 +17,6 @@ import org.blaze.engine.persistence.DownloadRepository
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.engine.storage.DefaultFileStorage
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.milliseconds
@@ -64,7 +63,11 @@ class DownloadRetryLogicTest {
                     )
                 }
 
-                val id = manager.enqueue(DownloadRequest.Http("RetryLogicTest", "http://fail", Path.of("test.txt")))
+                // The destination has to live inside tempDir: a relative path would resolve
+                // against the module directory and leave files behind in the working tree.
+                val id = manager.enqueue(
+                    DownloadRequest.Http("RetryLogicTest", "http://fail", tempDir.resolve("test.txt"))
+                )
                 manager.start(id)
 
                 // Wait for all retries to happen.

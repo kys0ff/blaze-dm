@@ -2,7 +2,6 @@ package org.blaze.engine.execution
 
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import org.blaze.engine.api.DownloadError
@@ -11,29 +10,38 @@ import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.metrics.EngineMetrics
+import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
-import org.blaze.engine.network.HttpNetworkEvent
 import org.blaze.engine.network.TorrentNetworkClient
 import org.blaze.engine.network.TorrentNetworkEvent
 import org.blaze.engine.retry.RetryPolicy
 import org.blaze.engine.settings.DEFAULT_USER_AGENT
-import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.engine.storage.FileStorage
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import java.time.Instant
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * Drives one download attempt of a single task and translates protocol events into
+ * [DownloadTask] state.
+ *
+ * HTTP is delegated to [HttpDownloadCoordinator] (probe, connection pool, disk writes, resume
+ * bookkeeping); torrents are driven through the `bt` client. Both end in exactly one terminal
+ * state, which is what the retry layer in [execute] keys off.
+ */
 class DownloadExecutorImpl(
     private val initialTask: DownloadTask,
     private val httpClient: HttpClient,
     private val storage: FileStorage,
     private val settingsRepository: EngineSettingsRepository,
     private val retryPolicy: RetryPolicy,
-    private val onMetadataResolved: (DownloadId, ByteArray) -> Unit
+    private val onMetadataResolved: (DownloadId, ByteArray) -> Unit,
+    private val limiter: BandwidthLimiter = BandwidthLimiter(),
+    private val metrics: EngineMetrics = EngineMetrics()
 ) : DownloadExecutor {
     private val logger = LoggerFactory.getLogger(DownloadExecutorImpl::class.java)
 
@@ -82,11 +90,13 @@ class DownloadExecutorImpl(
 
     private fun executeHttp(request: DownloadRequest.Http, task: DownloadTask): Flow<DownloadTask> =
         channelFlow {
+            // The limiter arrives already configured by the engine: this download only spends
+            // tokens from it. Configuring it per download would make the ceiling depend on how
+            // many transfers happen to be running.
             val settings = settingsRepository.settings.value
-            val destination = request.destination
 
             val (finalDestination, finalPartialPath) = resolveDestination(
-                destination,
+                request.destination,
                 settings.fileConflictBehavior
             )
             if (finalDestination == null) {
@@ -94,107 +104,97 @@ class DownloadExecutorImpl(
                 send(
                     task.copy(
                         state = DownloadState.Completed,
-                        downloadedBytes = storage.size(destination),
-                        totalBytes = storage.size(destination),
+                        downloadedBytes = storage.size(request.destination),
+                        totalBytes = storage.size(request.destination),
                         progress = 1f
                     )
                 )
                 return@channelFlow
             }
 
-            val networkClient = HttpNetworkClient(
+            // Persisting the resolved name keeps the partial file and its resume sidecar
+            // pointing at the same target across retries and restarts.
+            val resolved = if (finalDestination == request.destination) request
+            else request.copy(destination = finalDestination)
+
+            val client = HttpNetworkClient(
                 client = httpClient,
                 userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
                 maxRedirects = settings.maxRedirects
             )
-            val offset =
-                if (storage.exists(finalPartialPath)) storage.size(finalPartialPath) else 0L
-            if (offset > 0) {
-                logger.info("Resuming {} from {} bytes", task.id, offset)
+            val coordinator = HttpDownloadCoordinator(
+                client = client,
+                storage = storage,
+                limiter = limiter,
+                settings = settings,
+                metrics = metrics
+            )
+
+            // An explicit per-download request overrides the global preference; either way the
+            // worker count is bounded, because more connections than this only gets us throttled
+            // or banned by the host.
+            val connections = (request.segmentCount.takeIf { it > 0 } ?: settings.maxConnectionsPerDownload)
+                .coerceIn(1, EngineSettingsRepository.MAX_CONNECTIONS_PER_DOWNLOAD)
+            if (finalPartialPath.let { storage.exists(it) } && storage.size(finalPartialPath) > 0) {
+                metrics.recordResumed()
             }
+            logger.info("HTTP transfer for {} using up to {} connection(s)", resolved.destination.fileName, connections)
 
             var totalBytes = task.totalBytes
-            var downloadedBytes = offset
-            var lastUpdate = System.currentTimeMillis()
-            var bytesSinceLastUpdate = 0L
-            var smoothedSpeed = 0.0
+            var downloadedBytes = task.downloadedBytes
+            val progress = HttpProgress()
 
-            networkClient.download(request, offset).collect { event ->
-                when (event) {
-                    is HttpNetworkEvent.Headers -> {
-                        val actualTotal =
-                            if (event.isResumed && event.contentLength > 0) event.contentLength + offset else event.contentLength
-                        totalBytes = actualTotal
-                        send(
-                            updateTask(
-                                task,
-                                DownloadState.Downloading,
-                                totalBytes,
-                                downloadedBytes
-                            )
+            val outcome = coordinator.download(
+                request = resolved,
+                destination = finalDestination,
+                partial = finalPartialPath,
+                connections = connections
+            ) { update ->
+                totalBytes = update.totalBytes ?: totalBytes
+                downloadedBytes = update.downloadedBytes
+                val speed = progress.sample(update.downloadedBytes)
+                send(
+                    updateTask(
+                        task = task,
+                        request = resolved,
+                        state = DownloadState.Downloading,
+                        totalBytes = totalBytes,
+                        downloadedBytes = downloadedBytes,
+                        speed = speed
+                    )
+                )
+            }
+
+            when (outcome) {
+                is HttpDownloadCoordinator.Outcome.Success -> {
+                    metrics.recordCompleted()
+                    storage.move(finalPartialPath, finalDestination)
+                    runCatching { storage.delete(storage.getResumeStateFile(finalDestination).toPath()) }
+                    logger.info("HTTP download completed: {}", finalDestination)
+                    send(
+                        updateTask(
+                            task = task,
+                            request = resolved,
+                            state = DownloadState.Completed,
+                            totalBytes = outcome.totalBytes ?: outcome.downloadedBytes,
+                            downloadedBytes = outcome.downloadedBytes,
+                            progress = 1f
                         )
-                    }
+                    )
+                }
 
-                    is HttpNetworkEvent.Chunk -> {
-                        storage.openForWrite(finalPartialPath).use { session ->
-                            session.seek(downloadedBytes)
-                            session.write(event.data, 0, event.length)
-                        }
-                        downloadedBytes += event.length
-                        bytesSinceLastUpdate += event.length
-
-                        applySpeedLimit(
-                            bytesSinceLastUpdate,
-                            lastUpdate,
-                            settingsRepository.settings.value
+                is HttpDownloadCoordinator.Outcome.Failure -> {
+                    metrics.recordFailed()
+                    send(
+                        updateTask(
+                            task = task,
+                            request = resolved,
+                            state = DownloadState.Failed,
+                            totalBytes = totalBytes,
+                            downloadedBytes = downloadedBytes,
+                            error = outcome.error
                         )
-
-                        val now = System.currentTimeMillis()
-                        if (now - lastUpdate >= 500) {
-                            smoothedSpeed = calculateSmoothedSpeed(
-                                bytesSinceLastUpdate,
-                                now - lastUpdate,
-                                smoothedSpeed
-                            )
-                            send(
-                                updateTask(
-                                    task,
-                                    DownloadState.Downloading,
-                                    totalBytes,
-                                    downloadedBytes,
-                                    smoothedSpeed.toLong()
-                                )
-                            )
-                            lastUpdate = now
-                            bytesSinceLastUpdate = 0
-                        }
-                    }
-
-                    is HttpNetworkEvent.Completed -> {
-                        storage.move(finalPartialPath, finalDestination)
-                        logger.info("HTTP download completed: {}", finalDestination)
-                        send(
-                            updateTask(
-                                task,
-                                DownloadState.Completed,
-                                downloadedBytes,
-                                downloadedBytes,
-                                progress = 1f
-                            )
-                        )
-                    }
-
-                    is HttpNetworkEvent.Error -> {
-                        send(
-                            updateTask(
-                                task,
-                                DownloadState.Failed,
-                                totalBytes,
-                                downloadedBytes,
-                                error = event.error
-                            )
-                        )
-                    }
+                    )
                 }
             }
         }
@@ -213,10 +213,11 @@ class DownloadExecutorImpl(
                     is TorrentNetworkEvent.MetadataResolved -> {
                         event.metadataBytes?.let { onMetadataResolved(current.id, it) }
                         current = updateTask(
-                            current,
-                            DownloadState.Downloading,
-                            event.totalBytes,
-                            current.downloadedBytes,
+                            task = current,
+                            request = current.request,
+                            state = DownloadState.Downloading,
+                            totalBytes = event.totalBytes,
+                            downloadedBytes = current.downloadedBytes,
                             name = event.name,
                             files = event.files
                         )
@@ -238,12 +239,13 @@ class DownloadExecutorImpl(
                         val progress = if (event.piecesTotal > 0) event.piecesComplete.toFloat() / event.piecesTotal else 0f
 
                         current = updateTask(
-                            current,
-                            downloadState,
-                            total,
-                            calculatedDownloaded,
-                            event.downloadSpeed,
-                            progress
+                            task = current,
+                            request = current.request,
+                            state = downloadState,
+                            totalBytes = total,
+                            downloadedBytes = calculatedDownloaded,
+                            speed = event.downloadSpeed,
+                            progress = progress
                         ).copy(
                             uploadSpeed = event.uploadSpeed,
                             peers = event.peers
@@ -253,16 +255,24 @@ class DownloadExecutorImpl(
 
                     is TorrentNetworkEvent.Completed -> {
                         val total = current.totalBytes ?: current.downloadedBytes
-                        current = updateTask(current, DownloadState.Completed, total, current.downloadedBytes, progress = 1f)
+                        current = updateTask(
+                            task = current,
+                            request = current.request,
+                            state = DownloadState.Completed,
+                            totalBytes = total,
+                            downloadedBytes = current.downloadedBytes,
+                            progress = 1f
+                        )
                         send(current)
                     }
 
                     is TorrentNetworkEvent.Error -> {
                         current = updateTask(
-                            current,
-                            DownloadState.Failed,
-                            current.totalBytes,
-                            current.downloadedBytes,
+                            task = current,
+                            request = current.request,
+                            state = DownloadState.Failed,
+                            totalBytes = current.totalBytes,
+                            downloadedBytes = current.downloadedBytes,
                             error = event.error
                         )
                         send(current)
@@ -273,6 +283,7 @@ class DownloadExecutorImpl(
 
     private fun updateTask(
         task: DownloadTask,
+        request: DownloadRequest,
         state: DownloadState,
         totalBytes: Long?,
         downloadedBytes: Long,
@@ -291,6 +302,7 @@ class DownloadExecutorImpl(
         } else null
 
         return task.copy(
+            request = request,
             name = name ?: task.name,
             state = state,
             totalBytes = total,
@@ -302,20 +314,6 @@ class DownloadExecutorImpl(
             completedAt = if (state == DownloadState.Completed) Instant.now() else task.completedAt,
             files = files ?: task.files
         )
-    }
-
-    private suspend fun applySpeedLimit(bytes: Long, lastUpdate: Long, settings: DownloadSettings) {
-        if (settings.globalSpeedLimitEnabled) {
-            val limitBytesPerMs = (settings.globalSpeedLimitKbps * 1024) / 1000.0
-            if (limitBytesPerMs > 0) {
-                val elapsed = System.currentTimeMillis() - lastUpdate + 1
-                val maxAllowed = elapsed * limitBytesPerMs
-                if (bytes > maxAllowed) {
-                    val sleepMs = ((bytes / limitBytesPerMs) - elapsed).toLong()
-                    if (sleepMs > 0) delay(sleepMs.milliseconds)
-                }
-            }
-        }
     }
 
     private fun resolveDestination(destination: Path, behavior: FileConflictBehavior): Pair<Path?, Path> {
@@ -331,6 +329,7 @@ class DownloadExecutorImpl(
                 storage.delete(destination)
                 val partial = storage.getPartialFile(destination).toPath()
                 storage.delete(partial)
+                storage.delete(storage.getResumeStateFile(destination).toPath())
                 destination to partial
             }
             FileConflictBehavior.RENAME, FileConflictBehavior.ASK -> {
@@ -350,8 +349,39 @@ class DownloadExecutorImpl(
         }
     }
 
-    private fun calculateSmoothedSpeed(bytes: Long, elapsedMs: Long, currentSmoothed: Double): Double {
-        val instantSpeed = (bytes * 1000.0) / elapsedMs
-        return if (currentSmoothed == 0.0) instantSpeed else (0.3 * instantSpeed) + (0.7 * currentSmoothed)
+    /**
+     * Exponentially weighted speed over the samples the coordinator reports. Sampling on the
+     * callback stream (instead of on a timer) keeps the number honest for short transfers,
+     * where a fixed 500 ms window would report 0 for most of their lifetime.
+     */
+    private class HttpProgress {
+        private var lastSampleNs = System.nanoTime()
+        private var lastBytes = 0L
+        private var smoothed = 0.0
+
+        @Synchronized
+        fun sample(downloadedBytes: Long): Long {
+            val now = System.nanoTime()
+            val elapsedNs = now - lastSampleNs
+            if (elapsedNs < MIN_SAMPLE_INTERVAL_NS) return smoothed.toLong().coerceAtLeast(0L)
+
+            val delta = downloadedBytes - lastBytes
+            if (delta < 0) {
+                // A restart from byte 0 (server ignored our range): drop the stale baseline.
+                lastBytes = downloadedBytes
+                lastSampleNs = now
+                return smoothed.toLong().coerceAtLeast(0L)
+            }
+            val instant = delta * 1_000_000_000.0 / elapsedNs
+            smoothed = if (smoothed == 0.0) instant else ALPHA * instant + (1 - ALPHA) * smoothed
+            lastBytes = downloadedBytes
+            lastSampleNs = now
+            return smoothed.toLong().coerceAtLeast(0L)
+        }
+
+        private companion object {
+            const val ALPHA = 0.3
+            const val MIN_SAMPLE_INTERVAL_NS = 200_000_000L
+        }
     }
 }

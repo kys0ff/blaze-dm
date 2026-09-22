@@ -35,6 +35,16 @@ const val DEFAULT_USER_AGENT =
 data class DownloadSettings(
     val maxConcurrentDownloads: Int = 4,
     val maxConnectionsPerDownload: Int = 4,
+    val httpAccelerationEnabled: Boolean = true,
+
+    /** Below this size the extra requests of a segmented transfer cost more than they save. */
+    val httpMinParallelSizeBytes: Long = 4L * 1024 * 1024,
+
+    /** Preferred work unit handed to a connection; the planner shrinks it for small files. */
+    val httpChunkSizeMb: Int = 8,
+
+    /** A connection idle for this long while others progress gets dropped. */
+    val httpStalledConnectionSeconds: Int = 30,
     val globalSpeedLimitEnabled: Boolean = false,
     val globalSpeedLimitKbps: Long = 10240, // default 10 MB/s
     val autoRetryFailed: Boolean = true,

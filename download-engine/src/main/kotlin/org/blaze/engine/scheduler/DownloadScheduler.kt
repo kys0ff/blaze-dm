@@ -24,8 +24,16 @@ import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.settings.EngineSettingsRepository
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration.Companion.milliseconds
 
+/**
+ * Keeps at most `maxConcurrentDownloads` tasks running and turns queued ones into executor jobs.
+ *
+ * Everything that can change the "who is active" answer - queueing, starting, pausing, cancelling,
+ * removing - is serialized through [queueMutex]. Without that, a pause landing between the moment
+ * the scheduler flips a task to `Starting` and the moment its job is registered would leave no job
+ * to cancel, and the download would silently take off right after the user paused it.
+ */
 class DownloadScheduler(
     private val scope: CoroutineScope,
     private val settingsRepository: EngineSettingsRepository,
@@ -48,7 +56,7 @@ class DownloadScheduler(
         }
         scope.launch {
             while (true) {
-                delay(1.seconds)
+                delay(SCHEDULE_TICK.milliseconds)
                 processQueue()
             }
         }
@@ -59,50 +67,44 @@ class DownloadScheduler(
         scope.launch { processQueue() }
     }
 
-    private suspend fun processQueue() {
-        queueMutex.withLock {
-            val currentTasks = tasks.value
-            val maxConcurrent = settingsRepository.settings.value.maxConcurrentDownloads
+    private suspend fun processQueue() = queueMutex.withLock { processQueueLocked() }
 
-            val activeTasks = currentTasks.values.filter { it.state.isActive || jobs.containsKey(it.id) }
-            val activeCount = activeTasks.size
-            
-            if (activeCount >= maxConcurrent) {
-                // If we are over the limit (e.g. settings changed), we don't start new ones.
-                // We could also stop some, but let's stick to not starting new ones for now.
-                return
-            }
+    private suspend fun processQueueLocked() {
+        val currentTasks = tasks.value
+        val maxConcurrent = settingsRepository.settings.value.maxConcurrentDownloads
 
-            val now = Instant.now()
-            val queuedTasks = currentTasks.values
-                .filter { it.state == DownloadState.Queued && (it.scheduledAt == null || !it.scheduledAt.isAfter(now)) }
-                .filter { !jobs.containsKey(it.id) } // Safety check
-                .sortedBy { it.createdAt }
+        val activeCount = currentTasks.values.count { it.state.isActive || jobs.containsKey(it.id) }
+        if (activeCount >= maxConcurrent) {
+            // Over the limit (e.g. the setting just shrank): new work is not started, running
+            // downloads are left alone rather than being interrupted mid-transfer.
+            return
+        }
 
-            var slotsAvailable = maxConcurrent - activeCount
-            for (task in queuedTasks) {
-                if (slotsAvailable <= 0) break
-                
-                // Double check if it's already starting
-                if (tasks.value[task.id]?.state == DownloadState.Starting) continue
-                
-                slotsAvailable--
+        val now = Instant.now()
+        val queuedTasks = currentTasks.values
+            .filter { it.state == DownloadState.Queued && (it.scheduledAt == null || !it.scheduledAt.isAfter(now)) }
+            .filter { !jobs.containsKey(it.id) }
+            .sortedBy { it.createdAt }
 
-                val updated = task.copy(state = DownloadState.Starting)
-                tasks.update { it + (task.id to updated) }
-                onTaskUpdated(updated)
+        var slotsAvailable = maxConcurrent - activeCount
+        for (task in queuedTasks) {
+            if (slotsAvailable <= 0) break
 
-                scope.launch {
-                    actuallyStart(task.id)
-                }
-            }
+            // Re-read: an earlier iteration (or a queued pause) may have moved it already.
+            val fresh = tasks.value[task.id] ?: continue
+            if (fresh.state != DownloadState.Queued) continue
+
+            slotsAvailable--
+            val starting = fresh.copy(state = DownloadState.Starting, error = null)
+            tasks.update { it + (task.id to starting) }
+            onTaskUpdated(starting)
+            launchLocked(starting)
         }
     }
 
-    private suspend fun actuallyStart(id: DownloadId) {
-        val task = tasks.value[id] ?: return
-        
-        // Ensure only one job per task
+    /** Registers the job while the caller holds [queueMutex], so pause cannot slip in between. */
+    private suspend fun launchLocked(task: DownloadTask) {
+        val id = task.id
         jobs[id]?.cancelAndJoin()
 
         val executor = executorFactory(task)
@@ -134,35 +136,42 @@ class DownloadScheduler(
         scope.launch { processQueue() }
     }
 
-    suspend fun start(id: DownloadId) {
-        val task = tasks.value[id] ?: return
-        tasks.update { it + (id to task.copy(state = DownloadState.Queued, scheduledAt = null, error = null, retryCount = 0)) }
-        processQueue()
+    suspend fun start(id: DownloadId) = queueMutex.withLock {
+        val task = tasks.value[id] ?: return@withLock
+        tasks.update {
+            it + (id to task.copy(state = DownloadState.Queued, scheduledAt = null, error = null, retryCount = 0))
+        }
+        processQueueLocked()
     }
 
-    suspend fun pause(id: DownloadId) {
-        jobs[id]?.cancelAndJoin()
-        val task = tasks.value[id] ?: return
-        val updated = task.copy(state = DownloadState.Paused)
+    suspend fun pause(id: DownloadId) = queueMutex.withLock {
+        stopJobLocked(id)
+        val task = tasks.value[id] ?: return@withLock
+        val updated = task.copy(state = DownloadState.Paused, downloadSpeed = 0)
         tasks.update { it + (id to updated) }
         onTaskUpdated(updated)
-        processQueue()
+        processQueueLocked()
     }
 
-    suspend fun cancel(id: DownloadId) {
-        jobs[id]?.cancelAndJoin()
-        val task = tasks.value[id] ?: return
-        val updated = task.copy(state = DownloadState.Cancelled)
+    suspend fun cancel(id: DownloadId) = queueMutex.withLock {
+        stopJobLocked(id)
+        val task = tasks.value[id] ?: return@withLock
+        val updated = task.copy(state = DownloadState.Cancelled, downloadSpeed = 0)
         tasks.update { it + (id to updated) }
         onTaskUpdated(updated)
-        processQueue()
+        processQueueLocked()
     }
 
-    suspend fun remove(id: DownloadId) {
-        jobs[id]?.cancelAndJoin()
+    suspend fun remove(id: DownloadId) = queueMutex.withLock {
+        stopJobLocked(id)
         jobs.remove(id)
         tasks.update { it - id }
-        processQueue()
+        processQueueLocked()
+    }
+
+    private suspend fun stopJobLocked(id: DownloadId) {
+        jobs[id]?.cancelAndJoin()
+        jobs.remove(id)
     }
 
     fun observeTask(id: DownloadId): Flow<DownloadTask> =
@@ -171,7 +180,14 @@ class DownloadScheduler(
     fun observeAllTasks(): StateFlow<List<DownloadTask>> = allTasksFlow
 
     suspend fun shutdown() {
-        jobs.values.forEach { it.cancelAndJoin() }
-        jobs.clear()
+        queueMutex.withLock {
+            jobs.values.forEach { it.cancelAndJoin() }
+            jobs.clear()
+        }
+    }
+
+    private companion object {
+        /** Granularity of the scheduled-start check; also the self-heal interval for the queue. */
+        const val SCHEDULE_TICK = 1_000L
     }
 }

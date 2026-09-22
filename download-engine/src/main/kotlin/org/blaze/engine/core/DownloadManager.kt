@@ -8,11 +8,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,11 +30,16 @@ import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.execution.DownloadExecutorImpl
+import org.blaze.engine.metrics.DownloadDiagnostics
+import org.blaze.engine.metrics.EngineMetrics
+import org.blaze.engine.network.BandwidthLimiter
+import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.persistence.DownloadRecord
 import org.blaze.engine.persistence.DownloadRepository
 import org.blaze.engine.retry.DefaultRetryPolicy
 import org.blaze.engine.retry.RetryPolicy
 import org.blaze.engine.scheduler.DownloadScheduler
+import org.blaze.engine.settings.DEFAULT_USER_AGENT
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.engine.storage.DefaultFileStorage
 import org.blaze.engine.storage.FileStorage
@@ -58,6 +65,10 @@ class DownloadManager(
     private val persistSignal = Channel<Unit>(Channel.CONFLATED)
     private val tasks = MutableStateFlow<Map<DownloadId, DownloadTask>>(emptyMap())
 
+    /** One throttle for the whole engine, so "global" limit really is global. */
+    private val limiter = BandwidthLimiter()
+    private val metrics = EngineMetrics()
+
     private val scheduler = DownloadScheduler(
         scope = scope,
         settingsRepository = settingsRepository,
@@ -68,7 +79,9 @@ class DownloadManager(
                 storage = storage,
                 settingsRepository = settingsRepository,
                 retryPolicy = DefaultRetryPolicy(settingsRepository.settings.value),
-                onMetadataResolved = { id, bytes -> cacheMetadata(id, bytes) }
+                onMetadataResolved = { id, bytes -> cacheMetadata(id, bytes) },
+                limiter = limiter,
+                metrics = metrics
             )
         },
         onTaskUpdated = { task ->
@@ -87,16 +100,43 @@ class DownloadManager(
             } catch (e: Exception) {
                 logger.error("Failed to create cache directory", e)
             }
-            persistSignal.consumeEach {
+            // Progress ticks arrive many times per second per download; collapsing them keeps a
+            // large queue from turning every tick into a full snapshot rewrite.
+            while (true) {
+                if (persistSignal.receiveCatching().isClosed) break
+                delay(PERSIST_DEBOUNCE)
+                while (persistSignal.tryReceive().isSuccess) { /* conflated: nothing to drain */ }
                 try {
                     writeSnapshot()
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    logger.error("Failed to persist the download list", e)
+                }
             }
+        }
+        // The throttle is engine-wide, so its configuration belongs to the engine and not to the
+        // first download that starts: editing the limit in the settings now applies to transfers
+        // that are already running. Deriving the bytes/sec first means unrelated settings edits
+        // cannot reset a token bucket mid-download.
+        scope.launch {
+            settingsRepository.settings
+                .map { settings ->
+                    if (settings.globalSpeedLimitEnabled) settings.globalSpeedLimitKbps * 1024 else 0L
+                }
+                .distinctUntilChanged()
+                .collect(limiter::setLimit)
         }
         loadTasks()
     }
 
+    val diagnostics: DownloadDiagnostics get() = metrics.snapshot()
+
+    /** Engine-wide download ceiling in bytes/s; 0 when throttling is off. */
+    val speedLimitBytesPerSec: Long get() = limiter.limitBytesPerSecond
+
     companion object {
+        /** Upper bound on how often the whole download list is re-serialized to disk. */
+        private val PERSIST_DEBOUNCE = 1.seconds
+
         fun createDefaultHttpClient(): HttpClient = HttpClient(CIO) {
             install(HttpTimeout) {
                 // No absolute cap on the whole call: a streaming download of a large or
@@ -267,6 +307,19 @@ class DownloadManager(
     }
 
     override suspend fun fetchMetadata(request: DownloadRequest): DownloadMetadata? = withContext(Dispatchers.IO) {
+        if (request is DownloadRequest.Http) {
+            // A HEAD/range probe answers this; running the real transfer would write a stray
+            // partial file and could not be stopped cleanly halfway through.
+            val client = HttpNetworkClient(
+                client = httpClient,
+                userAgent = settingsRepository.settings.value.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+                maxRedirects = settingsRepository.settings.value.maxRedirects
+            )
+            return@withContext runCatching { client.probe(request) }.getOrNull()?.let { probe ->
+                DownloadMetadata(request.name, probe.totalBytes.takeIf { it > 0 }, null)
+            }
+        }
+
         val tempId = DownloadId.generate()
         val tempTask = DownloadTask(tempId, request.name, request, DownloadState.Starting, null, 0, 0)
         
@@ -369,6 +422,7 @@ class DownloadManager(
                     } else {
                         storage.delete(dest)
                         storage.delete(storage.getPartialFile(dest).toPath())
+                        storage.delete(storage.getResumeStateFile(dest).toPath())
                     }
                 } catch (e: Exception) {
                     logger.error("Failed to delete files", e)

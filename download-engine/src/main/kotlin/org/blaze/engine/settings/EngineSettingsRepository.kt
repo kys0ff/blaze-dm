@@ -85,12 +85,22 @@ class EngineSettingsRepository(storageDir: Path) {
 
     private fun DownloadSettings.validate(): DownloadSettings = copy(
         maxConcurrentDownloads = maxConcurrentDownloads.coerceAtLeast(1),
-        maxConnectionsPerDownload = maxConnectionsPerDownload.coerceAtLeast(1),
+        maxConnectionsPerDownload = maxConnectionsPerDownload.coerceIn(1, MAX_CONNECTIONS_PER_DOWNLOAD),
         maxRetries = maxRetries.coerceAtLeast(0),
         retryDelaySeconds = retryDelaySeconds.coerceAtLeast(0),
         globalSpeedLimitKbps = globalSpeedLimitKbps.coerceAtLeast(1),
         maxRedirects = maxRedirects.coerceIn(0, 20),
         maxPeerConnections = maxPeerConnections.coerceAtLeast(1),
-        seedTimeLimitMinutes = seedTimeLimitMinutes.coerceAtLeast(0)
+        seedTimeLimitMinutes = seedTimeLimitMinutes.coerceAtLeast(0),
+        // A chunk below 1 MiB turns acceleration into request overhead; above ~1 GiB a single
+        // connection is the only worker and the plan degenerates to the old behavior anyway.
+        httpChunkSizeMb = httpChunkSizeMb.coerceIn(1, 256),
+        httpMinParallelSizeBytes = httpMinParallelSizeBytes.coerceAtLeast(0L),
+        httpStalledConnectionSeconds = httpStalledConnectionSeconds.coerceIn(5, 600)
     )
+
+    companion object {
+        /** More parallel connections than this only gets the server to throttle or ban us. */
+        const val MAX_CONNECTIONS_PER_DOWNLOAD = 32
+    }
 }

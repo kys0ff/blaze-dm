@@ -8,15 +8,9 @@ import bt.bencoding.types.BEList
 import bt.bencoding.types.BEMap
 import bt.bencoding.types.BEString
 import bt.data.file.FileSystemStorage
-import bt.dht.DHTConfig
-import bt.dht.DHTModule
 import bt.metainfo.MetadataConstants
 import bt.metainfo.Torrent
-import bt.peerexchange.PeerExchangeModule
-import bt.runtime.BtRuntime
-import bt.runtime.Config
 import bt.torrent.fileselector.FilePriority
-import bt.tracker.http.HttpTrackerModule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -35,10 +29,6 @@ import org.blaze.engine.api.TorrentSource
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.net.DatagramSocket
-import java.net.Inet4Address
-import java.net.InetAddress
-import java.net.NetworkInterface
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
@@ -52,7 +42,6 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.toJavaDuration
 
 /**
  * @param peerDiscoveryTimeout how long to wait for the first peer once metadata is known.
@@ -68,7 +57,8 @@ class TorrentNetworkClient(
     private val metadataTimeout: Duration = 3.minutes,
     private val maxPeerConnections: Int = 200,
     private val enableSeeding: Boolean = false,
-    private val seedTimeLimitMinutes: Int = 30
+    private val seedTimeLimitMinutes: Int = 30,
+    private val runtimeProvider: TorrentRuntimeProvider = TorrentRuntimeProvider.GLOBAL
 ) {
     private val logger = LoggerFactory.getLogger(TorrentNetworkClient::class.java)
 
@@ -101,7 +91,11 @@ class TorrentNetworkClient(
             Files.createDirectories(destination)
             val storage = FileSystemStorage(destination)
 
-            val runtime = buildRuntime()
+            // Shared with every other torrent in the app: one DHT node, one acceptor, and no
+            // re-bootstrap when a download is retried or started right after another finished.
+            val runtime = runtimeProvider.acquire(torrentRuntimeFingerprint(maxPeerConnections)) { config ->
+                applyPerformanceConfig(config, maxPeerConnections, resolveBindAddress())
+            }
             try {
                 val monitor = Monitor(metadataPending = source is TorrentSource.Magnet)
                 val totalSize = AtomicLong(-1L)
@@ -283,8 +277,7 @@ class TorrentNetworkClient(
                     runCatching { btClient.stop() }
                 }
             } finally {
-                runCatching { runtime.shutdown() }
-                    .onFailure { logger.warn("Runtime shutdown failed", it) }
+                runtimeProvider.release()
             }
         } catch (e: CancellationException) {
             throw e
@@ -303,33 +296,6 @@ class TorrentNetworkClient(
         // Cost is negligible: Progress arrives ~1/s.
         .buffer(Channel.UNLIMITED)
         .flowOn(Dispatchers.IO)
-
-    private fun buildRuntime(): BtRuntime {
-        val bindAddress = resolveBindAddress()
-        logger.info("Torrent acceptor bound to {}", bindAddress)
-
-        val config = Config().apply {
-            acceptorAddress = bindAddress
-            maxPeerConnections = this@TorrentNetworkClient.maxPeerConnections
-            numOfHashingThreads = Runtime.getRuntime().availableProcessors()
-            peerConnectionTimeout = 30.seconds.toJavaDuration()
-            peerConnectionRetryCount = 3
-            peerConnectionRetryInterval = 5.seconds.toJavaDuration()
-            trackerTimeout = 20.seconds.toJavaDuration()
-            trackerQueryInterval = 30.seconds.toJavaDuration()
-        }
-
-        val dhtModule = DHTModule(object : DHTConfig() {
-            override fun shouldUseRouterBootstrap(): Boolean = true
-        })
-
-        return BtRuntime.builder(config)
-            .module(dhtModule)
-            .module(HttpTrackerModule())
-            .module(PeerExchangeModule())
-            .disableAutomaticShutdown()
-            .build()
-    }
 
     /** Tracks phase + liveness for the watchdog. All timestamps are monotonic. */
     private class Monitor(@Volatile var metadataPending: Boolean) {
@@ -480,32 +446,7 @@ class TorrentNetworkClient(
         BEEncoder.encoder().encode(BEMap(root), out)
         return out.toByteArray()
     }
-
-    private fun InetAddress.isUsableIpv4(): Boolean =
-        this is Inet4Address && !isLoopbackAddress && !isAnyLocalAddress && !isLinkLocalAddress
-
-    private fun resolveBindAddress(): InetAddress {
-        // 1) Ask the OS which local address routes to the internet (UDP connect sends no packets).
-        runCatching {
-            DatagramSocket().use { socket ->
-                socket.connect(InetAddress.getByName("8.8.8.8"), 53)
-                val local = socket.localAddress
-                if (local.isUsableIpv4()) return local
-            }
-        }
-        // 2) Offline / no default route: first sane physical-looking interface.
-        val virtualPrefixes =
-            listOf("docker", "veth", "br-", "virbr", "vboxnet", "vmnet", "zt", "lo")
-        runCatching {
-            NetworkInterface.getNetworkInterfaces().asSequence()
-                .filter { it.isUp && !it.isLoopback && !it.isVirtual }
-                .filterNot { iface -> virtualPrefixes.any { iface.name.startsWith(it) } }
-                .flatMap { it.inetAddresses.asSequence() }
-                .firstOrNull { it.isUsableIpv4() }
-                ?.let { return it }
-        }
-        return InetAddress.getByName("0.0.0.0")
-    }
 }
 
+/** Monotonic milliseconds; never wall-clock, so an NTP correction cannot fake a timeout. */
 private fun nowMs(): Long = System.nanoTime() / 1_000_000
