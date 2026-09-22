@@ -47,6 +47,11 @@ class DownloadsScreen : Screen {
                     onEvent = screenModel::onEvent,
                     onFetchMetadata = { url -> screenModel.fetchMetadata(url) },
                     onResolveDestinationPath = { url, savePath, name -> screenModel.resolveDestinationPath(url, savePath, name) },
+                    onDetectPortable = { path -> screenModel.detectPortable(path) },
+                    onImportPortable = { artifact, dest -> screenModel.importPortable(artifact, dest) },
+                    onNotify = { message, isError ->
+                        if (isError) notifications.error(message) else notifications.info(message)
+                    },
                     fileConflictBehavior = settings.fileConflictBehavior,
                 )
 

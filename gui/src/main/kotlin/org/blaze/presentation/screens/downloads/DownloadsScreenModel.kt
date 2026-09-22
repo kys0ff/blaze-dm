@@ -12,12 +12,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.blaze.domain.models.Download
 import org.blaze.domain.repository.DownloadMetadata
+import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.usecase.AddDownloadUseCase
 import org.blaze.domain.usecase.CancelDownloadUseCase
 import org.blaze.domain.usecase.ClearCompletedDownloadsUseCase
+import org.blaze.domain.usecase.DetectPortableDownloadUseCase
 import org.blaze.domain.usecase.FetchMetadataUseCase
 import org.blaze.domain.usecase.GetDestinationPathUseCase
 import org.blaze.domain.usecase.GetDownloadsUseCase
+import org.blaze.domain.usecase.ImportPortableDownloadUseCase
 import org.blaze.domain.usecase.PauseAllDownloadsUseCase
 import org.blaze.domain.usecase.PauseDownloadUseCase
 import org.blaze.domain.usecase.RemoveDownloadUseCase
@@ -43,6 +46,8 @@ class DownloadsScreenModel(
     private val pauseAllDownloads: PauseAllDownloadsUseCase,
     private val resumeAllDownloads: ResumeAllDownloadsUseCase,
     private val clearCompletedDownloads: ClearCompletedDownloadsUseCase,
+    private val detectPortableDownload: DetectPortableDownloadUseCase,
+    private val importPortableDownload: ImportPortableDownloadUseCase,
     private val systemFileService: SystemFileService,
     private val clipboard: SystemClipboard
 ) : ScreenModel {
@@ -218,4 +223,17 @@ class DownloadsScreenModel(
 
     suspend fun resolveDestinationPath(url: String, savePath: String, name: String?): String =
         getDestinationPath(url, savePath, name)
+
+    /**
+     * Reads a moved file/folder as a candidate portable download and returns a display-only summary,
+     * or null when it is not a Blaze portable artifact. The UI previews this before importing.
+     */
+    suspend fun detectPortable(path: String): PortableInfo? = detectPortableDownload(path)
+
+    /**
+     * Imports the detected portable [artifactPath] into [destinationDir], reconstructing local resume
+     * state so the transfer continues. True when a resumable download was queued.
+     */
+    suspend fun importPortable(artifactPath: String, destinationDir: String): Boolean =
+        importPortableDownload(artifactPath, destinationDir)
 }

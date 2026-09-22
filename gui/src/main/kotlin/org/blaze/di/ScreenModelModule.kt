@@ -20,6 +20,8 @@ val screenModelModule = module {
             pauseAllDownloads = get(),
             resumeAllDownloads = get(),
             clearCompletedDownloads = get(),
+            detectPortableDownload = get(),
+            importPortableDownload = get(),
             systemFileService = get(),
             clipboard = get()
         )

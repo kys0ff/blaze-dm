@@ -18,6 +18,11 @@ import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.network.toDownloadError
 import org.blaze.engine.persistence.HttpResumeState
+import org.blaze.engine.portable.PortableFormat
+import org.blaze.engine.portable.PortableKind
+import org.blaze.engine.portable.PortableManifest
+import org.blaze.engine.portable.PortableStore
+import org.blaze.engine.portable.inspectPortableFile
 import org.blaze.engine.retry.isRetryable
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.storage.FileStorage
@@ -80,7 +85,11 @@ class HttpDownloadCoordinator(
         connections: Int,
         onProgress: suspend (Progress) -> Unit
     ): Outcome = withContext(Dispatchers.IO) {
-        val resumeFrom = sizeOf(partial)
+        // `contentLength` (not the physical file size) is the resume cursor: a portable segmented
+        // partial carries a metadata region *past* the content, so its size on disk is content +
+        // reserved region. Reading the content length from the embedded locator keeps every
+        // completeness decision below operating on real content bytes.
+        val resumeFrom = contentLength(partial)
         val statePath = storage.getResumeStateFile(destination).toPath()
 
         if (settings.httpAccelerationEnabled && connections > 1) {
@@ -332,6 +341,25 @@ class HttpDownloadCoordinator(
             return Outcome.Failure(e.toFileSystemError())
         }
 
+        // Lay out (or keep) the self-contained portable region. It lives strictly past the content
+        // region, so the workers writing chunks at [0, total) and this metadata writer never
+        // overlap. The sidecar stays the same-machine resume authority; the embedded region is what
+        // lets the file be moved to another machine and resumed there without the database.
+        val portable = PortableStore(partial)
+        val portableCheckpoint: () -> Unit = {
+            runCatching {
+                portable.checkpoint(httpManifest(request.url, total, plan, probe.validator, completed))
+            }.onFailure { logger.debug("Portable checkpoint failed: {}", it.message) }
+        }
+        if (inspectPortableFile(partial)?.contentLength != total) {
+            runCatching {
+                portable.create(
+                    PortableKind.HTTP, total, PortableFormat.HTTP_SLOT_SIZE,
+                    httpManifest(request.url, total, plan, probe.validator, completed)
+                )
+            }.onFailure { logger.warn("Could not create the portable region for {}: {}", destination.fileName, it.message) }
+        }
+
         val writer = try {
             storage.openPositionedWriter(partial)
         } catch (e: Exception) {
@@ -393,7 +421,7 @@ class HttpDownloadCoordinator(
 
                 val reporter = launch { reportProgress(onProgress, counted, total) }
                 val saver = launch {
-                    persistPeriodically(statePath, total, plan.chunkSize, probe.validator, completed, writer)
+                    persistPeriodically(statePath, total, plan.chunkSize, probe.validator, completed, writer, portableCheckpoint)
                 }
                 val watchdog = launch {
                     supervise(this, inFlightStream, lastActivity, workerCount, liveWorkers, lastMultiActiveNs, error)
@@ -410,6 +438,11 @@ class HttpDownloadCoordinator(
         }
 
         writeResumeState(statePath, total, plan.chunkSize, probe.validator, completed)
+        // Refresh the embedded region at every stop boundary — pause, failure or clean completion.
+        // The periodic saver only fires on a 15s tick, so a fast failure could otherwise leave the
+        // portable bitmap stale while the sidecar is current. This runs single-threaded (workers
+        // joined, saver cancelled), so it is race-free and the region matches the sidecar on return.
+        portableCheckpoint()
 
         if (workerCount >= 2) {
             metrics.recordTailMillis((System.nanoTime() - lastMultiActiveNs.get()) / 1_000_000L)
@@ -421,6 +454,12 @@ class HttpDownloadCoordinator(
             failure != null -> Outcome.Failure(failure)
             !allDone -> Outcome.Failure(DownloadError.NetworkFailure("Every connection stopped with chunks outstanding"))
             else -> {
+                // Crash-safe finalization order: content was force-flushed in the finally above, so
+                // every byte the completion asserts is durable. Now strip the portable region down
+                // to exactly `total` bytes (leaving a byte-for-byte original file) and only then
+                // remove the sidecar. The writer is already closed, so this is the sole writer.
+                runCatching { portable.finalize(total) }
+                    .onFailure { logger.warn("Portable finalize failed for {}: {}", destination.fileName, it.message) }
                 runCatching { storage.delete(statePath) }
                 // The reporter runs on a timer; make sure the UI is told the file is complete
                 // instead of leaving it one interval short of the total.
@@ -596,7 +635,8 @@ class HttpDownloadCoordinator(
         chunkSize: Long,
         validator: String?,
         completed: CompletedChunks,
-        writer: PositionedWriter
+        writer: PositionedWriter,
+        onDurable: () -> Unit = {}
     ) {
         var lastWritten = -1
         while (true) {
@@ -611,6 +651,7 @@ class HttpDownloadCoordinator(
             // while the data blocks it describes are gone.
             runCatching { writer.force(true) }
             writeResumeState(statePath, total, chunkSize, validator, completed)
+            onDurable()
         }
     }
 
@@ -704,6 +745,32 @@ class HttpDownloadCoordinator(
     private fun sizeOf(path: Path): Long = runCatching {
         if (Files.isRegularFile(path)) Files.size(path) else 0L
     }.getOrDefault(0L)
+
+    /**
+     * The number of real content bytes a partial represents. A portable partial reserves a metadata
+     * region past the content, so its physical size overstates the content; read the authoritative
+     * content length from the embedded locator when present, otherwise fall back to the file size
+     * (the legacy single-stream / pre-portability behaviour).
+     */
+    private fun contentLength(path: Path): Long =
+        inspectPortableFile(path)?.contentLength ?: sizeOf(path)
+
+    private fun httpManifest(
+        url: String,
+        total: Long,
+        plan: HttpTransferPlanner.Plan,
+        validator: String?,
+        completed: CompletedChunks
+    ): PortableManifest.Http = PortableManifest.Http(
+        originalUrl = url,
+        resolvedUrl = null,
+        contentLength = total,
+        chunkSize = plan.chunkSize,
+        chunkCount = plan.chunkCount,
+        acceptsRanges = true,
+        validator = validator,
+        completedChunks = completed.snapshot()
+    )
 
     private fun readResumeState(path: Path): HttpResumeState? = runCatching {
         if (!Files.isRegularFile(path)) return null

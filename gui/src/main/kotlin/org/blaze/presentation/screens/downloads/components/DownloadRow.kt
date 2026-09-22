@@ -216,6 +216,17 @@ fun DownloadRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     StatusBadge(download.state)
+                    // Every in-flight download carries self-contained resume state, so the artifact can
+                    // be moved to another PC and continued. Show an unobtrusive badge until completion,
+                    // when the metadata is stripped and the badge disappears with it.
+                    if (!isCompleted && !isFailed) {
+                        Icon(
+                            key = AllIconsKeys.General.ShowInfos,
+                            contentDescription = strings.downloads.portable.indicator,
+                            tint = secondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                     Text(
                         text = meta,
                         style = smallText,

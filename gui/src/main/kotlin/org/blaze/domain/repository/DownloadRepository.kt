@@ -26,7 +26,37 @@ interface DownloadRepository {
     suspend fun pauseAll()
     suspend fun resumeAll()
     suspend fun clearCompleted()
+
+    /**
+     * Reads a moved artifact at [artifactPath] and returns a display-only summary when it is a Blaze
+     * portable download, or null otherwise. Detection is by embedded magic, never by file name.
+     */
+    suspend fun detectPortable(artifactPath: String): PortableInfo?
+
+    /**
+     * Imports a detected portable artifact into [destinationDir], reconstructing local state so the
+     * download resumes. Returns true when a resumable download was queued for the artifact.
+     */
+    suspend fun importPortable(artifactPath: String, destinationDir: String): Boolean
 }
+
+/** Protocol family a detected portable artifact carries. */
+enum class PortableKind { HTTP, TORRENT }
+
+/**
+ * Domain view of a discovered portable download. Deliberately free of engine types and of any
+ * credential material — [source] is a display label only (URL or torrent name).
+ */
+data class PortableInfo(
+    val kind: PortableKind,
+    val suggestedName: String,
+    val source: String?,
+    val totalBytes: Long,
+    val availableBytes: Long,
+    val resumable: Boolean,
+    val multiFile: Boolean,
+    val mayRequireCredentials: Boolean
+)
 
 data class DownloadMetadata(
     val name: String,

@@ -21,6 +21,7 @@ fun DownloadsToolbar(
     searchQuery: String,
     onEvent: (DownloadsEvent) -> Unit,
     onAddDownload: () -> Unit,
+    onImportPortable: () -> Unit,
 ) {
     val strings = blazeStrings
     ToolWindowHeader(
@@ -38,6 +39,11 @@ fun DownloadsToolbar(
                 key = AllIconsKeys.General.Add,
                 tooltip = strings.downloads.toolbar.add,
                 onClick = onAddDownload
+            )
+            ToolbarIconButton(
+                key = AllIconsKeys.Actions.Download,
+                tooltip = strings.downloads.toolbar.importPortable,
+                onClick = onImportPortable
             )
             ToolbarIconButton(
                 key = AllIconsKeys.Actions.Resume,

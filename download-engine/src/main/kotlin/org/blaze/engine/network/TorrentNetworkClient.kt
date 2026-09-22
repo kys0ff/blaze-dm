@@ -26,6 +26,9 @@ import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.TorrentSource
+import org.blaze.engine.portable.PortableManifest
+import org.blaze.engine.portable.PortableTorrentFile
+import org.blaze.engine.portable.TorrentPortableFile
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -141,6 +144,20 @@ class TorrentNetworkClient(
                                 files
                             )
                         )
+
+                        // Make this download portable: drop a self-contained metainfo marker at the
+                        // torrent's destination root so the folder can be moved to another machine
+                        // and resumed without the original `.torrent`/magnet. It is advisory-free —
+                        // `bt` re-verifies every piece against the embedded hashes on resume.
+                        if (bytes != null) {
+                            runCatching {
+                                TorrentPortableFile.write(
+                                    TorrentPortableFile.markerPath(destination),
+                                    torrentManifest(torrent, bytes),
+                                    generation = 1
+                                )
+                            }.onFailure { logger.warn("Could not write the portable torrent marker: {}", it.message) }
+                        }
                     }
 
                 if (request.fileIndices != null) {
@@ -245,6 +262,9 @@ class TorrentNetworkClient(
                     when (reason) {
                         StopReason.DOWNLOADED, StopReason.SEED_COMPLETE -> {
                             logger.info("Torrent download completed successfully.")
+                            // Strip the portable marker so the finished folder is a plain, ordinary
+                            // copy of the torrent's files with nothing engine-specific left behind.
+                            TorrentPortableFile.delete(TorrentPortableFile.markerPath(destination))
                             send(TorrentNetworkEvent.Completed)
                         }
 
@@ -445,6 +465,36 @@ class TorrentNetworkClient(
         val out = ByteArrayOutputStream()
         BEEncoder.encoder().encode(BEMap(root), out)
         return out.toByteArray()
+    }
+
+    /**
+     * Builds the portable manifest that travels with a torrent. The load-bearing field is [bytes] —
+     * the canonical `.torrent` (info dict + announce), which is exactly what `bt` needs to re-verify
+     * and resume on another machine. The remaining fields are cheap, pre-parsed projections of the
+     * same information used to size the import preview without re-decoding bencode here.
+     */
+    private fun torrentManifest(torrent: Torrent, bytes: ByteArray): PortableManifest.Torrent {
+        val trackers = buildList {
+            torrent.announceKey.ifPresent { key ->
+                if (key.isMultiKey) key.trackerUrls.forEach { tier -> addAll(tier) } else add(key.trackerUrl)
+            }
+        }
+        val files = torrent.files.map {
+            PortableTorrentFile(it.pathElements.joinToString("/"), it.size)
+        }
+        val pieceLength = torrent.chunkSize
+        val pieceCount = if (pieceLength > 0) ((torrent.size + pieceLength - 1) / pieceLength).toInt() else 0
+        return PortableManifest.Torrent(
+            name = torrent.name,
+            torrentFile = bytes,
+            contentLength = torrent.size,
+            pieceLength = pieceLength,
+            pieceCount = pieceCount,
+            trackers = trackers,
+            files = files,
+            completedPieces = java.util.BitSet(), // bt re-derives the truth from hashes on resume
+            multiFile = torrent.files.size > 1
+        )
     }
 }
 

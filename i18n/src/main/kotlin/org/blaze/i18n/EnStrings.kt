@@ -35,6 +35,7 @@ object EnStrings : BlazeStrings {
             override val resumeAll = "Resume all"
             override val pauseAll = "Pause all"
             override val clearCompleted = "Clear completed"
+            override val importPortable = "Import portable download"
         }
 
         override val dialogs = object : BlazeStrings.Downloads.Dialogs {
@@ -134,6 +135,23 @@ object EnStrings : BlazeStrings {
             override val copyLink = "Copy download link"
             override val copyFilePath = "Copy file location"
             override val showDetails = "Show details"
+        }
+
+        override val portable = object : BlazeStrings.Downloads.Portable {
+            override val indicator = "Portable resume enabled"
+            override val dialogTitle = "Resume portable download"
+            override fun kindHttp(name: String) = "HTTP download \u2014 $name"
+            override fun kindTorrent(name: String) = "Torrent download \u2014 $name"
+            override val source = "Source"
+            override val expectedSize = "Expected size"
+            override val available = "Already downloaded"
+            override val saveLocation = "Save to"
+            override val resumable = "Resumable"
+            override val staleWarning = "This progress may be outdated; existing data will be re-verified before resuming."
+            override val credentialsNote = "If the source requires sign-in, provide credentials on this PC to resume."
+            override val importAction = "Resume download"
+            override fun notPortable(path: String) = "\u201c$path\u201d is not a Blaze portable download."
+            override val imported = "Portable download added to the queue."
         }
     }
 

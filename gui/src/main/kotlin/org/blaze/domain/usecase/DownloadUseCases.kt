@@ -5,6 +5,7 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
+import org.blaze.domain.repository.PortableInfo
 
 class GetDownloadsUseCase(private val repository: DownloadRepository) {
     operator fun invoke(): Flow<List<Download>> = repository.downloads
@@ -62,4 +63,14 @@ class ResumeAllDownloadsUseCase(private val repository: DownloadRepository) {
 
 class ClearCompletedDownloadsUseCase(private val repository: DownloadRepository) {
     suspend operator fun invoke() = repository.clearCompleted()
+}
+
+class DetectPortableDownloadUseCase(private val repository: DownloadRepository) {
+    suspend operator fun invoke(artifactPath: String): PortableInfo? =
+        repository.detectPortable(artifactPath)
+}
+
+class ImportPortableDownloadUseCase(private val repository: DownloadRepository) {
+    suspend operator fun invoke(artifactPath: String, destinationDir: String): Boolean =
+        repository.importPortable(artifactPath, destinationDir)
 }

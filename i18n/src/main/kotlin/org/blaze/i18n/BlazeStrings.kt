@@ -45,6 +45,7 @@ interface BlazeStrings {
             val resumeAll: String
             val pauseAll: String
             val clearCompleted: String
+            val importPortable: String
         }
 
         val dialogs: Dialogs
@@ -149,6 +150,26 @@ interface BlazeStrings {
             val copyLink: String
             val copyFilePath: String
             val showDetails: String
+        }
+
+        /** Labels for the "resume a moved portable download" flow and its on-row indicator. */
+        val portable: Portable
+        interface Portable {
+            /** Unobtrusive badge/tooltip shown while a download is still incomplete. */
+            val indicator: String
+            val dialogTitle: String
+            fun kindHttp(name: String): String
+            fun kindTorrent(name: String): String
+            val source: String
+            val expectedSize: String
+            val available: String
+            val saveLocation: String
+            val resumable: String
+            val staleWarning: String
+            val credentialsNote: String
+            val importAction: String
+            fun notPortable(path: String): String
+            val imported: String
         }
     }
 

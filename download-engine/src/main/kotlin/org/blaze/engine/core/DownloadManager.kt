@@ -27,6 +27,8 @@ import org.blaze.engine.api.DownloadMetadata
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.api.PortableDownloadInfo
+import org.blaze.engine.api.PortableTransferKind
 import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.execution.DownloadExecutorImpl
@@ -36,6 +38,11 @@ import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.persistence.DownloadRecord
 import org.blaze.engine.persistence.DownloadRepository
+import org.blaze.engine.portable.PortableImport
+import org.blaze.engine.portable.PortableManifest
+import org.blaze.engine.portable.TorrentPortableFile
+import org.blaze.engine.portable.inspectPortableFile
+import org.blaze.engine.portable.installHttpResumeSidecar
 import org.blaze.engine.retry.DefaultRetryPolicy
 import org.blaze.engine.retry.RetryPolicy
 import org.blaze.engine.scheduler.DownloadScheduler
@@ -47,6 +54,7 @@ import org.slf4j.LoggerFactory
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Instant
 import kotlin.time.Duration.Companion.seconds
@@ -359,6 +367,65 @@ class DownloadManager(
         }
 
         metadata?.let { DownloadMetadata(it.name, it.totalBytes, it.files) }
+    }
+
+    override suspend fun detectPortableDownload(path: Path): PortableDownloadInfo? =
+        withContext(Dispatchers.IO) { runCatching { PortableImport.detect(path) }.getOrNull() }
+
+    override suspend fun importPortableDownload(artifact: Path, destination: Path): DownloadId? =
+        withContext(Dispatchers.IO) {
+            val info = PortableImport.detect(artifact) ?: return@withContext null
+            val id = when (info.kind) {
+                PortableTransferKind.HTTP -> importHttp(artifact, destination, info)
+                PortableTransferKind.TORRENT -> importTorrent(artifact, info)
+            }
+            if (id != null) scheduler.start(id)
+            id
+        }
+
+    private suspend fun importHttp(artifact: Path, destination: Path, info: PortableDownloadInfo): DownloadId? {
+        val finalFile = destination.resolve(info.suggestedName)
+        val partial = storage.getPartialFile(finalFile).toPath()
+        // Bring the moved file to the canonical partial path the engine expects. Prefer a move; fall
+        // back to a copy when it crosses a device boundary (§22 permits copy as well as move).
+        if (runCatching { artifact.toRealPath() }.getOrNull() != runCatching { partial.toRealPath() }.getOrNull()) {
+            runCatching { Files.createDirectories(partial.parent) }
+            val moved = runCatching { Files.move(artifact, partial, StandardCopyOption.REPLACE_EXISTING) }.isSuccess
+            if (!moved) runCatching { Files.copy(artifact, partial, StandardCopyOption.REPLACE_EXISTING) }
+                .onFailure { return null }
+        }
+        val restored = inspectPortableFile(partial) ?: return null
+        val url = (restored.manifest as? PortableManifest.Http)?.originalUrl ?: return null
+        installHttpResumeSidecar(restored, storage.getResumeStateFile(finalFile).toPath())
+        return enqueue(
+            DownloadRequest.Http(name = info.suggestedName, url = url, destination = finalFile),
+            totalBytes = restored.contentLength
+        )
+    }
+
+    private suspend fun importTorrent(artifact: Path, info: PortableDownloadInfo): DownloadId? {
+        val dir = PortableImport.resolveTorrentDestination(artifact) ?: return null
+        val record = TorrentPortableFile.read(TorrentPortableFile.markerPath(dir)) ?: return null
+        if (record.manifest.torrentFile.isEmpty()) return null
+        return try {
+            val cacheDir = repository.storageDir.resolve("cache")
+            storage.ensureDirectory(cacheDir)
+            val torrentFile = cacheDir.resolve("import-${System.nanoTime()}.torrent")
+            Files.write(torrentFile, record.manifest.torrentFile)
+            val files = record.manifest.files.map { DownloadFileMetadata(it.relativePath, it.size) }
+            enqueue(
+                DownloadRequest.Torrent(
+                    name = record.manifest.name,
+                    torrentSource = TorrentSource.File(torrentFile),
+                    destination = dir
+                ),
+                totalBytes = record.manifest.contentLength,
+                files = files
+            )
+        } catch (e: Exception) {
+            logger.error("Failed to import portable torrent from {}", dir, e)
+            null
+        }
     }
 
     override suspend fun enqueue(

@@ -14,10 +14,15 @@ import kotlinx.coroutines.launch
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadMetadata
+import org.blaze.domain.repository.PortableInfo
 import org.blaze.engine.settings.FileConflictBehavior
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsState
+import org.blaze.presentation.screens.filepicker.FilePickerDialog
+import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import java.io.File
+import java.nio.file.Path
 
 @Composable
 fun DownloadsScreenContent(
@@ -25,9 +30,13 @@ fun DownloadsScreenContent(
     onEvent: (DownloadsEvent) -> Unit,
     onFetchMetadata: suspend (String) -> DownloadMetadata?,
     onResolveDestinationPath: suspend (String, String, String?) -> String,
+    onDetectPortable: suspend (String) -> PortableInfo?,
+    onImportPortable: suspend (String, String) -> Boolean,
+    onNotify: (message: String, isError: Boolean) -> Unit,
     fileConflictBehavior: FileConflictBehavior,
     modifier: Modifier = Modifier
 ) {
+    val strings = blazeStrings
     var showAddDialog by remember { mutableStateOf(false) }
     var downloadToRemove by remember { mutableStateOf<Download?>(null) }
     var detailsId by remember { mutableStateOf<String?>(null) }
@@ -36,6 +45,13 @@ fun DownloadsScreenContent(
     val listState = rememberLazyListState()
     var defaultDeleteBehavior by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
+
+    // ── Portable-import flow: pick the moved artifact, preview it, choose a destination, resume. ──
+    var showArtifactPicker by remember { mutableStateOf(false) }
+    var showDestPicker by remember { mutableStateOf(false) }
+    var importBusy by remember { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<Pair<String, PortableInfo>?>(null) }
+    var importDestination by remember { mutableStateOf("") }
 
     val hasActive = remember(state.downloads) { state.downloads.any { it.state == DownloadState.DOWNLOADING } }
     val hasPaused = remember(state.downloads) { state.downloads.any { it.state == DownloadState.PAUSED } }
@@ -139,6 +155,63 @@ fun DownloadsScreenContent(
         }
     }
 
+    // ── Portable import: select a moved artifact, then detect it by content (never by name, §23). ──
+    if (showArtifactPicker) {
+        FilePickerDialog(
+            onDismiss = { showArtifactPicker = false },
+            onPick = { path ->
+                showArtifactPicker = false
+                val artifactPath = path.toString()
+                scope.launch {
+                    val info = onDetectPortable(artifactPath)
+                    if (info == null) {
+                        onNotify(strings.downloads.portable.notPortable(path.fileName.toString()), true)
+                    } else {
+                        importDestination = path.toAbsolutePath().parent?.toString() ?: artifactPath
+                        pendingImport = artifactPath to info
+                    }
+                }
+            },
+            mode = FilePickerMode.File,
+            title = strings.downloads.portable.dialogTitle
+        )
+    }
+
+    pendingImport?.let { (artifactPath, info) ->
+        ImportPortableDialog(
+            info = info,
+            destinationDir = importDestination,
+            busy = importBusy,
+            onBrowseDestination = { showDestPicker = true },
+            onImport = {
+                if (!importBusy) {
+                    importBusy = true
+                    scope.launch {
+                        val ok = onImportPortable(artifactPath, importDestination)
+                        importBusy = false
+                        pendingImport = null
+                        if (ok) onNotify(strings.downloads.portable.imported, false)
+                        else onNotify(strings.downloads.portable.notPortable(Path.of(artifactPath).fileName.toString()), true)
+                    }
+                }
+            },
+            onDismiss = { if (!importBusy) pendingImport = null }
+        )
+    }
+
+    if (showDestPicker) {
+        FilePickerDialog(
+            onDismiss = { showDestPicker = false },
+            onPick = { path ->
+                importDestination = path.toString()
+                showDestPicker = false
+            },
+            mode = FilePickerMode.Directory,
+            initialPath = runCatching { Path.of(importDestination) }.getOrNull()
+                ?.takeIf { java.nio.file.Files.isDirectory(it) }
+        )
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         DownloadsToolbar(
             hasActiveDownloads = hasActive,
@@ -146,7 +219,8 @@ fun DownloadsScreenContent(
             hasCompletedDownloads = hasCompleted,
             searchQuery = state.searchQuery,
             onEvent = onEvent,
-            onAddDownload = { showAddDialog = true }
+            onAddDownload = { showAddDialog = true },
+            onImportPortable = { showArtifactPicker = true }
         )
 
         if (state.downloads.isEmpty()) {

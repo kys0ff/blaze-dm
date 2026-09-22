@@ -12,12 +12,16 @@ import org.blaze.domain.models.SelectedFile
 import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
+import org.blaze.domain.repository.PortableInfo
+import org.blaze.domain.repository.PortableKind
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.api.PortableDownloadInfo
+import org.blaze.engine.api.PortableTransferKind
 import org.blaze.engine.api.TorrentSource
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -190,6 +194,32 @@ class DownloadRepositoryImpl(
             }
         }
     }
+
+    override suspend fun detectPortable(artifactPath: String): PortableInfo? =
+        engine.detectPortableDownload(Path.of(artifactPath))?.toPortableInfo()
+
+    override suspend fun importPortable(artifactPath: String, destinationDir: String): Boolean {
+        val artifact = Path.of(artifactPath)
+        val destination = Path.of(destinationDir)
+        withContext(Dispatchers.IO) {
+            if (Files.notExists(destination)) Files.createDirectories(destination)
+        }
+        return engine.importPortableDownload(artifact, destination) != null
+    }
+
+    private fun PortableDownloadInfo.toPortableInfo() = PortableInfo(
+        kind = when (this.kind) {
+            PortableTransferKind.HTTP -> PortableKind.HTTP
+            PortableTransferKind.TORRENT -> PortableKind.TORRENT
+        },
+        suggestedName = suggestedName,
+        source = source,
+        totalBytes = totalBytes,
+        availableBytes = availableBytes,
+        resumable = resumable,
+        multiFile = multiFile,
+        mayRequireCredentials = mayRequireCredentials
+    )
 
     private fun DownloadTask.toGuiDownload(): Download {
         val torrentRequest = request as? DownloadRequest.Torrent
