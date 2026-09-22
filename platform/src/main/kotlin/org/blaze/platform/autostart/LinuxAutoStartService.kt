@@ -1,21 +1,23 @@
 package org.blaze.platform.autostart
 
+import org.blaze.platform.api.PlatformIdentity
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
  * XDG desktop-entry autostart: writes/removes
- * `~/.config/autostart/org.blaze.desktop`, honoured by GNOME, KDE, XFCE and friends.
- * The autostart directory is injectable so the file handling is testable anywhere.
+ * `~/.config/autostart/<identity.desktopFileName>`, honoured by GNOME, KDE, XFCE and
+ * friends. The autostart directory is injectable so the file handling is testable anywhere.
  */
 class LinuxAutoStartService(
+    private val identity: PlatformIdentity,
     private val autostartDir: Path = Path.of(System.getProperty("user.home"), ".config", "autostart"),
     private val execCommand: () -> String = {
-        ProcessHandle.current().info().command().orElse("blaze")
+        ProcessHandle.current().info().command().orElse(identity.executableName)
     }
 ) : AutoStartService {
 
-    private val desktopFile = autostartDir.resolve("org.blaze.desktop")
+    private val desktopFile = autostartDir.resolve(identity.desktopFileName)
 
     override val isSupported: Boolean = true
 
@@ -33,8 +35,8 @@ class LinuxAutoStartService(
     private fun desktopEntry(exec: String): String = buildString {
         appendLine("[Desktop Entry]")
         appendLine("Type=Application")
-        appendLine("Name=Blaze")
-        appendLine("Comment=Blaze download manager")
+        appendLine("Name=${identity.appName}")
+        appendLine("Comment=${identity.description}")
         appendLine("Exec=$exec")
         appendLine("Terminal=false")
         appendLine("X-GNOME-Autostart-enabled=true")

@@ -1,5 +1,6 @@
 package org.blaze.platform.autostart
 
+import org.blaze.platform.api.PlatformIdentity
 import java.util.concurrent.TimeUnit
 
 /**
@@ -7,25 +8,26 @@ import java.util.concurrent.TimeUnit
  * no registry bindings needed. `disable` treats "value already absent" as success.
  */
 class WindowsAutoStartService(
+    private val identity: PlatformIdentity,
     private val execCommand: () -> String = {
-        ProcessHandle.current().info().command().orElse("blaze.exe")
+        ProcessHandle.current().info().command().orElse("${identity.executableName}.exe")
     }
 ) : AutoStartService {
 
     override val isSupported: Boolean = true
 
     private fun isEnabledQuietly(): Boolean =
-        runCatching { run("reg", "query", REG_KEY, "/v", APP_VALUE).exitCode == 0 }.getOrDefault(false)
+        runCatching { run("reg", "query", REG_KEY, "/v", identity.appName).exitCode == 0 }.getOrDefault(false)
 
     override fun isEnabled(): Boolean = isEnabledQuietly()
 
     override fun enable(): Result<Unit> = runCatching {
-        val result = run("reg", "add", REG_KEY, "/v", APP_VALUE, "/t", "REG_SZ", "/d", execCommand(), "/f")
+        val result = run("reg", "add", REG_KEY, "/v", identity.appName, "/t", "REG_SZ", "/d", execCommand(), "/f")
         check(result.exitCode == 0) { "reg add failed (exit ${result.exitCode}): ${result.output}" }
     }
 
     override fun disable(): Result<Unit> = runCatching {
-        val result = run("reg", "delete", REG_KEY, "/v", APP_VALUE, "/f")
+        val result = run("reg", "delete", REG_KEY, "/v", identity.appName, "/f")
         // Non-zero usually means the value was never there; confirm and accept that.
         check(result.exitCode == 0 || !isEnabledQuietly()) {
             "reg delete failed (exit ${result.exitCode}): ${result.output}"
@@ -43,6 +45,5 @@ class WindowsAutoStartService(
 
     private companion object {
         const val REG_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-        const val APP_VALUE = "Blaze"
     }
 }

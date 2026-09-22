@@ -1,5 +1,6 @@
 package org.blaze.platform.autostart
 
+import org.blaze.platform.TEST_IDENTITY
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -13,7 +14,7 @@ import kotlin.test.assertTrue
 class LinuxAutoStartServiceTest {
 
     private val tempDir = Files.createTempDirectory("blaze-autostart-test")
-    private val service = LinuxAutoStartService(tempDir) { "/opt/Blaze/bin/blaze" }
+    private val service = LinuxAutoStartService(TEST_IDENTITY, tempDir) { "/opt/Blaze/bin/blaze" }
 
     @AfterTest
     fun tearDown() {
@@ -35,6 +36,7 @@ class LinuxAutoStartServiceTest {
         val content = Files.readString(file)
         assertTrue(content.startsWith("[Desktop Entry]"), "must start with the desktop-entry header")
         assertTrue("Exec=/opt/Blaze/bin/blaze" in content, "Exec must carry the resolved command:\n$content")
+        assertTrue("Name=Blaze" in content, "entry must carry the identity's app name:\n$content")
         assertTrue("X-GNOME-Autostart-enabled=true" in content)
         assertTrue(service.isEnabled())
     }
@@ -61,7 +63,7 @@ class LinuxAutoStartServiceTest {
     fun enableCreatesTheAutostartDirectoryWhenMissing() {
         val missingDir = tempDir.resolve("nested/autostart")
 
-        LinuxAutoStartService(missingDir) { "blaze" }.enable().getOrThrow()
+        LinuxAutoStartService(TEST_IDENTITY, missingDir) { "blaze" }.enable().getOrThrow()
 
         assertTrue(Files.exists(missingDir.resolve("org.blaze.desktop")))
     }

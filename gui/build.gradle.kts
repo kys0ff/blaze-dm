@@ -20,6 +20,7 @@ dependencies {
     implementation(project(":link-resolver"))
     implementation(project(":theming"))
     implementation(project(":tray"))
+    implementation(project(":platform"))
     implementation(project(":i18n"))
     implementation(project(":filepicker"))
 
@@ -43,11 +44,6 @@ dependencies {
     // Koin
     implementation(libs.koin.core)
     implementation(libs.koin.compose)
-
-    // Taskbar download progress on Linux is published over D-Bus via the
-    // com.canonical.Unity.LauncherEntry protocol (KDE Plasma / GNOME read it).
-    implementation(libs.dbus.java.core)
-    implementation(libs.dbus.java.transport.native.unixsocket)
 
     // App-shell settings (app.json) are serialized locally in this module.
     implementation(libs.kotlinx.serialization.json)

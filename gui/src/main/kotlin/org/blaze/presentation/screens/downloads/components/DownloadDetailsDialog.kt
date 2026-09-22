@@ -95,7 +95,7 @@ fun DownloadDetailsDialog(
 
             DetailRow(details.added) { Text(formatDateTime(download.addedAt)) }
             if (scheduledInFuture) {
-                DetailRow(details.scheduled) { Text(formatDateTime(download.scheduledAt!!)) }
+                DetailRow(details.scheduled) { Text(formatDateTime(download.scheduledAt)) }
             }
 
             download.error?.let { error ->

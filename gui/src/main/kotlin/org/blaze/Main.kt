@@ -13,7 +13,9 @@ import org.blaze.di.themeModule
 import org.blaze.di.useCaseModule
 import org.blaze.i18n.i18nModule
 import org.blaze.logging.LogConfigurator
+import org.blaze.platform.BlazePlatformIdentity
 import org.blaze.platform.autostart.AutoStartCoordinator
+import org.blaze.platform.di.desktopPlatformModule
 import org.blaze.presentation.application.BlazeApplication
 import org.blaze.presentation.screens.filepicker.di.filePickerModule
 import org.blaze.tray.di.trayModule
@@ -26,6 +28,7 @@ fun main() {
             appModule,
             engineModule,
             loggingModule,
+            desktopPlatformModule(BlazePlatformIdentity),
             platformModule,
             repositoryModule,
             resolverModule,

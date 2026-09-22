@@ -1,12 +1,12 @@
 package org.blaze.platform.autostart
 
 import org.blaze.data.AppSettingsRepository
-import org.slf4j.LoggerFactory
 
 /**
- * The single bridge between the persisted `runAtStartup` setting and the OS
+ * Blaze-specific bridge between the persisted `runAtStartup` setting and the OS
  * registration, so neither the settings screen nor the repositories talk to an
- * [AutoStartService] directly:
+ * [AutoStartService] directly. All mechanics live in the `:platform` module's
+ * [AutoStartController]; this class only supplies "what the app wants":
  *
  * - [applyLive] pushes a desired state to the OS right now (settings Apply/OK);
  * - [revertToPersisted] rolls the OS back to what is stored on disk, undoing an
@@ -16,29 +16,15 @@ import org.slf4j.LoggerFactory
  */
 class AutoStartCoordinator(
     private val appSettingsRepository: AppSettingsRepository,
-    private val service: AutoStartService
+    service: AutoStartService,
 ) {
-    private val logger = LoggerFactory.getLogger(AutoStartCoordinator::class.java)
+    private val controller = AutoStartController(service)
 
-    val isSupported: Boolean get() = service.isSupported
+    val isSupported: Boolean get() = controller.isSupported
 
-    /** Write/remove the OS registration to match [enabled]; failures are logged, never thrown. */
-    fun applyLive(enabled: Boolean) {
-        if (!service.isSupported) return
-        val result = if (enabled) service.enable() else service.disable()
-        result.onFailure { logger.warn("Failed to update the run-at-startup registration", it) }
-    }
+    fun applyLive(enabled: Boolean) = controller.applyLive(enabled)
 
-    fun revertToPersisted() = syncTo(appSettingsRepository.persisted.runAtStartup)
+    fun revertToPersisted() = controller.syncTo(appSettingsRepository.persisted.runAtStartup)
 
-    fun sync() = syncTo(appSettingsRepository.settings.value.runAtStartup)
-
-    /** Touch the OS only when its actual state differs from the persisted desire. */
-    private fun syncTo(desired: Boolean) {
-        if (!service.isSupported) return
-        val actual = runCatching { service.isEnabled() }
-            .onFailure { logger.warn("Failed to inspect the run-at-startup registration", it) }
-            .getOrNull() ?: return
-        if (actual != desired) applyLive(desired)
-    }
+    fun sync() = controller.syncTo(appSettingsRepository.settings.value.runAtStartup)
 }

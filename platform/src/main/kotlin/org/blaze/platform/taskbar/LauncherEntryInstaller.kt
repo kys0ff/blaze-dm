@@ -4,16 +4,18 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
+import org.blaze.platform.api.PlatformIdentity
 import org.slf4j.LoggerFactory
 
 /**
- * Installs the user-level `~/.local/share/applications/org.blaze.desktop` entry that
- * [LinuxTaskbarProgressService]'s LauncherEntry broadcasts are resolved against.
+ * Installs the user-level `~/.local/share/applications/<identity.desktopFileName>`
+ * entry that [LinuxTaskbarProgressService]'s LauncherEntry broadcasts are resolved
+ * against.
  *
  * This is required because jpackage does **not** give us a usable entry out of the box:
  * - its bundled `.desktop` is only installed to the system with `--linux-shortcut`
  *   (Compose's `linux { shortcut }` defaults to `false`), so a plain package run leaves
- *   Plasma unable to find *any* service for `application://org.blaze.desktop` (it logs
+ *   Plasma unable to find *any* service for `application://<app>.desktop` (it logs
  *   `Failed to find service for Unity Launcher ...` and drops the progress update); and
  * - the generated entry never contains `StartupWMClass`, so even when installed the
  *   running window (whose `WM_CLASS` the JDK derives from the main class name, e.g.
@@ -26,6 +28,7 @@ import org.slf4j.LoggerFactory
  * packaged app has been started once, because `StartupWMClass` matches either way.
  */
 class LauncherEntryInstaller(
+    private val identity: PlatformIdentity,
     private val desktopDir: Path = defaultDesktopDir(),
     private val launcherCommand: String? = defaultLauncherCommand(),
     private val kServiceCacheRefresher: () -> Unit = ::refreshKServiceCache,
@@ -42,7 +45,7 @@ class LauncherEntryInstaller(
         val launcher = parsePackagedLauncher(command) ?: return
 
         val content = desktopEntryContent(launcher)
-        val target = desktopDir.resolve(DESKTOP_FILE_NAME)
+        val target = desktopDir.resolve(identity.desktopFileName)
         runCatching {
             if (Files.exists(target) && Files.readString(target) == content) return
             Files.createDirectories(desktopDir)
@@ -75,14 +78,16 @@ class LauncherEntryInstaller(
         appendLine("[Desktop Entry]")
         appendLine("Type=Application")
         appendLine("Version=1.0")
-        appendLine("Name=$APP_NAME")
-        appendLine("GenericName=$GENERIC_NAME")
-        appendLine("Comment=$GENERIC_NAME")
+        appendLine("Name=${identity.appName}")
+        appendLine("GenericName=${identity.genericName}")
+        appendLine("Comment=${identity.genericName}")
         appendLine("Exec=${launcher.executable}")
         if (Files.exists(launcher.icon)) appendLine("Icon=${launcher.icon}")
         appendLine("Terminal=false")
-        appendLine("Categories=$CATEGORY")
-        appendLine("StartupWMClass=$WM_CLASS")
+        appendLine("Categories=${identity.categories}")
+        // java.awt on X11 builds WM_CLASS from the main class name with dots replaced
+        // by dashes, which is exactly how identity.windowManagerClass is derived.
+        appendLine("StartupWMClass=${identity.windowManagerClass}")
     }
 
     private class PackagedLauncher(
@@ -91,26 +96,7 @@ class LauncherEntryInstaller(
         val icon: Path,
     )
 
-    companion object {
-        /** Must stay the storage id used in the LauncherEntry URI (`application://...`). */
-        const val DESKTOP_FILE_NAME = "org.blaze.desktop"
-        const val APP_NAME = "Blaze"
-        private const val GENERIC_NAME = "Download Manager"
-        private const val CATEGORY = "Network;FileTransfer;"
-
-        /**
-         * `WM_CLASS` of the app window: `java.awt` on X11 builds it from the main class
-         * name with dots replaced by dashes ([MAIN_CLASS]).
-         */
-        const val WM_CLASS = "org-blaze-MainKt"
-        private const val MAIN_CLASS = "org.blaze.MainKt"
-
-        init {
-            check(MAIN_CLASS.replace('.', '-') == WM_CLASS) {
-                "WM_CLASS must stay derived from the main class name"
-            }
-        }
-
+    private companion object {
         private fun defaultDesktopDir(): Path =
             Paths.get(System.getProperty("user.home"), ".local", "share", "applications")
 

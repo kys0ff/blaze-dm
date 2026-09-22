@@ -1,5 +1,9 @@
 package org.blaze.platform.taskbar
 
+import org.blaze.platform.api.OsType
+import org.blaze.platform.api.PlatformIdentity
+import org.blaze.platform.api.detectOsType
+
 /**
  * Picks the taskbar-progress backend for the host platform (same detection style as
  * [org.blaze.platform.autostart.AutoStartServiceFactory]).
@@ -11,13 +15,12 @@ package org.blaze.platform.taskbar
  */
 object TaskbarProgressServiceFactory {
 
-    fun create(osName: String = System.getProperty("os.name")): TaskbarProgressService {
-        val name = osName.lowercase()
-        return when {
-            name.contains("linux") -> LinuxTaskbarProgressService()
-            name.contains("win") || name.contains("mac") || name.contains("darwin") ->
-                AwtTaskbarProgressService()
-            else -> UnsupportedTaskbarProgressService()
-        }
+    fun create(
+        identity: PlatformIdentity,
+        osName: String = System.getProperty("os.name"),
+    ): TaskbarProgressService = when (detectOsType(osName)) {
+        OsType.LINUX -> LinuxTaskbarProgressService(identity)
+        OsType.WINDOWS, OsType.MACOS -> AwtTaskbarProgressService()
+        OsType.UNKNOWN -> UnsupportedTaskbarProgressService()
     }
 }

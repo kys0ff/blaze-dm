@@ -1,5 +1,6 @@
 package org.blaze.platform.taskbar
 
+import org.blaze.platform.TEST_IDENTITY
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -26,18 +27,19 @@ class LauncherEntryInstallerTest {
         var refreshes = 0
 
         LauncherEntryInstaller(
+            identity = TEST_IDENTITY,
             desktopDir = desktopDir,
             launcherCommand = appDir.resolve("bin").resolve("org.blaze").toString(),
             kServiceCacheRefresher = { refreshes++ },
         ).ensureInstalled()
 
-        val file = desktopDir.resolve(LauncherEntryInstaller.DESKTOP_FILE_NAME)
+        val file = desktopDir.resolve(TEST_IDENTITY.desktopFileName)
         assertTrue(Files.exists(file), "the desktop entry should be installed")
 
         val content = Files.readString(file)
-        assertTrue(content.contains("StartupWMClass=${LauncherEntryInstaller.WM_CLASS}"))
+        assertTrue(content.contains("StartupWMClass=${TEST_IDENTITY.windowManagerClass}"))
         assertTrue(content.contains("Exec=${appDir.resolve("bin").resolve("org.blaze")}"))
-        assertTrue(content.contains("Name=${LauncherEntryInstaller.APP_NAME}"))
+        assertTrue(content.contains("Name=${TEST_IDENTITY.appName}"))
         assertFalse(content.contains("Icon="), "no icon line when the icon file is missing")
         assertEquals(1, refreshes, "the KService cache should be refreshed once")
     }
@@ -49,12 +51,13 @@ class LauncherEntryInstallerTest {
         val desktopDir = root.resolve("applications")
 
         LauncherEntryInstaller(
+            identity = TEST_IDENTITY,
             desktopDir = desktopDir,
             launcherCommand = appDir.resolve("bin").resolve("org.blaze").toString(),
             kServiceCacheRefresher = {},
         ).ensureInstalled()
 
-        val content = Files.readString(desktopDir.resolve(LauncherEntryInstaller.DESKTOP_FILE_NAME))
+        val content = Files.readString(desktopDir.resolve(TEST_IDENTITY.desktopFileName))
         assertTrue(content.contains("Icon=${appDir.resolve("lib").resolve("org.blaze.png")}"))
     }
 
@@ -66,6 +69,7 @@ class LauncherEntryInstallerTest {
         var refreshes = 0
 
         val installer = LauncherEntryInstaller(
+            identity = TEST_IDENTITY,
             desktopDir = desktopDir,
             launcherCommand = command,
             kServiceCacheRefresher = { refreshes++ },
@@ -88,12 +92,13 @@ class LauncherEntryInstallerTest {
         var refreshes = 0
 
         LauncherEntryInstaller(
+            identity = TEST_IDENTITY,
             desktopDir = desktopDir,
             launcherCommand = fakeUsr.resolve("bin").resolve("java").toString(),
             kServiceCacheRefresher = { refreshes++ },
         ).ensureInstalled()
 
-        assertFalse(Files.exists(desktopDir.resolve(LauncherEntryInstaller.DESKTOP_FILE_NAME)))
+        assertFalse(Files.exists(desktopDir.resolve(TEST_IDENTITY.desktopFileName)))
         assertEquals(0, refreshes)
     }
 }

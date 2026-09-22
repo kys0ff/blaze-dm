@@ -1,20 +1,22 @@
 package org.blaze.platform.autostart
 
+import org.blaze.platform.api.PlatformIdentity
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
  * macOS autostart via a per-user LaunchAgent plist with `RunAtLoad`, written to
- * `~/Library/LaunchAgents/org.blaze.autostart.plist`.
+ * `~/Library/LaunchAgents/<identity.launchAgentLabel>.plist`.
  */
 class MacOsAutoStartService(
+    private val identity: PlatformIdentity,
     private val launchAgentsDir: Path = Path.of(System.getProperty("user.home"), "Library", "LaunchAgents"),
     private val execCommand: () -> String = {
-        ProcessHandle.current().info().command().orElse("blaze")
+        ProcessHandle.current().info().command().orElse(identity.executableName)
     }
 ) : AutoStartService {
 
-    private val plistFile = launchAgentsDir.resolve("org.blaze.autostart.plist")
+    private val plistFile = launchAgentsDir.resolve("${identity.launchAgentLabel}.plist")
 
     override val isSupported: Boolean = true
 
@@ -35,7 +37,7 @@ class MacOsAutoStartService(
         appendLine("""<plist version="1.0">""")
         appendLine("<dict>")
         appendLine("\t<key>Label</key>")
-        appendLine("\t<string>org.blaze.autostart</string>")
+        appendLine("\t<string>${identity.launchAgentLabel}</string>")
         appendLine("\t<key>ProgramArguments</key>")
         appendLine("\t<array>")
         appendLine("\t\t<string>${xmlEscape(exec)}</string>")

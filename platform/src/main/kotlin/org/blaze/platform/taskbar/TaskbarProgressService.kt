@@ -1,7 +1,7 @@
 package org.blaze.platform.taskbar
 
 /**
- * Contract for surfacing download activity on the app's taskbar / dock icon.
+ * Contract for surfacing activity (e.g. downloads) on the app's taskbar / dock icon.
  *
  * Each desktop offers its own mechanism (KDE/GNOME read the
  * `com.canonical.Unity.LauncherEntry` D-Bus protocol; macOS uses `java.awt.Taskbar`).

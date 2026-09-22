@@ -1,12 +1,13 @@
 package org.blaze.platform.taskbar
 
+import org.blaze.platform.api.PlatformIdentity
 import org.freedesktop.dbus.connections.impl.DBusConnection
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder
 import org.freedesktop.dbus.types.Variant
 import org.slf4j.LoggerFactory
 
 /**
- * [TaskbarProgressService] for Linux, publishing download progress through the
+ * [TaskbarProgressService] for Linux, publishing progress through the
  * `com.canonical.Unity.LauncherEntry` D-Bus protocol - the mechanism KDE Plasma's
  * task manager uses to draw a progress bar on a running app's icon, exactly how
  * Firefox/Chromium show their download progress there.
@@ -17,22 +18,23 @@ import org.slf4j.LoggerFactory
  *
  * The connection is deliberately **private** (`withShared(false)`): dbus-java caches
  * one reference-counted session connection per address by default, and a second
- * holder would keep it open past [org.blaze.tray.api.TrayService.dispose], so the
- * tray's reinstall would hit "Object already exported". A private connection keeps
- * this feature fully isolated from the tray's D-Bus lifecycle.
+ * holder would keep it open past the system-tray service's dispose, so the tray's
+ * reinstall would hit "Object already exported". A private connection keeps this
+ * feature fully isolated from the tray's D-Bus lifecycle.
  *
  * Every entry point degrades quietly: without a session bus [isSupported] is false
  * and all updates are dropped, leaving the app running with no taskbar bar.
  */
 class LinuxTaskbarProgressService(
+    private val identity: PlatformIdentity,
     /**
      * Launcher identity Plasma resolves to a `.desktop` file (strip `application://`).
      * Progress only appears once a desktop entry of that storage id is installed and
      * its `StartupWMClass` matches the app window - [LauncherEntryInstaller] guarantees
      * both, since jpackage's package tooling does not install one by itself.
      */
-    private val launcherUri: String = DEFAULT_LAUNCHER_URI,
-    private val launcherEntryInstaller: LauncherEntryInstaller = LauncherEntryInstaller(),
+    private val launcherUri: String = identity.launcherUri,
+    private val launcherEntryInstaller: LauncherEntryInstaller = LauncherEntryInstaller(identity),
 ) : TaskbarProgressService {
 
     private val logger = LoggerFactory.getLogger(LinuxTaskbarProgressService::class.java)
@@ -99,13 +101,7 @@ class LinuxTaskbarProgressService(
     private fun sendUpdate(properties: Map<String, Variant<*>>) {
         val conn = synchronized(lock) { connection } ?: return
         runCatching {
-            conn.sendMessage(UnityLauncherEntry.Update(OBJECT_PATH, launcherUri, properties))
+            conn.sendMessage(UnityLauncherEntry.Update(identity.launcherObjectPath, launcherUri, properties))
         }.onFailure { logger.warn("Failed to emit the LauncherEntry Update signal", it) }
-    }
-
-    private companion object {
-        // Signal source path; never exported, only needs to be a valid object path.
-        const val OBJECT_PATH = "/org/blaze/Launcher"
-        const val DEFAULT_LAUNCHER_URI = "application://" + LauncherEntryInstaller.DESKTOP_FILE_NAME
     }
 }

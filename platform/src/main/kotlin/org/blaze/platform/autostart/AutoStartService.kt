@@ -10,7 +10,7 @@ interface AutoStartService {
     /** Whether this platform offers any autostart mechanism we can drive. */
     val isSupported: Boolean
 
-    /** Whether the OS currently has Blaze registered to start at login. */
+    /** Whether the OS currently has the app registered to start at login. */
     fun isEnabled(): Boolean
 
     fun enable(): Result<Unit>
