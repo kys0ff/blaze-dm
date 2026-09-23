@@ -187,6 +187,25 @@ class DownloadAdvisoryTest {
     }
 
     @Test
+    fun `re-downloading a finished row whose file was deleted is not reported as lost progress`() {
+        // The user asked for the file again; its counter dropping to 0 is the whole point of the
+        // re-download, not a warning. The engine zeroes a re-queued finished task, so the queued
+        // hop already carries 0 - the diff must not read the finished -> queued step as a restart.
+        val completed = download(id = "again", state = DownloadState.COMPLETED, done = 10 * mib)
+        val requeued = download(id = "again", state = DownloadState.QUEUED, done = 0)
+        val moving = download(id = "again", state = DownloadState.DOWNLOADING, done = 0)
+
+        assertTrue(
+            diffDownloadTransitions(listOf(completed), listOf(requeued)).isEmpty(),
+            "a completed -> queued re-download must not raise a 'discarding 100%' notice"
+        )
+        assertTrue(
+            diffDownloadTransitions(listOf(requeued), listOf(moving)).isEmpty(),
+            "starting the fresh transfer from 0 is not a loss either"
+        )
+    }
+
+    @Test
     fun `an ordinary progress tick or a still-failed row is not news`() {
         val before = listOf(
             download(id = "steady", done = 4 * mib),

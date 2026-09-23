@@ -138,8 +138,18 @@ class DownloadScheduler(
 
     suspend fun start(id: DownloadId) = queueMutex.withLock {
         val task = tasks.value[id] ?: return@withLock
+        // Re-downloading a finished transfer means its bytes on disk are gone (or about to be
+        // replaced), so carry nothing over. Leaving the old count on the queued/starting snapshot
+        // would make a client that maps Starting to a downloading row see a phantom 100% -> 0 drop
+        // and warn about discarding progress that no longer exists.
+        val freshStart =
+            if (task.state == DownloadState.Completed || task.state == DownloadState.Seeding) {
+                task.copy(downloadedBytes = 0, progress = 0f, downloadSpeed = 0, completedAt = null)
+            } else {
+                task
+            }
         tasks.update {
-            it + (id to task.copy(state = DownloadState.Queued, scheduledAt = null, error = null, retryCount = 0))
+            it + (id to freshStart.copy(state = DownloadState.Queued, scheduledAt = null, error = null, retryCount = 0))
         }
         processQueueLocked()
     }

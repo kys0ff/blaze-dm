@@ -25,10 +25,14 @@ fun buildDownloadContextMenu(
     strings: BlazeStrings,
     actions: DownloadRowActions,
     hideResumeForQueued: Boolean = false,
+    fileMissing: Boolean = false,
 ): List<ContextMenuItem> {
     val labels = strings.downloads.actions
     val state = download.state
     val isCompleted = state == DownloadState.COMPLETED || state == DownloadState.SEEDING
+    // A finished row whose file has since been deleted can neither be opened nor revealed; it can
+    // only be fetched again or cleared off the list.
+    val isGone = isCompleted && fileMissing
     val isResumable = state == DownloadState.PAUSED ||
         (state == DownloadState.QUEUED && !hideResumeForQueued)
     val isCancellable = state == DownloadState.DOWNLOADING || state == DownloadState.SEEDING ||
@@ -39,7 +43,10 @@ fun buildDownloadContextMenu(
 
     return buildList {
         // ── Finished file: open it or find it on disk ─────────────────────────
-        if (isCompleted) {
+        if (isGone) {
+            add(option(labels.reDownload, AllIconsKeys.Actions.Download, actions.reDownload))
+            divider()
+        } else if (isCompleted) {
             if (capabilities.canOpenFiles) {
                 add(option(labels.openFile, AllIconsKeys.General.OpenDisk, actions.openFile))
             }
@@ -82,7 +89,13 @@ fun buildDownloadContextMenu(
         divider()
 
         // ── Removal ───────────────────────────────────────────────────────────
-        add(option(labels.remove, AllIconsKeys.Actions.GC, actions.remove))
+        // Nothing is left on disk for a gone file, so this is a plain clear rather than the
+        // remove-or-delete choice a still-present file gets.
+        if (isGone) {
+            add(option(labels.clear, AllIconsKeys.Actions.GC, actions.clear))
+        } else {
+            add(option(labels.remove, AllIconsKeys.Actions.GC, actions.remove))
+        }
     }
 }
 

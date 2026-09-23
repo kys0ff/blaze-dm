@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +64,8 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.theme.simpleListItemStyle
+import java.io.File
+import kotlinx.coroutines.delay
 
 private val ListItemShape = RoundedCornerShape(6.dp)
 private val RowMinHeight = 52.dp
@@ -76,6 +79,21 @@ private val LeadingIconSize = 16.dp
 private val TrailingWidth = 104.dp
 
 private const val META_SEPARATOR = " · "
+
+/**
+ * How often a completed row re-checks its artifact on disk. A finished transfer's entry rarely
+ * changes, so without this a file deleted by the OS or a file manager would leave the row looking
+ * healthy until the next unrelated list update. Only visible rows are composed, so the cost is
+ * bounded by what's on screen.
+ */
+private const val ARTIFACT_CHECK_INTERVAL_MS = 3_000L
+
+/**
+ * Whether a finished download's artifact is still on disk. [savePath] is the file for HTTP and the
+ * folder a torrent wrote into, and [File.exists] answers for both.
+ */
+private fun downloadArtifactExists(savePath: String): Boolean =
+    runCatching { File(savePath).exists() }.getOrDefault(false)
 
 private fun DownloadState.iconKey(): IconKey = when (this) {
     DownloadState.COMPLETED -> AllIconsKeys.FileTypes.Archive
@@ -104,25 +122,48 @@ fun DownloadRow(
     val files = download.selectedFiles.orEmpty()
     val hasFiles = files.isNotEmpty()
 
+    // ── Derived state ─────────────────────────────────────────────────────────
+    val isFailed = download.state == DownloadState.FAILED
+    val isCompleted = download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
+    val isTorrent = download.isTorrentSource()
+
+    // A finished row's file can vanish outside the app (deleted, moved, disk cleaned). Track that
+    // so the row can gray itself and offer to fetch the file again or clear the entry. Re-checked on
+    // a timer because a completed download barely ever changes, so recomposition alone would stay stale.
+    var fileMissing by remember(download.id, download.state, download.savePath) {
+        mutableStateOf(isCompleted && !downloadArtifactExists(download.savePath))
+    }
+    if (isCompleted) {
+        LaunchedEffect(download.id, download.savePath) {
+            while (true) {
+                fileMissing = !downloadArtifactExists(download.savePath)
+                delay(ARTIFACT_CHECK_INTERVAL_MS)
+            }
+        }
+    }
+
     // ── Colors ────────────────────────────────────────────────────────────────
     val background = when {
         isSelected -> listColors.backgroundSelectedActive
         hovered -> BlazeColors.hover
         else -> Color.Transparent
     }
-    val primary = if (isSelected) listColors.contentSelectedActive else Color.Unspecified
-    val secondary =
-        if (isSelected) listColors.contentSelectedActive else JewelTheme.globalColors.text.info
-
-    // ── Derived state ─────────────────────────────────────────────────────────
-    val isFailed = download.state == DownloadState.FAILED
-    val isCompleted = download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
-    val isTorrent = download.isTorrentSource()
+    val disabledText = JewelTheme.globalColors.text.disabled
+    val primary = when {
+        isSelected -> listColors.contentSelectedActive
+        fileMissing -> disabledText
+        else -> Color.Unspecified
+    }
+    val secondary = when {
+        isSelected -> listColors.contentSelectedActive
+        fileMissing -> disabledText
+        else -> JewelTheme.globalColors.text.info
+    }
 
     val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
         (download.totalSize == null || (download.downloadedSize == 0L && download.speed == 0L))
     val progress = download.progress.coerceIn(0f, 1f)
-    val showActions = hovered || isSelected || isFailed || download.state == DownloadState.SEEDING
+    val showActions = hovered || isSelected || isFailed || fileMissing || download.state == DownloadState.SEEDING
 
     val meta = buildList {
         if (download.scheduledAt != null && download.scheduledAt > System.currentTimeMillis()) {
@@ -156,7 +197,7 @@ fun DownloadRow(
     // gestures (select on click, open on double-click) live on the inner Row, so the
     // secondary-button detector installed by ContextMenuArea and the primary clicks coexist.
     ContextMenuArea(
-        items = { buildDownloadContextMenu(download, capabilities, strings, actions, hideResume) }
+        items = { buildDownloadContextMenu(download, capabilities, strings, actions, hideResume, fileMissing) }
     ) {
     Column(
         modifier = modifier
@@ -174,7 +215,7 @@ fun DownloadRow(
                     interactionSource = interaction,
                     indication = null,
                     onClick = onSelect,
-                    onDoubleClick = { if (isCompleted) actions.openFile() },
+                    onDoubleClick = { if (isCompleted && !fileMissing) actions.openFile() },
                 )
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -183,6 +224,7 @@ fun DownloadRow(
             Icon(
                 key = download.state.iconKey(),
                 contentDescription = null,
+                tint = if (fileMissing) disabledText else Color.Unspecified,
                 modifier = Modifier.size(LeadingIconSize)
             )
 
@@ -216,7 +258,11 @@ fun DownloadRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    StatusBadge(download.state)
+                    StatusBadge(download.state, dimmed = fileMissing)
+                    // The file is gone: say so up front, since opening it (double-click, menu) is no longer possible.
+                    if (fileMissing) {
+                        AdvisoryChip(strings.downloads.advisories.fileMissing, AdvisoryTone.ERROR)
+                    }
                     // Conditions the row can state up front, before a click spends something: a server
                     // that refuses ranges makes pause destructive, a peerless torrent makes it endless.
                     if (download.isWaitingForPeers()) {
@@ -292,6 +338,13 @@ fun DownloadRow(
                             DownloadState.FAILED ->
                                 ToolbarIconButton(AllIconsKeys.Actions.Restart, strings.downloads.actions.retry, actions.retry)
 
+                            DownloadState.COMPLETED ->
+                                // The file was deleted after finishing, so fetching it again is the one
+                                // useful thing to offer right on the row.
+                                if (fileMissing) {
+                                    ToolbarIconButton(AllIconsKeys.Actions.Download, strings.downloads.actions.reDownload, actions.reDownload)
+                                }
+
                             else -> {}
                         }
                         if (download.state == DownloadState.DOWNLOADING ||
@@ -301,7 +354,11 @@ fun DownloadRow(
                         ) {
                             ToolbarIconButton(AllIconsKeys.Actions.Cancel, strings.downloads.actions.cancel, actions.cancel)
                         }
-                        ToolbarIconButton(AllIconsKeys.Actions.GC, strings.downloads.actions.remove, actions.remove)
+                        if (fileMissing) {
+                            ToolbarIconButton(AllIconsKeys.Actions.GC, strings.downloads.actions.clear, actions.clear)
+                        } else {
+                            ToolbarIconButton(AllIconsKeys.Actions.GC, strings.downloads.actions.remove, actions.remove)
+                        }
                     }
                 } else if (!isCompleted && !isIndeterminate) {
                     Text(

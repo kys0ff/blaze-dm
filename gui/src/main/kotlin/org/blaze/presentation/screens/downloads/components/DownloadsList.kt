@@ -45,6 +45,10 @@ fun DownloadsList(
                     retry = { onEvent(DownloadsEvent.Retry(id)) },
                     cancel = { onEvent(DownloadsEvent.Cancel(id)) },
                     remove = { onRemoveRequested(download) },
+                    // A gone file leaves nothing to delete, so clearing skips the confirmation dialog
+                    // and just drops the row; re-downloading re-queues the very same source.
+                    reDownload = { onEvent(DownloadsEvent.Retry(id)) },
+                    clear = { onEvent(DownloadsEvent.Remove(id, deleteFile = false)) },
                     openFile = { onEvent(DownloadsEvent.OpenFile(id)) },
                     showInFolder = { onEvent(DownloadsEvent.ShowInFolder(id)) },
                     openSourceLink = { onEvent(DownloadsEvent.OpenSourceLink(id)) },

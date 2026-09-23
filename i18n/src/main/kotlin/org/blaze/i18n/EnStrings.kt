@@ -154,6 +154,8 @@ object EnStrings : BlazeStrings {
             override val copyLink = "Copy download link"
             override val copyFilePath = "Copy file location"
             override val showDetails = "Show details"
+            override val reDownload = "Re-download"
+            override val clear = "Clear from list"
         }
 
         override val portable = object : BlazeStrings.Downloads.Portable {
@@ -176,6 +178,7 @@ object EnStrings : BlazeStrings {
         override val advisories = object : BlazeStrings.Downloads.Advisories {
             override val cannotResume = "Can't resume"
             override val waitingForPeers = "Waiting for peers"
+            override val fileMissing = "File missing"
             override val resumeSupported = "Can resume where it stopped"
             override val titleCompleted = "Download completed"
             override val titleFailed = "Download failed"
@@ -183,7 +186,7 @@ object EnStrings : BlazeStrings {
             override fun completed(name: String) = "$name finished downloading."
             override fun failed(name: String, reason: String) = "$name failed: $reason"
             override fun restarted(name: String, percent: Int) =
-                "$name had to start over, discarding $percent% of already-downloaded data."
+                "$name couldn't continue from $percent%, so it's downloading again from the start."
             override fun resumeStartsOver(name: String) =
                 "$name can't be continued by its server, so resuming starts it over from zero."
             override fun pauseAllCosts(count: Int) = if (count == 1) {

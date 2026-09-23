@@ -12,6 +12,10 @@ class DownloadRowActions(
     val retry: () -> Unit,
     val cancel: () -> Unit,
     val remove: () -> Unit,
+    /** Fetches a finished download again, used when its file has since been deleted from disk. */
+    val reDownload: () -> Unit,
+    /** Drops a finished download whose file is gone from the list; unlike [remove] it never touches disk. */
+    val clear: () -> Unit,
     val openFile: () -> Unit,
     val showInFolder: () -> Unit,
     val openSourceLink: () -> Unit,

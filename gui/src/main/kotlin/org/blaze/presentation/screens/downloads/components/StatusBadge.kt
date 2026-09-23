@@ -43,9 +43,10 @@ fun DownloadState.label(strings: BlazeStrings): String = when (this) {
 }
 
 @Composable
-fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier) {
+fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier, dimmed: Boolean = false) {
     val strings = blazeStrings
     val text = state.label(strings)
+    val indicator = if (dimmed) JewelTheme.globalColors.text.disabled else state.indicatorColor()
 
     Row(
         modifier = modifier,
@@ -56,10 +57,11 @@ fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .size(7.dp)
                 .clip(CircleShape)
-                .background(state.indicatorColor())
+                .background(indicator)
         )
         Text(
             text = text,
+            color = if (dimmed) JewelTheme.globalColors.text.disabled else Color.Unspecified,
             style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
         )
     }

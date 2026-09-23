@@ -108,7 +108,11 @@ fun diffDownloadTransitions(previous: List<Download>, current: List<Download>): 
         when {
             !then.isFinished && now.isFinished -> DownloadAdvisory.Completed(now)
             then.state != DownloadState.FAILED && now.state == DownloadState.FAILED -> DownloadAdvisory.Failed(now)
-            !now.isFinished && then.downloadedSize > 0 && now.downloadedSize < then.downloadedSize ->
+            // Bytes went backwards on a transfer that was still in flight: the engine had to restart
+            // it, discarding progress the user cared about. A finished row is excluded because redownloading it is the user asking for the file again, not lost work - the engine also
+            // zeroes a re-queued finished task's count, so no stale 100% -> 0 drop reaches here.
+            !then.isFinished && !now.isFinished &&
+                then.downloadedSize > 0 && now.downloadedSize < then.downloadedSize ->
                 // Never say "0%": a dropped counter that had already moved is still a loss worth naming.
                 DownloadAdvisory.Restarted(now, then.percentDone().coerceAtLeast(1))
             else -> null

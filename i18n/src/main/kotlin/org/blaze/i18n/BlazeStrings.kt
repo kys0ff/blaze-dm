@@ -168,6 +168,10 @@ interface BlazeStrings {
             val copyLink: String
             val copyFilePath: String
             val showDetails: String
+            /** Offered on a finished download whose file has since been deleted from disk. */
+            val reDownload: String
+            /** Drops a finished download whose file is gone from the list, with nothing left to delete. */
+            val clear: String
         }
 
         /** Labels for the "resume a moved portable download" flow and its on-row indicator. */
@@ -200,6 +204,8 @@ interface BlazeStrings {
             val cannotResume: String
             /** Row chip: a torrent with no peers connected and no bytes moving. */
             val waitingForPeers: String
+            /** Row chip: a completed download whose file has been deleted or moved out from under the app. */
+            val fileMissing: String
             /** Details-dialog answer for a source that can pick a pause back up. */
             val resumeSupported: String
             val titleCompleted: String
@@ -207,7 +213,11 @@ interface BlazeStrings {
             val titleRestarted: String
             fun completed(name: String): String
             fun failed(name: String, reason: String): String
-            /** The transfer had to begin again, so progress on disk was thrown away. */
+            /**
+             * An unfinished transfer is beginning again from zero, so the bytes it had already
+             * fetched can't be continued from - whether the server refused a resume or the data on
+             * disk went away. [percent] is how far it had got before starting over.
+             */
             fun restarted(name: String, percent: Int): String
             /** Warns that resuming a paused, non-resumable download restarts it from the beginning. */
             fun resumeStartsOver(name: String): String

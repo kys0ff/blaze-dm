@@ -1,21 +1,27 @@
 package org.blaze.engine.core
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
+import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.persistence.DownloadRepository
+import org.blaze.engine.scheduler.DownloadScheduler
 import org.blaze.engine.settings.EngineSettingsRepository
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -104,5 +110,46 @@ class DownloadSchedulerTest {
         assertEquals(DownloadState.Downloading, manager.getTask(id3)?.state)
 
         tempDir.toFile().deleteRecursively()
+    }
+
+    @Test
+    fun `restarting a finished download zeroes its stale progress but a paused one keeps it`() = runTest {
+        val storageDir = Files.createTempDirectory("blaze-start-reset").resolve("storage")
+        Files.createDirectories(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        settingsRepo.updateSettings { it.copy(maxConcurrentDownloads = 2) }
+
+        // An executor that never reports, so the Starting snapshot the reset writes stays observable.
+        val hangingFactory: (DownloadTask) -> DownloadExecutor = {
+            object : DownloadExecutor {
+                override fun execute(): Flow<DownloadTask> = flow { awaitCancellation() }
+            }
+        }
+        val updates = mutableListOf<DownloadTask>()
+        val scheduler = DownloadScheduler(backgroundScope, settingsRepo, hangingFactory) { updates.add(it) }
+
+        val finished = DownloadTask(
+            id = DownloadId.generate(), name = "done",
+            request = DownloadRequest.Http("done", "http://u", Path.of(".")),
+            state = DownloadState.Completed, totalBytes = 1000, downloadedBytes = 1000,
+            downloadSpeed = 0, progress = 1f, completedAt = Instant.now()
+        )
+        scheduler.enqueue(finished)
+        scheduler.start(finished.id)
+
+        val restarted = updates.last { it.id == finished.id }
+        assertEquals(0L, restarted.downloadedBytes, "a re-download must not carry the old 100% count")
+        assertNull(restarted.completedAt)
+
+        // A paused download still has bytes on disk worth resuming, so its count survives a start.
+        val paused = DownloadTask(
+            id = DownloadId.generate(), name = "partial",
+            request = DownloadRequest.Http("partial", "http://u", Path.of(".")),
+            state = DownloadState.Paused, totalBytes = 1000, downloadedBytes = 500, downloadSpeed = 0
+        )
+        scheduler.enqueue(paused)
+        scheduler.start(paused.id)
+
+        assertEquals(500L, updates.last { it.id == paused.id }.downloadedBytes)
     }
 }
