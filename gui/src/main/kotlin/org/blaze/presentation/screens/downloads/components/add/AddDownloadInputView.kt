@@ -203,11 +203,11 @@ fun AddDownloadInputView(
                     }
                 }
 
-                when (val s = status) {
+                when (status) {
                     is DestinationStatus.Ready ->
-                        if (s.freeBytes >= 0) {
+                        if (status.freeBytes >= 0) {
                             FieldHint(
-                                Fallback.freeSpace(formatSize(s.freeBytes, strings)),
+                                Fallback.freeSpace(formatSize(status.freeBytes, strings)),
                                 HintLevel.Info
                             )
                         }

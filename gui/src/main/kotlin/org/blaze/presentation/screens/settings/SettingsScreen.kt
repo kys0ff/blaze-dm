@@ -510,14 +510,31 @@ private fun DownloadsSection(
             checked = seedingEnabled,
             onCheckedChange = { onEvent(SettingsEvent.UpdateEnableSeeding(it)) }
         )
+        CheckboxRow(
+            text = strings.settings.unlimitedSeedingLabel,
+            checked = state.settings.unlimitedSeeding,
+            enabled = seedingEnabled,
+            onCheckedChange = { onEvent(SettingsEvent.UpdateUnlimitedSeeding(it)) },
+            modifier = Modifier.padding(start = DependentIndent)
+        )
         NumberField(
             label = strings.settings.seedTimeLimitLabel,
             value = state.seedTimeLimitMinutesText,
             error = state.seedTimeLimitMinutesError,
-            enabled = seedingEnabled,
+            enabled = seedingEnabled && !state.settings.unlimitedSeeding,
             fieldWidth = 150.dp,
             modifier = Modifier.padding(start = DependentIndent),
             onValueChange = { onEvent(SettingsEvent.UpdateSeedTimeLimitMinutes(it)) }
+        )
+        NumberField(
+            label = strings.settings.seedRatioLimitLabel,
+            value = state.seedRatioLimitText,
+            error = state.seedRatioLimitError,
+            description = strings.settings.seedRatioLimitDesc,
+            enabled = seedingEnabled,
+            fieldWidth = 150.dp,
+            modifier = Modifier.padding(start = DependentIndent),
+            onValueChange = { onEvent(SettingsEvent.UpdateSeedRatioLimit(it)) }
         )
     }
 }

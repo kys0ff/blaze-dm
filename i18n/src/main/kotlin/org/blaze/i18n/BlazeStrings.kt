@@ -312,6 +312,9 @@ interface BlazeStrings {
         val maxPeerConnectionsDesc: String
         val seedingEnabledLabel: String
         val seedTimeLimitLabel: String
+        val unlimitedSeedingLabel: String
+        val seedRatioLimitLabel: String
+        val seedRatioLimitDesc: String
         val appearanceHeader: String
         val themeLabel: String
         val themeSystemOption: String

@@ -213,7 +213,9 @@ class DownloadExecutorImpl(
             val networkClient = TorrentNetworkClient(
                 maxPeerConnections = settings.maxPeerConnections,
                 enableSeeding = settings.enableSeeding,
-                seedTimeLimitMinutes = settings.seedTimeLimitMinutes
+                seedTimeLimitMinutes = settings.seedTimeLimitMinutes,
+                unlimitedSeeding = settings.unlimitedSeeding,
+                seedRatioLimit = settings.seedRatioLimit
             )
             networkClient.download(request).collect { event ->
                 when (event) {

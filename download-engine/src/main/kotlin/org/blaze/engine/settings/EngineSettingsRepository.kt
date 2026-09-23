@@ -92,6 +92,7 @@ class EngineSettingsRepository(storageDir: Path) {
         maxRedirects = maxRedirects.coerceIn(0, 20),
         maxPeerConnections = maxPeerConnections.coerceAtLeast(1),
         seedTimeLimitMinutes = seedTimeLimitMinutes.coerceAtLeast(0),
+        seedRatioLimit = seedRatioLimit.takeIf { it.isFinite() }?.coerceAtLeast(0.0) ?: 0.0,
         // A chunk below 1 MiB turns acceleration into request overhead; above ~1 GiB a single
         // connection is the only worker and the plan degenerates to the old behavior anyway.
         httpChunkSizeMb = httpChunkSizeMb.coerceIn(1, 256),

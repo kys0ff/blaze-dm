@@ -61,6 +61,10 @@ data class DownloadSettings(
     val maxPeerConnections: Int = 200,
     val enableSeeding: Boolean = false,
     val seedTimeLimitMinutes: Int = 30,
+    /** Ignore the time limit and keep seeding until stopped manually. */
+    val unlimitedSeeding: Boolean = false,
+    /** Stop seeding once uploaded/downloaded reaches this share ratio; 0 disables the ratio cap. */
+    val seedRatioLimit: Double = 0.0,
     val themeMode: ThemeMode = ThemeMode.DARK,
     val logLevel: LogLevel = LogLevel.INFO,
     val fileLoggingEnabled: Boolean = true

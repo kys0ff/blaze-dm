@@ -31,6 +31,8 @@ sealed interface SettingsEvent {
     data class UpdateMaxPeerConnections(val value: TextFieldValue) : SettingsEvent
     data class UpdateEnableSeeding(val enabled: Boolean) : SettingsEvent
     data class UpdateSeedTimeLimitMinutes(val value: TextFieldValue) : SettingsEvent
+    data class UpdateUnlimitedSeeding(val enabled: Boolean) : SettingsEvent
+    data class UpdateSeedRatioLimit(val value: TextFieldValue) : SettingsEvent
 
     // Appearance
     data class UpdateThemeMode(val mode: ThemeMode) : SettingsEvent

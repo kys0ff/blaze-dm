@@ -51,8 +51,10 @@ import kotlin.time.Duration.Companion.seconds
  * @param stallTimeout how long to tolerate zero downloaded bytes after peers have been seen.
  * @param metadataTimeout how long to wait for magnet metadata (BEP 9) before giving up.
  * @param maxPeerConnections upper bound on simultaneous peer connections (from settings).
- * @param enableSeeding keep uploading after all pieces are downloaded, up to [seedTimeLimitMinutes].
- * @param seedTimeLimitMinutes how long to keep seeding once the download completes.
+ * @param enableSeeding keep uploading after all pieces are downloaded, governed by the seed limits below.
+ * @param seedTimeLimitMinutes how long to keep seeding once the download completes; ignored when [unlimitedSeeding].
+ * @param unlimitedSeeding keep seeding until the download is stopped manually (the time limit no longer applies).
+ * @param seedRatioLimit stop seeding once uploaded/downloaded reaches this share ratio; 0 disables the ratio cap.
  */
 class TorrentNetworkClient(
     private val peerDiscoveryTimeout: Duration = 120.seconds,
@@ -61,6 +63,8 @@ class TorrentNetworkClient(
     private val maxPeerConnections: Int = 200,
     private val enableSeeding: Boolean = false,
     private val seedTimeLimitMinutes: Int = 30,
+    private val unlimitedSeeding: Boolean = false,
+    private val seedRatioLimit: Double = 0.0,
     private val runtimeProvider: TorrentRuntimeProvider = TorrentRuntimeProvider.GLOBAL
 ) {
     private val logger = LoggerFactory.getLogger(TorrentNetworkClient::class.java)
@@ -115,7 +119,7 @@ class TorrentNetworkClient(
                             torrent.size
                         )
                         totalSize.set(torrent.size)
-                        monitor.onMetadataResolved()
+                        monitor.onMetadataResolved(torrent.size)
                         logTrackers(torrent)
 
                         val files = torrent.files.map { file ->
@@ -198,7 +202,7 @@ class TorrentNetworkClient(
 
                 val future: CompletableFuture<*> = btClient.startAsync({ state ->
                     val peers = state.connectedPeers.size
-                    monitor.onProgress(state.downloaded, peers)
+                    monitor.onProgress(state.downloaded, state.uploaded, peers)
 
                     val downloadSpeed = downloadMeter.update(state.downloaded)
                     val uploadSpeed = uploadMeter.update(state.uploaded)
@@ -226,16 +230,16 @@ class TorrentNetworkClient(
 
                     if (state.piecesTotal > 0 && state.piecesRemaining == 0) {
                         // First tick where every piece is local. Without seeding we stop right away
-                        // (previous behavior); with seeding we arm a deadline and keep uploading
-                        // until the watchdog stops us via SEED_COMPLETE.
+                        // (previous behavior); with seeding we keep uploading and let the watchdog
+                        // stop us once a configured seed limit (time or ratio) is reached - or never,
+                        // when seeding is unlimited with no ratio cap.
                         if (!monitor.piecesDone) {
                             monitor.piecesDone = true
-                            if (enableSeeding && seedTimeLimitMinutes > 0) {
-                                monitor.seedDeadlineMs = nowMs() + seedTimeLimitMinutes * 60_000L
-                                logger.info(
-                                    "Download complete; seeding for the next {} minute(s).",
-                                    seedTimeLimitMinutes
-                                )
+                            if (enableSeeding) {
+                                if (!unlimitedSeeding && seedTimeLimitMinutes > 0) {
+                                    monitor.seedDeadlineMs = nowMs() + seedTimeLimitMinutes * 60_000L
+                                }
+                                logger.info(seedingStartedMessage())
                             } else {
                                 requestStop(StopReason.DOWNLOADED)
                             }
@@ -331,20 +335,30 @@ class TorrentNetworkClient(
         @Volatile
         var lastDataMs: Long = nowMs()
 
-        /** Monotonic-ms deadline for the seeding phase; 0 means not seeding. */
+        /** Monotonic-ms deadline for the seeding phase; 0 means no time-based seed deadline. */
         @Volatile
         var seedDeadlineMs: Long = 0L
+
+        /** Total bytes uploaded so far; used to enforce the share-ratio seed cap. */
+        @Volatile
+        var uploadedBytes: Long = 0L
+
+        /** Full torrent size in bytes; the denominator of the share ratio. */
+        @Volatile
+        var totalSizeBytes: Long = 0L
 
         @Volatile
         private var lastDownloaded: Long = 0L
 
-        fun onMetadataResolved() {
+        fun onMetadataResolved(totalSize: Long) {
             metadataPending = false
+            totalSizeBytes = totalSize
             phaseStartMs =
                 nowMs() // peer-discovery clock starts once we actually know what to download
         }
 
-        fun onProgress(downloaded: Long, peers: Int) {
+        fun onProgress(downloaded: Long, uploaded: Long, peers: Int) {
+            uploadedBytes = uploaded
             if (peers > 0 && !sawPeer) {
                 sawPeer = true
                 lastDataMs = nowMs() // stall clock starts at first peer
@@ -361,10 +375,9 @@ class TorrentNetworkClient(
     private fun Monitor.evaluate(): Pair<StopReason, Duration>? {
         val now = nowMs()
         return when {
-            // Seeding: the download already finished, so the stall / no-peer timers no longer
-            // apply. Only stop once the configured seed window elapses.
-            piecesDone && seedDeadlineMs > 0 ->
-                (StopReason.SEED_COMPLETE to seedTimeLimitMinutes.minutes).takeIf { now > seedDeadlineMs }
+            // The download already finished, so the stall / no-peer timers no longer apply.
+            // Seeding ends only on a configured limit; with no limit armed we keep going.
+            piecesDone -> seedingStop(now)
 
             metadataPending ->
                 (StopReason.METADATA_TIMEOUT to metadataTimeout).takeIf { now - phaseStartMs > metadataTimeout.inWholeMilliseconds }
@@ -375,6 +388,40 @@ class TorrentNetworkClient(
             else ->
                 (StopReason.STALLED to stallTimeout).takeIf { now - lastDataMs > stallTimeout.inWholeMilliseconds }
         }
+    }
+
+    /**
+     * Decides whether the seeding phase should stop, checked on every watchdog tick once every
+     * piece is local. A time deadline (unless [unlimitedSeeding]) and a share-ratio cap (when > 0)
+     * are independent; whichever is reached first wins. Returns null to keep seeding.
+     */
+    private fun Monitor.seedingStop(now: Long): Pair<StopReason, Duration>? {
+        val timeUp = seedDeadlineMs > 0 && now > seedDeadlineMs
+        if (timeUp) return StopReason.SEED_COMPLETE to seedTimeLimitMinutes.minutes
+
+        val ratioUp = seedRatioLimit > 0.0 && totalSizeBytes > 0 &&
+            uploadedBytes.toDouble() >= seedRatioLimit * totalSizeBytes
+        if (ratioUp) return StopReason.SEED_COMPLETE to Duration.INFINITE
+
+        return null
+    }
+
+    /** Human-readable description of the seeding policy armed for this transfer. */
+    private fun seedingStartedMessage(): String = buildString {
+        append("Download complete; seeding")
+        val until = mutableListOf<String>()
+        if (unlimitedSeeding) {
+            until += "until stopped manually"
+        } else if (seedTimeLimitMinutes > 0) {
+            until += "for the next $seedTimeLimitMinutes minute(s)"
+        }
+        if (seedRatioLimit > 0.0) {
+            until += "or until share ratio $seedRatioLimit is reached"
+        }
+        if (until.isEmpty()) {
+            until += "indefinitely (no seed limits set)"
+        }
+        append(" ").append(until.joinToString(" and ")).append(".")
     }
 
     /** Exponentially smoothed bytes/second so the UI doesn't jitter. */

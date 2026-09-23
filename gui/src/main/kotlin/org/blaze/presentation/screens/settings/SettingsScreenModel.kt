@@ -130,6 +130,7 @@ class SettingsScreenModel(
                 maxRedirectsText = TextFieldValue(currentSettings.maxRedirects.toString()),
                 maxPeerConnectionsText = TextFieldValue(currentSettings.maxPeerConnections.toString()),
                 seedTimeLimitMinutesText = TextFieldValue(currentSettings.seedTimeLimitMinutes.toString()),
+                seedRatioLimitText = TextFieldValue(formatRatio(currentSettings.seedRatioLimit)),
                 userAgentText = TextFieldValue(currentSettings.httpUserAgent)
             )
         }
@@ -242,6 +243,21 @@ class SettingsScreenModel(
                         seedTimeLimitMinutesText = event.value,
                         seedTimeLimitMinutesError = err,
                         settings = if (err == null) it.settings.copy(seedTimeLimitMinutes = text.toInt()) else it.settings
+                    )
+                }
+            }
+            is SettingsEvent.UpdateUnlimitedSeeding -> _state.update {
+                it.copy(settings = it.settings.copy(unlimitedSeeding = event.enabled))
+            }
+            is SettingsEvent.UpdateSeedRatioLimit -> {
+                val text = event.value.text
+                val ratio = text.toDoubleOrNull()
+                val err = if (ratio == null || !ratio.isFinite() || ratio < 0.0) "Must be >= 0" else null
+                _state.update {
+                    it.copy(
+                        seedRatioLimitText = event.value,
+                        seedRatioLimitError = err,
+                        settings = if (err == null) it.settings.copy(seedRatioLimit = ratio!!) else it.settings
                     )
                 }
             }
@@ -418,8 +434,13 @@ class SettingsScreenModel(
                 maxRedirectsText = TextFieldValue(s.maxRedirects.toString()),
                 maxPeerConnectionsText = TextFieldValue(s.maxPeerConnections.toString()),
                 seedTimeLimitMinutesText = TextFieldValue(s.seedTimeLimitMinutes.toString()),
+                seedRatioLimitText = TextFieldValue(formatRatio(s.seedRatioLimit)),
                 userAgentText = TextFieldValue(s.httpUserAgent)
             )
         }
     }
+
+    /** Renders a share ratio without a trailing \".0\" (1.0 -> \"1\", 0.5 -> \"0.5\"). */
+    private fun formatRatio(value: Double): String =
+        if (value % 1.0 == 0.0) value.toLong().toString() else value.toString()
 }

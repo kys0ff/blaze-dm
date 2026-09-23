@@ -18,6 +18,7 @@ data class SettingsState(
     val maxRedirectsText: TextFieldValue = TextFieldValue("5"),
     val maxPeerConnectionsText: TextFieldValue = TextFieldValue("200"),
     val seedTimeLimitMinutesText: TextFieldValue = TextFieldValue("30"),
+    val seedRatioLimitText: TextFieldValue = TextFieldValue("0"),
     val userAgentText: TextFieldValue = TextFieldValue(""),
     val maxConcurrentDownloadsError: String? = null,
     val maxConnectionsPerDownloadError: String? = null,
@@ -27,6 +28,7 @@ data class SettingsState(
     val maxRedirectsError: String? = null,
     val maxPeerConnectionsError: String? = null,
     val seedTimeLimitMinutesError: String? = null,
+    val seedRatioLimitError: String? = null,
     // Handler / theme state is loaded live from its registries, but user edits are buffered as
     // overrides here so they only reach the registry on Apply/OK (mirroring the draft settings).
     val handlers: List<HandlerUiState> = emptyList(),
@@ -64,13 +66,15 @@ data class SettingsState(
             val speedLimitEnabled = settings.globalSpeedLimitEnabled
             val autoRetryEnabled = settings.autoRetryFailed
             val seedingEnabled = settings.enableSeeding
+            val seedTimeRelevant = seedingEnabled && !settings.unlimitedSeeding
             return maxConcurrentDownloadsError != null ||
                     maxConnectionsPerDownloadError != null ||
                     (speedLimitEnabled && globalSpeedLimitKbpsError != null) ||
                     (autoRetryEnabled && (maxRetriesError != null || retryDelaySecondsError != null)) ||
                     maxRedirectsError != null ||
                     maxPeerConnectionsError != null ||
-                    (seedingEnabled && seedTimeLimitMinutesError != null)
+                    (seedTimeRelevant && seedTimeLimitMinutesError != null) ||
+                    (seedingEnabled && seedRatioLimitError != null)
         }
 
     /** True when there are uncommitted changes waiting to be applied. */
