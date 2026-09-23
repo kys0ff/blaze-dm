@@ -7,6 +7,10 @@ import java.nio.file.Path
 /**
  * macOS autostart via a per-user LaunchAgent plist with `RunAtLoad`, written to
  * `~/Library/LaunchAgents/<identity.launchAgentLabel>.plist`.
+ *
+ * The plist survives both the debug session that could have written it and a DMG that has long since
+ * been unmounted, so [registrationCommand] reads the recorded program back: launchd otherwise keeps
+ * trying (and failing quietly) at every login.
  */
 class MacOsAutoStartService(
     private val identity: PlatformIdentity,
@@ -22,9 +26,13 @@ class MacOsAutoStartService(
 
     override fun isEnabled(): Boolean = Files.exists(plistFile)
 
+    override fun registrationCommand(): String? =
+        runCatching { parseProgramArguments(Files.readString(plistFile)) }.getOrNull()
+
     override fun enable(): Result<Unit> = runCatching {
+        val exec = requireLaunchableLoginItem(execCommand())
         Files.createDirectories(launchAgentsDir)
-        Files.writeString(plistFile, plist(execCommand()))
+        Files.writeString(plistFile, plist(exec))
     }
 
     override fun disable(): Result<Unit> = runCatching {
@@ -52,4 +60,25 @@ class MacOsAutoStartService(
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
+
+    internal companion object {
+        private val FIRST_STRING = Regex("<string>(.*?)</string>", RegexOption.DOT_MATCHES_ALL)
+
+        /**
+         * The executable a `ProgramArguments` array launches: its first `<string>` entry, unescaped.
+         * Null when the plist has no such array (a hand-edited or foreign file).
+         */
+        fun parseProgramArguments(plist: String): String? = plist
+            .substringAfter("<key>ProgramArguments</key>", missingDelimiterValue = "")
+            .let(FIRST_STRING::find)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.xmlUnescape()
+            ?.takeIf { it.isNotBlank() }
+
+        private fun String.xmlUnescape(): String = this
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+    }
 }

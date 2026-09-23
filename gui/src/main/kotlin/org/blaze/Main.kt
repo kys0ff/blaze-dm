@@ -14,6 +14,7 @@ import org.blaze.di.screenModelModule
 import org.blaze.di.themeModule
 import org.blaze.di.useCaseModule
 import org.blaze.download.api.DownloadsApi
+import org.blaze.download.api.ServicePaths
 import org.blaze.i18n.i18nModule
 import org.blaze.logging.LogConfigurator
 import org.blaze.osintegration.ExternalOpenInbox
@@ -26,7 +27,10 @@ import org.blaze.osintegration.singleinstance.SingleInstanceOutcome
 import org.blaze.platform.BlazePlatformIdentity
 import org.blaze.platform.api.OsType
 import org.blaze.platform.api.detectOsType
+import org.blaze.platform.autostart.AutoStartController
 import org.blaze.platform.autostart.AutoStartCoordinator
+import org.blaze.platform.autostart.AutoStartServiceFactory
+import org.blaze.platform.cleanup.OsIntegrationCleanup
 import org.blaze.platform.di.desktopPlatformModule
 import org.blaze.platform.taskbar.LauncherEntryInstaller
 import org.blaze.presentation.application.BlazeApplication
@@ -35,8 +39,11 @@ import org.blaze.service.LocalApiLauncher
 import org.blaze.service.config.LocalApiSettingsRepository
 import org.blaze.tray.di.trayModule
 import org.koin.core.context.startKoin
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
+import java.nio.file.Paths
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.system.exitProcess
 
 /**
@@ -52,8 +59,18 @@ import kotlin.system.exitProcess
  *  4. start the app; requests already sit in the inbox, so the window shows them as soon as it can.
  *
  * Requests are never dropped during startup: the inbox buffers everything until the UI consumes it.
+ *
+ * Two more rules keep Blaze from wearing out a welcome in the user's session:
+ *  - `--cleanup` never opens a window at all: it removes the registrations Blaze published at the user
+ *    level and exits (see [runCleanup]);
+ *  - whatever a run leaves behind is swept both at startup (for the runs that were killed) and at
+ *    process end, including a debug session ended by the IDE rather than by the user (see [SessionCleanup]).
  */
 fun main(rawArgs: Array<String>) {
+    // The cleanup command runs before any of the startup machinery below: it must work when the app it
+    // is cleaning up after is itself already gone (no window, no engine, no data directory needed).
+    if (ExternalOpenParser.OPTION_CLEANUP in rawArgs) exitProcess(runCleanup(rawArgs.toList()))
+
     val koin = startKoin {
         modules(
             appModule,
@@ -89,12 +106,13 @@ fun main(rawArgs: Array<String>) {
 
     // Single instance: whoever loses the race forwards and exits; whoever wins has the requests
     // delivered into the very same inbox the GUI will read (start() submits them on the owner path).
+    val storageDir = koin.get<Path>()
     var coordinator: SingleInstanceCoordinator? = null
     if (parsed.allowMultipleInstances) {
         log.info("--new-instance: skipping single-instance ownership (dev mode).")
         inbox.submit(parsed.requests)
     } else {
-        when (val outcome = SingleInstanceCoordinator.start(koin.get<Path>(), inbox, parsed.requests)) {
+        when (val outcome = SingleInstanceCoordinator.start(storageDir, inbox, parsed.requests)) {
             is SingleInstanceOutcome.Owner -> coordinator = outcome.coordinator
             is SingleInstanceOutcome.Forwarded -> {
                 log.info("Another Blaze instance is running; the open request was handed to it.")
@@ -118,6 +136,19 @@ fun main(rawArgs: Array<String>) {
         }
     }
 
+    // Sweep up after the runs that never got to clean up after themselves: a debug session stopped by
+    // the IDE, a machine where Blaze was uninstalled or moved, a login item pointing at a JDK that has
+    // since been updated away. Best-effort, and loud about what it did - never a reason to not open.
+    val cleanup = OsIntegrationCleanup(
+        identity = BlazePlatformIdentity,
+        storageDir = storageDir,
+        launcherEntryInstaller = koin.get(),
+        autoStartController = koin.get(),
+    )
+    runCatching { cleanup.pruneStaleRegistrations() }
+        .onSuccess { report -> report.notes.forEach { log.info("Startup cleanup: {}", it) } }
+        .onFailure { log.warn("Startup cleanup did not finish; Blaze continues.", it) }
+
     // Reconcile the run-at-startup OS registration with the persisted setting (repairs drift).
     koin.get<AutoStartCoordinator>().sync()
 
@@ -126,12 +157,12 @@ fun main(rawArgs: Array<String>) {
     // an earlier install would otherwise win over the window's own icon and show blank).
     if (detectOsType() == OsType.LINUX) {
         runCatching { koin.get<LauncherEntryInstaller>().ensureInstalled() }
+            .onSuccess { removed -> removed.forEach { log.info("Startup cleanup: removed {}", it) } }
     }
 
     // Best-effort: expose the same running downloads to external clients (CLI, a future browser bridge)
     // over the loopback API. Ownership of the data directory's endpoint is locked, so a second instance
     // simply declines to publish a duplicate. Any failure here must never stop the window from opening.
-    val storageDir = koin.get<Path>()
     val launcher = LocalApiLauncher(storageDir, koin.get<CoroutineScope>())
     runCatching {
         launcher.tryStart(koin.get<DownloadsApi>(), LocalApiSettingsRepository(storageDir).load())
@@ -139,12 +170,82 @@ fun main(rawArgs: Array<String>) {
         log.warn("Local download API did not start; the GUI is unaffected.", it)
     }
 
+    // Closing the window returns from `application { }`; a terminated process (IDE Stop, `kill`, login
+    // session end) does not - it only runs shutdown hooks. One idempotent sweep for both paths keeps
+    // this process's own socket, port and endpoint files from outliving it.
+    val session = SessionCleanup(log, storageDir, launcher, coordinator, cleanup)
+    Runtime.getRuntime().addShutdownHook(Thread(session, "blaze-session-cleanup"))
+
     application {
         BlazeApplication()
     }
 
-    runCatching { launcher.stop() }
-    runCatching { coordinator?.close() }
+    session.run()
+}
+
+/**
+ * `blaze --cleanup`: remove every desktop registration and runtime file Blaze may have published into
+ * this user's session.
+ *
+ * This is the counterpart to what Blaze does on its own at startup: an app-level uninstaller cannot
+ * take back a user-level `.desktop`, a hicolor icon, a login item or a per-user `magnet:` key, so
+ * either the next run prunes them (it notices a launcher that is gone) or the user asks here. Nothing
+ * user-created is touched: settings, logs and downloads in the data directory stay exactly where they
+ * are, and a registration Blaze does not own is reported and left alone.
+ *
+ * Returns the process exit code (0 = the session is clean).
+ */
+private fun runCleanup(args: List<String>): Int {
+    val storageDir = args.zipWithNext()
+        .firstOrNull { (flag, _) -> flag == "--storage-dir" || flag == "-d" }
+        ?.second
+        ?.let { runCatching { Paths.get(it) }.getOrNull() }
+        ?: ServicePaths.defaultStorageDir()
+
+    val identity = BlazePlatformIdentity
+    val cleanup = OsIntegrationCleanup(
+        identity = identity,
+        storageDir = storageDir,
+        launcherEntryInstaller = LauncherEntryInstaller(identity),
+        autoStartController = AutoStartController(AutoStartServiceFactory.create(identity)),
+    )
+    return runCatching { cleanup.uninstallRegistrations() }.fold(
+        onSuccess = { report ->
+            println("Blaze desktop-integration cleanup ($storageDir):")
+            print(report.describe())
+            0
+        },
+        onFailure = { error ->
+            System.err.println("Blaze cleanup failed: ${error.message}")
+            1
+        },
+    )
+}
+
+/**
+ * The end of a process, however it ends: [api] and [coordinator] are the resources this JVM took, and
+ * releasing them is what makes the final [OsIntegrationCleanup.sweepSessionFiles] pass safe - with our
+ * locks gone, anything left in the data directory belongs to a process that is no longer running.
+ *
+ * Idempotent because both paths can fire for the same run (window closed, then the hook on exit).
+ */
+private class SessionCleanup(
+    private val log: Logger,
+    private val storageDir: Path,
+    private val api: LocalApiLauncher,
+    private val coordinator: SingleInstanceCoordinator?,
+    private val cleanup: OsIntegrationCleanup,
+) : Runnable {
+    private val finished = AtomicBoolean(false)
+
+    override fun run() {
+        if (!finished.compareAndSet(false, true)) return
+        log.info("Blaze is shutting down (data directory: {}).", storageDir)
+        runCatching { api.stop() }.onFailure { log.warn("The local download API did not stop cleanly.", it) }
+        runCatching { coordinator?.close() }.onFailure { log.warn("Single-instance ownership did not release cleanly.", it) }
+        runCatching { cleanup.sweepSessionFiles(includeSecrets = false) }
+            .onFailure { log.warn("Session files were not cleaned up.", it) }
+    }
 }
 
 /** Rejected argv may carry attacker-controlled text; keep logs tidy and injection-proof. */

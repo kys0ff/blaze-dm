@@ -4,6 +4,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -213,6 +214,17 @@ class ExternalOpenParserTest {
         val result = parserAcceptingAllFiles().parse(listOf("--new-instance", "/tmp/ok.torrent"))
         assertTrue(result.allowMultipleInstances)
         assertEquals(1, result.requests.size)
+    }
+
+    @Test
+    fun `the cleanup option is a known argument, not a resource or a rejection`() {
+        // `blaze --cleanup` is handled by the launcher before anything is parsed; recognising the flag
+        // here is what keeps it out of the "unsupported launch argument" log after every cleanup run.
+        val result = parserAcceptingAllFiles().parse(listOf(ExternalOpenParser.OPTION_CLEANUP))
+
+        assertTrue(result.requests.isEmpty(), "cleanup opens nothing")
+        assertTrue(result.rejected.isEmpty(), "it must not read as a bad argument: ${result.rejected}")
+        assertFalse(result.allowMultipleInstances)
     }
 
     // ── routing shape: what the download workflow downstream receives ────────────────────────

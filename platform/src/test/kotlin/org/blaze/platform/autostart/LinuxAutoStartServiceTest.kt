@@ -4,7 +4,9 @@ import org.blaze.platform.TEST_IDENTITY
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -66,5 +68,45 @@ class LinuxAutoStartServiceTest {
         LinuxAutoStartService(TEST_IDENTITY, missingDir) { "blaze" }.enable().getOrThrow()
 
         assertTrue(Files.exists(missingDir.resolve("org.blaze.desktop")))
+    }
+
+    @Test
+    fun enableRefusesTheJvmOfADevelopmentRun() {
+        // ProcessHandle reports the bare JDK under `gradle run`/an IDE run; registering it would fail
+        // at every sign-in for a session the user long finished.
+        val devRun = LinuxAutoStartService(TEST_IDENTITY, tempDir) { "/home/user/.jdks/jbr-21/bin/java" }
+
+        val failure = devRun.enable().exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException, "a development launch must never become a login item: $failure")
+        assertTrue("development launch" in failure.message.orEmpty(), "the message says why:\n${failure.message}")
+        assertFalse(Files.exists(tempDir.resolve("org.blaze.desktop")), "nothing at all is written")
+        assertFalse(devRun.isEnabled())
+    }
+
+    @Test
+    fun registrationCommandReadsBackTheRecordedExec() {
+        assertFalse(service.isEnabled())
+        assertNull(service.registrationCommand(), "nothing registered means nothing to prune")
+
+        service.enable().getOrThrow()
+
+        assertEquals("/opt/Blaze/bin/blaze", service.registrationCommand())
+
+        service.disable().getOrThrow()
+        assertNull(service.registrationCommand())
+    }
+
+    @Test
+    fun registrationCommandOfAForeignFileSurvivesGracefully() {
+        // A hand-written or third-party entry at our path is still read, never deleted here.
+        val dir = tempDir.resolve("foreign")
+        Files.createDirectories(dir)
+        Files.writeString(
+            dir.resolve("org.blaze.desktop"),
+            "[Desktop Entry]\nType=Application\nExec=/opt/other/bin/other\n",
+        )
+
+        assertEquals("/opt/other/bin/other", LinuxAutoStartService(TEST_IDENTITY, dir).registrationCommand())
     }
 }

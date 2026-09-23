@@ -1,9 +1,11 @@
 package org.blaze.osintegration.platform
 
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -78,5 +80,80 @@ class WindowsUrlSchemeRegistrarTest {
         // sanity on the accepted side too (magnet itself, plus plausible future registrations)
         assertTrue("magnet".matches(Regex("[A-Za-z][A-Za-z0-9+.-]{0,31}")))
         assertTrue("blaze-dl".matches(Regex("[A-Za-z][A-Za-z0-9+.-]{0,31}")))
+    }
+
+    // ── the uninstall counterpart ───────────────────────────────────────────────────────────────
+
+    @Test
+    fun `unregistering deletes the whole per-user scheme key in one forced write`() {
+        assertEquals(
+            listOf("reg", "delete", """HKCU\Software\Classes\magnet""", "/f"),
+            WindowsUrlSchemeRegistrar.buildUnregisterCommand("magnet"),
+            "values and sub-keys go together; HKCU only, so no elevation is requested",
+        )
+        assertFailsWith<IllegalArgumentException> {
+            WindowsUrlSchemeRegistrar.buildUnregisterCommand("magnet&calc")
+        }
+    }
+
+    @Test
+    fun `the registered open command is read out of reg query output`() {
+        val output = """
+            HKEY_CURRENT_USER\Software\Classes\magnet\shell\open\command
+                (Default)    REG_SZ    "C:\Program Files\Blaze\bin\Blaze.exe" "%1"
+
+            End of search: 1 piece(s) found.
+        """.trimIndent()
+
+        assertEquals(
+            "\"C:\\Program Files\\Blaze\\bin\\Blaze.exe\" \"%1\"",
+            WindowsUrlSchemeRegistrar.parseOpenCommand(output),
+        )
+        assertEquals(
+            "/opt/Blaze/bin/Blaze %1",
+            WindowsUrlSchemeRegistrar.parseOpenCommand("    \"(Default)\"    REG_SZ    /opt/Blaze/bin/Blaze %1"),
+            "some locales quote the value name",
+        )
+        assertNull(
+            WindowsUrlSchemeRegistrar.parseOpenCommand("ERROR: The system was unable to find the specified registry key."),
+            "an unregistered scheme reads as nothing there, which is already clean",
+        )
+        assertNull(WindowsUrlSchemeRegistrar.parseOpenCommand(""))
+    }
+
+    @Test
+    fun `only a handler Blaze itself wrote is ever unregistered`() {
+        assertTrue(
+            WindowsUrlSchemeRegistrar.isOwnHandler("\"C:\\Program Files\\Blaze\\bin\\Blaze.exe\" \"%1\"", "Blaze"),
+            "its own registration, spaces and all",
+        )
+        assertTrue(WindowsUrlSchemeRegistrar.isOwnHandler("""C:\blaze\bin\blaze.exe""", "Blaze"), "case and .exe ignored")
+        assertTrue(WindowsUrlSchemeRegistrar.isOwnHandler("\"/opt/Blaze/bin/Blaze\" %u", "Blaze"))
+        assertFalse(
+            WindowsUrlSchemeRegistrar.isOwnHandler("\"C:\\Program Files\\uTorrent\\uTorrent.exe\"  \"%1\"", "Blaze"),
+            "a magnet claim the user handed to another player is not Blaze's to steal back",
+        )
+        assertFalse(WindowsUrlSchemeRegistrar.isOwnHandler("""C:\Windows\System32\cmd.exe /c start""", "Blaze"))
+        assertFalse(WindowsUrlSchemeRegistrar.isOwnHandler("\"\"", "Blaze"), "an empty program names nothing")
+    }
+
+    @Test
+    fun `a missing target is the difference between an uninstall and a healthy install`() {
+        val live = Files.createTempFile("blaze-handler", ".exe")
+        try {
+            assertTrue(WindowsUrlSchemeRegistrar.isMissingTarget("\"/opt/Blaze-0.9.0/bin/Blaze\" \"%1\""))
+            assertFalse(WindowsUrlSchemeRegistrar.isMissingTarget("\"$live\" \"%1\""), "still installed")
+            assertFalse(WindowsUrlSchemeRegistrar.isMissingTarget("blaze"), "a relative program proves nothing")
+        } finally {
+            Files.deleteIfExists(live)
+        }
+    }
+
+    @Test
+    fun `unregister never shells out to the registry tool on another platform`() {
+        assertFalse(
+            WindowsUrlSchemeRegistrar.unregister("magnet", "Blaze", staleOnly = false, isWindows = false),
+            "nothing was removed, and nothing was run",
+        )
     }
 }

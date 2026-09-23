@@ -55,6 +55,87 @@ object WindowsUrlSchemeRegistrar {
 
     private fun regAdd(vararg rest: String): List<String> = listOf("reg", "add") + rest
 
+    /**
+     * The one `reg delete` that drops the whole per-user scheme key (values and sub-keys). Structural
+     * arguments again - the scheme is validated before it ever reaches `reg.exe`.
+     */
+    fun buildUnregisterCommand(scheme: String): List<String> {
+        require(scheme.matches(SAFE_SCHEME)) { "refusing to unregister an unsafe scheme name: $scheme" }
+        return listOf("reg", "delete", "HKCU\\Software\\Classes\\$scheme", "/f")
+    }
+
+    /**
+     * The `[HKCU\Software\Classes\<scheme>\shell\open\command]` default value out of `reg query`
+     * output, or null when nothing is registered (an error listing reads as "absent" too).
+     */
+    fun parseOpenCommand(output: String): String? = output.lineSequence()
+        .mapNotNull(OPEN_COMMAND_VALUE::find)
+        .firstOrNull()
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+    /**
+     * Whether a registered open command is Blaze's own to remove: it must launch a program named
+     * [executableName] (case-insensitively, extension ignored). This is what keeps a cleanup from
+     * silently stealing `magnet:` back from another handler the user chose.
+     */
+    fun isOwnHandler(command: String, executableName: String): Boolean {
+        val program = command.trim().let { raw ->
+            if (raw.startsWith("\"")) raw.substring(1).substringBefore('"') else raw.substringBefore(' ')
+        }
+        val programName = program.substringAfterLast('\\').substringAfterLast('/').removeSuffix(".exe")
+        return programName.equals(executableName, ignoreCase = true)
+    }
+
+    /** Whether the program a registered open command launches is gone (an uninstalled Blaze). */
+    fun isMissingTarget(command: String): Boolean {
+        val program = command.trim().let { raw ->
+            if (raw.startsWith("\"")) raw.substring(1).substringBefore('"') else raw.substringBefore(' ')
+        }
+        val path = runCatching { java.nio.file.Paths.get(program) }.getOrNull() ?: return false
+        return path.isAbsolute && !java.nio.file.Files.exists(path)
+    }
+
+    /** Reads the current registration; null when the scheme is unregistered (or off Windows). */
+    private fun queryOpenCommand(scheme: String): String? {
+        if (!isWindowsHost() || !scheme.matches(SAFE_SCHEME)) return null
+        val output = runRegCapturing(
+            listOf("reg", "query", "HKCU\\Software\\Classes\\$scheme\\shell\\open\\command", "/ve"),
+        ) ?: return null
+        return parseOpenCommand(output)
+    }
+
+    /**
+     * Removes Blaze's own `HKCU\Software\Classes\<scheme>` registration - the counterpart of
+     * [ensureRegistered], and the piece no MSI uninstall hook performs because jpackage never knew the
+     * key existed.
+     *
+     * It refuses to touch a handler that is not ours ([isOwnHandler]), and in [staleOnly] mode also
+     * refuses a handler whose program still exists: an app that is installed and registered is exactly
+     * what the user asked for, and its magnet links work. `staleOnly` is what a startup self-heal uses;
+     * the explicit uninstall cleanup passes `false` to drop a live registration as well.
+     */
+    fun unregister(
+        scheme: String,
+        executableName: String,
+        staleOnly: Boolean,
+        isWindows: Boolean = isWindowsHost(),
+    ): Boolean {
+        if (!isWindows) return false
+        val current = queryOpenCommand(scheme) ?: return true // nothing registered: already clean
+        if (!isOwnHandler(current, executableName)) {
+            logger.info("Leaving the {}:// handler alone; it launches '{}', which is not Blaze's own registration.", scheme, current)
+            return false
+        }
+        if (staleOnly && !isMissingTarget(current)) {
+            logger.debug("Keeping the {}:// handler: '{}' is still installed.", scheme, current)
+            return false
+        }
+        return runReg(buildUnregisterCommand(scheme))
+    }
+
     private fun runReg(args: List<String>): Boolean = try {
         val process = ProcessBuilder(args).redirectErrorStream(true).start()
         val finished = process.waitFor(REG_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -70,6 +151,24 @@ object WindowsUrlSchemeRegistrar {
         false
     }
 
+    /** Like [runReg] but keeps stdout, so a value can be read back; null when the query could not run. */
+    private fun runRegCapturing(args: List<String>): String? = try {
+        val process = ProcessBuilder(args).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        if (!process.waitFor(REG_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            process.destroy()
+            logger.warn("{} timed out", args.first())
+            null
+        } else {
+            output
+        }
+    } catch (e: Exception) {
+        logger.debug("Failed to run {}", args.first(), e)
+        null
+    }
+
     fun isWindowsHost(): Boolean =
         System.getProperty("os.name").orEmpty().lowercase().startsWith("windows")
+
+    private val OPEN_COMMAND_VALUE = Regex("^\\s*\"?\\(Default\\)\"?\\s+REG_[A-Z_]+\\s+(.*)$", RegexOption.IGNORE_CASE)
 }

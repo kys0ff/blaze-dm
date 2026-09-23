@@ -16,4 +16,11 @@ interface AutoStartService {
     fun enable(): Result<Unit>
 
     fun disable(): Result<Unit>
+
+    /**
+     * The command the OS registration currently launches, or null when nothing is registered (or the
+     * platform cannot read it back). Reporting it is what lets [AutoStartController] notice a login
+     * item whose program has since been uninstalled - or one a debug session wrote by accident.
+     */
+    fun registrationCommand(): String? = null
 }

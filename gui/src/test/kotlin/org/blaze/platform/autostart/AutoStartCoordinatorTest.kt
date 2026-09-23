@@ -24,12 +24,16 @@ class AutoStartCoordinatorTest {
         tempDir.toFile().deleteRecursively()
     }
 
-    private class FakeAutoStartService(override val isSupported: Boolean = true) : AutoStartService {
+    private class FakeAutoStartService(
+        override val isSupported: Boolean = true,
+        private val command: String? = null,
+    ) : AutoStartService {
         var enabled = false
         var enableCalls = 0
         var disableCalls = 0
 
         override fun isEnabled(): Boolean = enabled
+        override fun registrationCommand(): String? = command
         override fun enable(): Result<Unit> {
             enableCalls++
             enabled = true
@@ -94,5 +98,19 @@ class AutoStartCoordinatorTest {
         coordinator.sync()
 
         assertFalse(coordinator.isSupported)
+    }
+
+    @Test
+    fun syncReplacesADevelopmentLoginItemWithTheLauncher(): Unit = runBlocking {
+        // The setting says "on" and the OS says "on", but what is registered is the JVM this session
+        // happened to run on. Reconciling has to remove it and register what the app can launch now.
+        val appSettings = AppSettings(runAtStartup = true)
+        val service = FakeAutoStartService(command = "/home/dev/.jdks/jbr-21/bin/java").apply { enabled = true }
+
+        AutoStartCoordinator(repository(appSettings), service).sync()
+
+        assertEquals(1, service.disableCalls, "the unlaunchable item was dropped")
+        assertEquals(1, service.enableCalls, "and the follow-up sync re-registered the real launcher")
+        assertTrue(service.enabled, "run at startup still means what the user set")
     }
 }

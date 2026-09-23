@@ -6,6 +6,10 @@ import java.util.concurrent.TimeUnit
 /**
  * Windows autostart via the per-user registry `Run` key, driven through `reg.exe` —
  * no registry bindings needed. `disable` treats "value already absent" as success.
+ *
+ * The value is re-readable through [registrationCommand] so a login item left behind by an uninstall
+ * (or by a debug run pointing at a JDK that has since been updated away) can be dropped rather than
+ * failing at every sign-in.
  */
 class WindowsAutoStartService(
     private val identity: PlatformIdentity,
@@ -21,8 +25,16 @@ class WindowsAutoStartService(
 
     override fun isEnabled(): Boolean = isEnabledQuietly()
 
+    override fun registrationCommand(): String? {
+        if (!isWindowsHost()) return null // never shell out to reg.exe on another platform
+        val result = runCatching { run("reg", "query", REG_KEY, "/v", identity.appName) }.getOrNull() ?: return null
+        if (result.exitCode != 0) return null
+        return parseRunValue(result.output, identity.appName)
+    }
+
     override fun enable(): Result<Unit> = runCatching {
-        val result = run("reg", "add", REG_KEY, "/v", identity.appName, "/t", "REG_SZ", "/d", execCommand(), "/f")
+        val command = requireLaunchableLoginItem(execCommand())
+        val result = run("reg", "add", REG_KEY, "/v", identity.appName, "/t", "REG_SZ", "/d", command, "/f")
         check(result.exitCode == 0) { "reg add failed (exit ${result.exitCode}): ${result.output}" }
     }
 
@@ -43,7 +55,27 @@ class WindowsAutoStartService(
         return RegResult(process.exitValue(), output)
     }
 
-    private companion object {
-        const val REG_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+    internal companion object {
+        private const val REG_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+
+        // `reg query` pads the name with spaces and the name itself may contain them (identity.appName
+        // is arbitrary text), so the type token - not the whitespace run - is what ends the name.
+        private val RUN_VALUE = Regex("^\\s*(.+?)\\s+REG_[A-Z_]+\\s+(.*)$")
+
+        /**
+         * Pulls [valueName] out of `reg query` output
+         * (`    Blaze    REG_SZ    C:\Program Files\Blaze\bin\Blaze.exe`). Null when the line is
+         * absent, which is also how "ERROR: ... unable to find ..." output reads - no value, nothing
+         * to prune.
+         */
+        fun parseRunValue(output: String, valueName: String): String? = output.lineSequence()
+            .mapNotNull { line -> RUN_VALUE.matchEntire(line)?.groupValues?.let { it[1] to it[2] } }
+            .firstOrNull { (name, _) -> name.equals(valueName, ignoreCase = true) }
+            ?.second
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+        private fun isWindowsHost(): Boolean =
+            System.getProperty("os.name").orEmpty().lowercase().startsWith("windows")
     }
 }

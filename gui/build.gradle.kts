@@ -163,3 +163,25 @@ compose.desktop {
         }
     }
 }
+
+/**
+ * `./gradlew :gui:blazeCleanup` runs Blaze's own `--cleanup` mode (see org.blaze.MainKt), which removes
+ * the user-level registrations a packaged install publishes and cannot take back by itself: the
+ * `~/.local/share/applications` entry, the hicolor icon, the run-at-startup item, the per-user Windows
+ * `magnet:` key, and the single-instance/local-API files in the data directory.
+ *
+ * Run it after uninstalling Blaze on a development machine, or whenever the desktop menu still offers a
+ * Blaze that is no longer there. It never opens a window and never touches downloads, settings or logs.
+ *
+ * `-PblazeHome=<dir>` redirects `user.home` for this JVM only, so the pass can be pointed at a sandbox
+ * directory and exercised - or demonstrated - without a real desktop being at stake.
+ */
+val blazeCleanup by tasks.registering(JavaExec::class) {
+    group = "blaze"
+    description = "Remove Blaze's user-level desktop integration and runtime leftovers."
+    dependsOn("classes")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.blaze.MainKt")
+    args = listOf("--cleanup")
+    (project.findProperty("blazeHome") as String?)?.let { systemProperty("user.home", it) }
+}

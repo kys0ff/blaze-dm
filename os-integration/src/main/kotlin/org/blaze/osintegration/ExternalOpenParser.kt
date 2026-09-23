@@ -72,6 +72,9 @@ class ExternalOpenParser(
         for (raw in args) {
             when {
                 raw == OPTION_NEW_INSTANCE -> allowMultiple = true
+                // Cleanup is handled by the launcher before anything is parsed (it never opens a GUI);
+                // knowing the name here keeps it out of the "unsupported launch argument" log.
+                raw == OPTION_CLEANUP -> Unit
                 raw.isBlank() -> rejected += RejectedArgument(raw, RejectionReason.MALFORMED_MAGNET)
                 else -> classify(raw).fold(
                     onSuccess = { it?.let(requests::add) },
@@ -174,6 +177,12 @@ class ExternalOpenParser(
 
     companion object {
         const val OPTION_NEW_INSTANCE: String = "--new-instance"
+
+        /**
+         * Removes the desktop registrations Blaze published at the user level and exits. Named here so
+         * the launcher's flag vocabulary lives in one place; the GUI acts on it before parsing.
+         */
+        const val OPTION_CLEANUP: String = "--cleanup"
 
         /** Generous ceiling: browsers cap URLs around 2k, but tracker-heavy magnets can legitimately grow. */
         const val MAX_MAGNET_URI_LENGTH: Int = 8 * 1024

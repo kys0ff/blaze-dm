@@ -12,7 +12,9 @@ import org.blaze.data.AppSettingsRepository
  * - [revertToPersisted] rolls the OS back to what is stored on disk, undoing an
  *   unpersisted Apply when the settings screen is disposed;
  * - [sync] reconciles the OS with the persisted setting at app startup, repairing
- *   drift from a removed autostart entry or a settings file edited by hand.
+ *   drift from a removed autostart entry or a settings file edited by hand, and first
+ *   dropping a registration that can no longer launch the app at all (an uninstalled
+ *   launcher, or the JDK a debug session happened to run on).
  */
 class AutoStartCoordinator(
     private val appSettingsRepository: AppSettingsRepository,
@@ -22,9 +24,17 @@ class AutoStartCoordinator(
 
     val isSupported: Boolean get() = controller.isSupported
 
-    fun applyLive(enabled: Boolean) = controller.applyLive(enabled)
+    fun applyLive(enabled: Boolean): Boolean = controller.applyLive(enabled)
 
     fun revertToPersisted() = controller.syncTo(appSettingsRepository.persisted.runAtStartup)
 
-    fun sync() = controller.syncTo(appSettingsRepository.settings.value.runAtStartup)
+    /**
+     * Startup reconciliation: first remove a login item that cannot work, then make what remains
+     * match the persisted setting. The order matters - pruning alone would leave "run at startup"
+     * silently off, while the follow-up sync re-registers the launcher actually running now.
+     */
+    fun sync() {
+        controller.pruneStaleRegistration()
+        controller.syncTo(appSettingsRepository.settings.value.runAtStartup)
+    }
 }
