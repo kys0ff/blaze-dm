@@ -45,8 +45,6 @@ run-at-startup). Full details in [Features](#features) below.
 The main window, the way it's meant to be seen. Drop your captures into the
 [`screenshots/`](screenshots/) folder and they'll light up right here.
 
-<!-- TODO: replace these placeholders with real captures from screenshots/ -->
-
 |                    Main window                    |              Add download dialog              |
 |:-------------------------------------------------:|:---------------------------------------------:|
 | ![Blaze main window](screenshots/main-window.png) | ![Add download](screenshots/add-download.png) |

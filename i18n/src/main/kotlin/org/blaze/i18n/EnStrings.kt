@@ -62,6 +62,22 @@ object EnStrings : BlazeStrings {
             override val batchTitle = "Batch Add Downloads"
             override val scheduleDelayLabel = "Schedule start delay (minutes):"
             override val scheduleDelayPlaceholder = "0 for immediate start"
+
+            override val pasteFromClipboard = "Paste from clipboard"
+            override val clearSource = "Clear"
+            override val advancedOptions = "Advanced options"
+            override val sourceKindMagnet = "Magnet link"
+            override val sourceKindTorrent = "Torrent file"
+            override val sourceKindHttp = "HTTP link"
+            override val emptyLinkFile = "No links found in this file"
+            override fun linkCount(count: Int) = "$count links"
+            override fun sourceFileReadFailed(reason: String?) =
+                "Couldn't read the file${reason?.let { ": $it" } ?: ""}"
+            override fun freeSpace(size: String) = "Free space: $size"
+            override val destinationWillCreate = "Folder doesn't exist yet and will be created"
+            override val destinationNotDirectory = "This path is a file, not a folder"
+            override val destinationNotWritableHint = "This folder isn't writable"
+            override val destinationInvalidPath = "Invalid path"
             
             override val removeTitle = "Remove download"
             override fun removeMessage(name: String) = "Remove $name?"

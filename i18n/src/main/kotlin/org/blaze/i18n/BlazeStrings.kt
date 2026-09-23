@@ -74,6 +74,29 @@ interface BlazeStrings {
             val batchTitle: String
             val scheduleDelayLabel: String
             val scheduleDelayPlaceholder: String
+
+            /** Tooltip for the paste-from-clipboard action in the add-download source field. */
+            val pasteFromClipboard: String
+            /** Tooltip/link for clearing the add-download source field. */
+            val clearSource: String
+            /** Title of the collapsed "Advanced options" disclosure in the add-download dialog. */
+            val advancedOptions: String
+            /** Detected-source labels shown inline under the source field. */
+            val sourceKindMagnet: String
+            val sourceKindTorrent: String
+            val sourceKindHttp: String
+            /** Shown when a picked .txt link list turns out to hold no links. */
+            val emptyLinkFile: String
+            /** Batch summary, e.g. "3 links". */
+            fun linkCount(count: Int): String
+            /** Error when the picked source file couldn't be read. */
+            fun sourceFileReadFailed(reason: String?): String
+            /** Inline destination hints (add-download dialog). */
+            fun freeSpace(size: String): String
+            val destinationWillCreate: String
+            val destinationNotDirectory: String
+            val destinationNotWritableHint: String
+            val destinationInvalidPath: String
             
             val removeTitle: String
             fun removeMessage(name: String): String

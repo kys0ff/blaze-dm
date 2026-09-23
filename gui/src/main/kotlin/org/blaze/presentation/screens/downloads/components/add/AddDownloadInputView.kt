@@ -56,26 +56,6 @@ import org.koin.compose.koinInject
 import java.nio.file.Files
 import java.nio.file.Path
 
-/**
- * TODO: Strings that aren't in blazeStrings yet. Move them there when you get a chance.
- */
-private object Fallback {
-    const val PASTE = "Paste from clipboard"
-    const val CLEAR = "Clear"
-    const val ADVANCED = "Advanced options"
-    const val MAGNET = "Magnet link"
-    const val TORRENT = "Torrent file"
-    const val WEB = "HTTP link"
-    const val EMPTY_FILE = "No links found in this file"
-    fun links(n: Int) = "$n links"
-    fun readFailed(reason: String?) = "Couldn't read the file${reason?.let { ": $it" } ?: ""}"
-    fun freeSpace(size: String) = "Free space: $size"
-    const val WILL_CREATE = "Folder doesn't exist yet and will be created"
-    const val NOT_DIR = "This path is a file, not a folder"
-    const val NOT_WRITABLE = "This folder isn't writable"
-    const val INVALID_PATH = "Invalid path"
-}
-
 @OptIn(ExperimentalJewelApi::class)
 @Composable
 fun AddDownloadInputView(
@@ -127,16 +107,16 @@ fun AddDownloadInputView(
                     trailingIcon = {
                         if (state.url.text.isEmpty()) {
                             ToolbarIconButton(
-                                key = AllIconsKeys.Actions.MenuPaste, tooltip = Fallback.PASTE,
+                                key = AllIconsKeys.Actions.MenuPaste, tooltip = dStrings.pasteFromClipboard,
                                 onClick = {
-                                    clipboard.paste()?.let { state.applyPastedText(it) }
+                                    clipboard.paste()?.let { state.applyPastedText(it, dStrings) }
                                     fileError = null
                                 }
                             )
                         } else {
                             ToolbarIconButton(
                                 key = AllIconsKeys.General.Close,
-                                tooltip = Fallback.CLEAR,
+                                tooltip = dStrings.clearSource,
                                 onClick = {
                                     state.clearSource()
                                     fileError = null
@@ -155,7 +135,7 @@ fun AddDownloadInputView(
             }
 
             // One hint line, in priority order: error → warning → batch → detected type.
-            val kind = if (isBatch) null else sourceKind(state.url.text)
+            val kind = if (isBatch) null else sourceKind(state.url.text, dStrings)
             when {
                 fileError != null -> FieldHint(fileError!!, HintLevel.Error)
                 state.fetchError != null -> FieldHint(state.fetchError!!, HintLevel.Error)
@@ -163,8 +143,8 @@ fun AddDownloadInputView(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FieldHint(Fallback.links(state.batchItems.size), HintLevel.Info)
-                    Link(text = Fallback.CLEAR, onClick = { state.clearSource() })
+                    FieldHint(dStrings.linkCount(state.batchItems.size), HintLevel.Info)
+                    Link(text = dStrings.clearSource, onClick = { state.clearSource() })
                 }
 
                 !state.looksSupported && state.url.text.isNotBlank() ->
@@ -207,23 +187,31 @@ fun AddDownloadInputView(
                     is DestinationStatus.Ready ->
                         if (status.freeBytes >= 0) {
                             FieldHint(
-                                Fallback.freeSpace(formatSize(status.freeBytes, strings)),
+                                dStrings.freeSpace(formatSize(status.freeBytes, strings)),
                                 HintLevel.Info
                             )
                         }
 
-                    DestinationStatus.WillCreate -> FieldHint(Fallback.WILL_CREATE, HintLevel.Info)
+                    DestinationStatus.WillCreate -> FieldHint(
+                        dStrings.destinationWillCreate,
+                        HintLevel.Info
+                    )
+
                     DestinationStatus.NotADirectory -> FieldHint(
-                        Fallback.NOT_DIR,
+                        dStrings.destinationNotDirectory,
                         HintLevel.Error
                     )
 
                     DestinationStatus.NotWritable -> FieldHint(
-                        Fallback.NOT_WRITABLE,
+                        dStrings.destinationNotWritableHint,
                         HintLevel.Error
                     )
 
-                    DestinationStatus.Invalid -> FieldHint(Fallback.INVALID_PATH, HintLevel.Error)
+                    DestinationStatus.Invalid -> FieldHint(
+                        dStrings.destinationInvalidPath,
+                        HintLevel.Error
+                    )
+
                     DestinationStatus.Empty -> {}
                 }
             }
@@ -231,7 +219,7 @@ fun AddDownloadInputView(
 
         // ── Advanced (collapsed unless a delay is already set) ───────────────
         CollapsibleSection(
-            title = Fallback.ADVANCED,
+            title = dStrings.advancedOptions,
             expanded = showAdvanced,
             onToggle = { showAdvanced = !showAdvanced }
         ) {
@@ -268,7 +256,7 @@ fun AddDownloadInputView(
         FilePickerDialog(
             onDismiss = { state.showFilePicker = false },
             onPick = { path ->
-                fileError = state.loadSourceFile(path)
+                fileError = state.loadSourceFile(path, dStrings)
                 state.showFilePicker = false
             },
             mode = FilePickerMode.File,
@@ -306,13 +294,19 @@ private fun AddDownloadState.setSource(urls: List<String>, batchLabel: String) {
 }
 
 /** Pasting several lines becomes a batch; a single line just fills the field. */
-private fun AddDownloadState.applyPastedText(raw: String) {
+private fun AddDownloadState.applyPastedText(
+    raw: String,
+    d: BlazeStrings.Downloads.Dialogs,
+) {
     val lines = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-    setSource(lines, Fallback.links(lines.size))
+    setSource(lines, d.linkCount(lines.size))
 }
 
 /** Returns an error message, or null on success. */
-private fun AddDownloadState.loadSourceFile(path: Path): String? {
+private fun AddDownloadState.loadSourceFile(
+    path: Path,
+    d: BlazeStrings.Downloads.Dialogs,
+): String? {
     val file = path.toFile()
     if (!file.extension.equals("txt", ignoreCase = true)) {
         // .TORRENT and friends: use the path as the source
@@ -320,25 +314,25 @@ private fun AddDownloadState.loadSourceFile(path: Path): String? {
         return null
     }
     val urls = runCatching { file.readLines() }
-        .getOrElse { return Fallback.readFailed(it.message) }
+        .getOrElse { return d.sourceFileReadFailed(it.message) }
         .map { it.trim() }
         .filter { it.isNotEmpty() && !it.startsWith("#") } // allow comments in link lists
         .distinct()
 
-    if (urls.isEmpty()) return Fallback.EMPTY_FILE
+    if (urls.isEmpty()) return d.emptyLinkFile
     setSource(urls, file.name)
     return null
 }
 
-private fun sourceKind(text: String): String? {
+private fun sourceKind(text: String, d: BlazeStrings.Downloads.Dialogs): String? {
     val t = text.trim()
     return when {
-        t.startsWith("MAGNET:", ignoreCase = true) -> Fallback.MAGNET
-        t.endsWith(".TORRENT", ignoreCase = true) -> Fallback.TORRENT
+        t.startsWith("MAGNET:", ignoreCase = true) -> d.sourceKindMagnet
+        t.endsWith(".TORRENT", ignoreCase = true) -> d.sourceKindTorrent
         t.startsWith("http://", ignoreCase = true) || t.startsWith(
             "https://",
             ignoreCase = true
-        ) -> Fallback.WEB
+        ) -> d.sourceKindHttp
 
         else -> null
     }
