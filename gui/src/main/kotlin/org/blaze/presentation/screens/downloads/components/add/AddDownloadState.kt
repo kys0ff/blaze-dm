@@ -22,6 +22,12 @@ class AddDownloadState(
     var isFetching by mutableStateOf(false)
     var step by mutableStateOf(1) // 1: Input, 2: Metadata/Batch
 
+    /**
+     * Live verdict on [destination], recomputed by the dialog as the folder is edited. The views
+     * render it, and the dialog refuses to queue a download on top of it.
+     */
+    var destinationStatus by mutableStateOf<DestinationStatus>(DestinationStatus.Empty)
+
     // Link-handler resolution: the direct URL extracted from a page link, and the picker state.
     var resolvedDirectUrl by mutableStateOf<String?>(null)
     var showHandlerChoice by mutableStateOf(false)
@@ -45,6 +51,22 @@ class AddDownloadState(
 
     val canFetch: Boolean get() = source.isNotEmpty() && (isBatch || source.isSupportedSource())
     val looksSupported: Boolean get() = source.isEmpty() || isBatch || source.isSupportedSource()
+
+    /** Total size of everything about to be queued, or null while any part of it is unknown. */
+    val announcedBytes: Long?
+        get() = if (isBatch) {
+            val selected = batchItems.filter { it.isSelected }
+            val sizes = selected.mapNotNull { it.metadata?.totalSize }
+            if (selected.isEmpty() || sizes.size != selected.size) null else sizes.sum()
+        } else {
+            metadata?.totalSize
+        }
+
+    /** Bytes the destination cannot hold, or null when there is room or the question can't be answered. */
+    val spaceShortBy: Long? get() = destinationStatus.spaceShortBy(announcedBytes)
+
+    /** A destination that is certain to fail: unwritable, or too small for the announced file. */
+    val destinationBlocked: Boolean get() = destinationStatus.isError || spaceShortBy != null
 
     fun resetMetadata() {
         metadata = null

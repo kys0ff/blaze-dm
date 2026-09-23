@@ -61,6 +61,9 @@ fun DownloadTask.toDto(): DownloadDto {
         completedAtEpochMs = completedAt?.toEpochMilli(),
         scheduledAtEpochMs = scheduledAt?.toEpochMilli(),
         resumable = resumable,
+        // What the transfer proved about the source, not a state guess: null keeps "we don't know"
+        // distinct from "this host cannot resume", which is what a client warns about.
+        sourceSupportsResume = resumeSupported,
         portable = false,
         files = files,
     )

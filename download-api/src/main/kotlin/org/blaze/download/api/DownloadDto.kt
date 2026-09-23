@@ -55,6 +55,12 @@ data class DownloadDto(
     val completedAtEpochMs: Long? = null,
     val scheduledAtEpochMs: Long? = null,
     val resumable: Boolean = false,
+    /**
+     * Whether the *source* can serve a resume, proven while transferring: ranged reads for HTTP,
+     * the piece bitmap for a torrent. Null means nobody has proved it yet, which is deliberately
+     * different from false - a client must not warn about lost progress on an unknown answer.
+     */
+    val sourceSupportsResume: Boolean? = null,
     val portable: Boolean = false,
     val files: List<DownloadFile>? = null,
 )

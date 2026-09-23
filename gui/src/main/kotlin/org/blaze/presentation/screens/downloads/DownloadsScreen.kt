@@ -13,9 +13,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.notifications.NotificationHost
+import org.blaze.presentation.components.notifications.NotificationType
 import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.screens.downloads.components.DownloadsScreenContent
+import org.blaze.presentation.util.toFriendlyMessage
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.ContextMenuRepresentation
 
@@ -26,12 +29,31 @@ class DownloadsScreen : Screen {
         val screenModel = koinScreenModel<DownloadsScreenModel>()
         val state by screenModel.state.collectAsState()
         val notifications = remember { NotificationsState() }
+        val strings = blazeStrings
+        val advisories = strings.downloads.advisories
 
-        LaunchedEffect(Unit) {
+        LaunchedEffect(strings) {
             screenModel.effects.collect { effect ->
                 when (effect) {
                     is DownloadsEffect.ShowError -> notifications.error(effect.message)
                     is DownloadsEffect.ShowMessage -> notifications.info(effect.message)
+
+                    // Lifecycle notices arrive as data so their wording can be localized here.
+                    is DownloadsEffect.DownloadCompleted ->
+                        notifications.info(advisories.completed(effect.name), advisories.titleCompleted)
+
+                    is DownloadsEffect.DownloadFailed -> notifications.error(
+                        advisories.failed(
+                            effect.name,
+                            effect.reason?.toFriendlyMessage(strings) ?: strings.common.unknown
+                        ),
+                        advisories.titleFailed
+                    )
+
+                    is DownloadsEffect.DownloadRestarted -> notifications.warning(
+                        advisories.restarted(effect.name, effect.lostPercent),
+                        advisories.titleRestarted
+                    )
                 }
             }
         }
@@ -50,8 +72,12 @@ class DownloadsScreen : Screen {
                     onResolveDestinationPath = { url, savePath, name -> screenModel.resolveDestinationPath(url, savePath, name) },
                     onDetectPortable = { path -> screenModel.detectPortable(path) },
                     onImportPortable = { artifact, dest -> screenModel.importPortable(artifact, dest) },
-                    onNotify = { message, isError ->
-                        if (isError) notifications.error(message) else notifications.info(message)
+                    onNotify = { message, type ->
+                        when (type) {
+                            NotificationType.INFO -> notifications.info(message)
+                            NotificationType.WARNING -> notifications.warning(message)
+                            NotificationType.ERROR -> notifications.error(message)
+                        }
                     },
                     fileConflictBehavior = settings.fileConflictBehavior,
                     externalRequests = externalRequests,

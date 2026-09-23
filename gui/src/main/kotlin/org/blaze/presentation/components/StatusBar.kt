@@ -23,13 +23,18 @@ import org.blaze.presentation.theme.BlazeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
+import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 @Composable
 fun StatusBar(
     info: String,
     modifier: Modifier = Modifier,
     isConnected: Boolean = true,
+    /** A risk worth keeping on screen: colored, unlike the running totals in [info]. */
+    alert: String? = null,
+    alertIsError: Boolean = false,
     trailing: @Composable RowScope.() -> Unit = {}
 ) {
     val strings = blazeStrings
@@ -53,6 +58,27 @@ fun StatusBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            if (alert != null) {
+                val alertColor = if (alertIsError) BlazeColors.error else BlazeColors.warning
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        key = AllIconsKeys.General.Warning,
+                        contentDescription = null,
+                        tint = alertColor,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = alert,
+                        style = small,
+                        color = alertColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
             trailing()
             Row(
                 verticalAlignment = Alignment.CenterVertically,

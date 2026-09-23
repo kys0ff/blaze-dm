@@ -18,6 +18,7 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.Sidebar
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
+import org.blaze.presentation.screens.downloads.attention
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.settings.SettingsScreen
@@ -72,7 +73,10 @@ class MainScreen : Screen {
                     }
                 }
 
-                StatusBar(info = downloads.toStatusSummary(strings))
+                StatusBar(
+                    info = downloads.toStatusSummary(strings),
+                    alert = downloads.toStatusAlert(strings)
+                )
             }
         }
     }
@@ -93,4 +97,18 @@ fun List<Download>.toStatusSummary(strings: BlazeStrings): String {
     }
 
     return if (parts.isEmpty()) strings.statusSummary.ready else parts.joinToString(", ")
+}
+
+/**
+ * The one risk from the whole list that stays on screen: something the running totals in
+ * [toStatusSummary] do not say, and that a user could easily pay for by clicking pause.
+ */
+fun List<Download>.toStatusAlert(strings: BlazeStrings): String? {
+    val attention = attention()
+    val advisories = strings.downloads.advisories
+    return when {
+        attention.cannotResume > 0 -> advisories.alertCannotResume(attention.cannotResume)
+        attention.waitingForPeers > 0 -> advisories.alertWaitingPeers(attention.waitingForPeers)
+        else -> null
+    }
 }

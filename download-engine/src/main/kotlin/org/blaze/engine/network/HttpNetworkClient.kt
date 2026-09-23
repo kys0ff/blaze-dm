@@ -35,12 +35,20 @@ class HttpNetworkClient(
 ) {
     private val logger = LoggerFactory.getLogger(HttpNetworkClient::class.java)
 
-    /** What the server supports, discovered before a transfer is split into parallel workers. */
+    /**
+     * What the server supports, discovered before a transfer is split into parallel workers.
+     *
+     * [acceptsRanges] stays the segmentation switch (only proven ranged reads enable it), while
+     * [rangeSupport] is the three-state answer a client needs to promise a resume: true when ranged
+     * reads were proven, false when the server refused them outright, null when the exchange told
+     * us nothing (a silent header, a redirect we could not follow, a dead socket).
+     */
     data class Probe(
         val status: Int,
         val totalBytes: Long, // -1 when the server did not say
         val acceptsRanges: Boolean,
-        val validator: String? // ETag / Last-Modified, used to reject stale resume state
+        val validator: String?, // ETag / Last-Modified, used to reject stale resume state
+        val rangeSupport: Boolean? = if (acceptsRanges) true else null
     ) {
         val knownSize: Boolean get() = totalBytes > 0
     }
@@ -51,8 +59,16 @@ class HttpNetworkClient(
         val bodyLength: Long, // bytes this response will deliver (-1 when chunked/unknown)
         val totalBytes: Long, // whole-file size when known (-1 otherwise)
         val resumed: Boolean, // 206 Partial Content
-        val validator: String?
-    )
+        val validator: String?,
+        /** `Accept-Ranges`: true for `bytes`, false for `none`, null when the server said nothing. */
+        val advertisedRanges: Boolean? = null
+    ) {
+        /** What this response proves about resumability, without asking the server anything extra. */
+        val rangeSupport: Boolean? get() = when {
+            resumed -> true
+            else -> advertisedRanges
+        }
+    }
 
     sealed interface StreamResult {
         data class Success(val received: Long) : StreamResult
@@ -101,21 +117,27 @@ class HttpNetworkClient(
 
             val validator = validator(head.rawHeaders)
             if (head.statusUsable && !head.acceptsRanges) {
-                return Probe(head.status, head.totalBytes, false, validator)
+                // An explicit `Accept-Ranges: none` is a refusal we can tell the user about; a
+                // missing header only means the server did not advertise (RFC 9110 makes
+                // advertising optional), so that stays "unknown".
+                val refused = if (head.advertisedRanges == false) false else null
+                return Probe(head.status, head.totalBytes, false, validator, refused)
             }
             // Verify that ranged reads really work before splitting the file across connections.
-            val proved = proveRangeSupport(request, url)
-            return if (proved != null) {
+            val proof = proveRangeSupport(request, url)
+            val proved = proof.head
+            return if (proved != null && proof.support == true) {
                 Probe(
                     status = HttpStatusCode.PartialContent.value,
                     totalBytes = maxOf(head.totalBytes, proved.totalBytes),
                     acceptsRanges = true,
                     // A proxy that strips the validator from HEAD must not make two runs of the
                     // same probe disagree about which file the resume state belongs to.
-                    validator = validator ?: proved.validator
+                    validator = validator ?: proved.validator,
+                    rangeSupport = true
                 )
             } else {
-                Probe(head.status, head.totalBytes, false, validator)
+                Probe(head.status, head.totalBytes, false, validator, proof.support)
             }
         }
     }
@@ -124,6 +146,8 @@ class HttpNetworkClient(
         val status: Int,
         val totalBytes: Long,
         val acceptsRanges: Boolean,
+        /** Three-state `Accept-Ranges`: false is an explicit refusal, null is silence. */
+        val advertisedRanges: Boolean?,
         val statusUsable: Boolean,
         val rawHeaders: Headers
     )
@@ -135,15 +159,18 @@ class HttpNetworkClient(
                 status = response.status.value,
                 totalBytes = headers[HttpHeaders.ContentLength]?.toLongOrNull()
                     ?: response.contentLength() ?: -1L,
-                acceptsRanges = headers[HttpHeaders.AcceptRanges]
-                    ?.contains("bytes", ignoreCase = true) == true,
+                acceptsRanges = rangeAdvertisement(headers) == true,
+                advertisedRanges = rangeAdvertisement(headers),
                 statusUsable = response.status.isSuccess(),
                 rawHeaders = headers
             )
         }
 
-    /** Head of a successful 206 for `bytes=0-0`, or null when ranged reads do not work. */
-    private suspend fun proveRangeSupport(request: DownloadRequest.Http, url: String): Head? {
+    /** What the body of a `bytes=0-0` request told us: [support] is null when the answer was inconclusive. */
+    private data class RangeProof(val support: Boolean?, val head: Head?)
+
+    /** Proof of ranged reads: the 206 head for `bytes=0-0`, plus whatever the attempt proved. */
+    private suspend fun proveRangeSupport(request: DownloadRequest.Http, url: String): RangeProof {
         var captured: Head? = null
         val result = streamAt(
             request = request,
@@ -153,9 +180,14 @@ class HttpNetworkClient(
             onHead = { head -> if (head.resumed) captured = head },
             sink = { _, _ -> }
         )
-        val head = captured ?: return null
-        if (result !is StreamResult.Success && result !is StreamResult.Truncated) return null
-        return head
+        val head = captured
+        return when {
+            head != null && (result is StreamResult.Success || result is StreamResult.Truncated) ->
+                RangeProof(true, head)
+            // We asked for one byte and got the whole body back instead: refusal, not silence.
+            result is StreamResult.RangeIgnored -> RangeProof(false, null)
+            else -> RangeProof(null, null)
+        }
     }
 
     /**
@@ -264,8 +296,16 @@ class HttpNetworkClient(
             bodyLength = range?.first ?: contentLength,
             totalBytes = range?.second ?: contentLength,
             resumed = response.status == HttpStatusCode.PartialContent,
-            validator = validator(headers)
+            validator = validator(headers),
+            advertisedRanges = rangeAdvertisement(headers)
         )
+    }
+
+    /** Three-state reading of `Accept-Ranges`: null means the server never answered the question. */
+    private fun rangeAdvertisement(headers: Headers): Boolean? {
+        val value = headers[HttpHeaders.AcceptRanges] ?: return null
+        if (value.contains("bytes", ignoreCase = true)) return true
+        return if (value.contains("none", ignoreCase = true)) false else null
     }
 
     private fun resolveRedirect(current: String, location: String?): String? {

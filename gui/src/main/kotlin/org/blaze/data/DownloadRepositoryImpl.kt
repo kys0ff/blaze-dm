@@ -60,6 +60,7 @@ class DownloadRepositoryImpl(
                 files = meta.files?.mapIndexed { index, file ->
                     DownloadFile(name = file.path, size = file.size, index = index)
                 },
+                resumeSupported = meta.resumeSupported,
             )
         }
     }
@@ -164,6 +165,7 @@ class DownloadRepositoryImpl(
             savePath = destination,
             error = error,
             selectedFiles = selected?.mapIndexed { index, f -> SelectedFile(path = f.path, size = f.size, index = index) },
+            resumeSupported = sourceSupportsResume,
         )
     }
 

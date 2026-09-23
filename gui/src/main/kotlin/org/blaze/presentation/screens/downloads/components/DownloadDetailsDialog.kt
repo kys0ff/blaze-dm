@@ -19,6 +19,10 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.IdeDialog
 import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.screens.downloads.ResumeSupport
+import org.blaze.presentation.screens.downloads.pauseLosesProgress
+import org.blaze.presentation.screens.downloads.percentDone
+import org.blaze.presentation.screens.downloads.resumeSupport
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
@@ -46,6 +50,7 @@ fun DownloadDetailsDialog(
 ) {
     val strings = blazeStrings
     val details = strings.downloads.dialogs.details
+    val advisories = strings.downloads.advisories
     val isActive = download.state == DownloadState.DOWNLOADING || download.state == DownloadState.SEEDING
     val scheduledInFuture = download.scheduledAt?.let { it > System.currentTimeMillis() } == true
 
@@ -60,6 +65,20 @@ fun DownloadDetailsDialog(
         ) {
             DetailRow(details.name) { Text(download.name) }
             DetailRow(details.status) { StatusBadge(download.state) }
+
+            // Only an answer the transfer actually proved is shown: "we never asked" must not read
+            // as "this one can't be resumed".
+            when (download.resumeSupport()) {
+                ResumeSupport.SUPPORTED -> DetailRow(details.resumeSupport) {
+                    Text(advisories.resumeSupported)
+                }
+
+                ResumeSupport.UNSUPPORTED -> DetailRow(details.resumeSupport) {
+                    Text(advisories.cannotResume, color = BlazeColors.warning)
+                }
+
+                ResumeSupport.UNKNOWN -> Unit
+            }
 
             val total = download.totalSize
             val sizeText = if (total != null) {
@@ -105,6 +124,15 @@ fun DownloadDetailsDialog(
                         color = BlazeColors.error
                     )
                 }
+            }
+
+            // Spell out the cost while there is still something to cost: pausing this one discards
+            // the bytes above, because its server will not continue a stopped range.
+            if (download.pauseLosesProgress()) {
+                AdvisoryCallout(
+                    text = strings.downloads.dialogs.pauseRisk.detail(download.percentDone()),
+                    tone = AdvisoryTone.WARNING
+                )
             }
         }
 

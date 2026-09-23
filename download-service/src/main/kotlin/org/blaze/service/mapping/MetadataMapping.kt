@@ -16,6 +16,7 @@ fun DownloadMetadata.toDto(): DownloadMetadataDto = DownloadMetadataDto(
     name = name,
     totalBytes = totalSize,
     files = files?.map { it.toFile() },
+    resumeSupported = resumeSupported,
 )
 
 fun PortableDownloadInfo.toDto(): PortableInfoDto = PortableInfoDto(

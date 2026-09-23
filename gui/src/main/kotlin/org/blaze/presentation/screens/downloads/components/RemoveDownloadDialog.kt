@@ -32,7 +32,9 @@ import org.jetbrains.jewel.ui.component.Text
 fun RemoveDownloadDialog(
     downloadName: String,
     onDismiss: () -> Unit,
-    onConfirm: (deleteFile: Boolean, setAsDefault: Boolean) -> Unit
+    onConfirm: (deleteFile: Boolean, setAsDefault: Boolean) -> Unit,
+    /** Cost of removing this particular download (unfinished progress), or null when there is none. */
+    notice: String? = null,
 ) {
     var deleteFromDisk by remember { mutableStateOf(false) }
     var setAsDefault by remember { mutableStateOf(false) }
@@ -63,6 +65,12 @@ fun RemoveDownloadDialog(
             maxLines = 3,
             overflow = TextOverflow.Ellipsis
         )
+
+        // Removing an unfinished transfer is not just a list edit: the partial file goes with it,
+        // and for a source that cannot resume there is no way to get that work back.
+        notice?.let { warning ->
+            AdvisoryCallout(text = warning, tone = AdvisoryTone.WARNING)
+        }
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

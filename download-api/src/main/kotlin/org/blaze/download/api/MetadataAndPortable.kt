@@ -13,6 +13,11 @@ data class DownloadMetadataDto(
     val name: String,
     val totalBytes: Long? = null,
     val files: List<DownloadFile>? = null,
+    /**
+     * Whether probing proved that the source can continue a paused download. Null when the probe
+     * could not tell, which a client must render differently from an explicit `false`.
+     */
+    val resumeSupported: Boolean? = null,
 )
 
 /**

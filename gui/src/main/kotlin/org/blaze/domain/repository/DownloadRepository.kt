@@ -61,7 +61,9 @@ data class PortableInfo(
 data class DownloadMetadata(
     val name: String,
     val totalSize: Long?,
-    val files: List<DownloadFile>? = null
+    val files: List<DownloadFile>? = null,
+    /** Proven resume capability of the source, or null when the probe could not tell. */
+    val resumeSupported: Boolean? = null
 )
 
 data class DownloadFile(

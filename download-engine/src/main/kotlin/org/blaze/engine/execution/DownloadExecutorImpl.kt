@@ -142,13 +142,17 @@ class DownloadExecutorImpl(
 
             var totalBytes = task.totalBytes
             var downloadedBytes = task.downloadedBytes
+            // Learned from the first response that proves it (a 206, an `Accept-Ranges` answer, an
+            // ignored `Range`); carried on every update so a client can warn before it pauses.
+            var resumeSupported: Boolean? = task.resumeSupported
             val progress = HttpProgress()
 
             val outcome = coordinator.download(
                 request = resolved,
                 destination = finalDestination,
                 partial = finalPartialPath,
-                connections = connections
+                connections = connections,
+                onRangeSupport = { supported -> resumeSupported = supported }
             ) { update ->
                 totalBytes = update.totalBytes ?: totalBytes
                 downloadedBytes = update.downloadedBytes
@@ -160,7 +164,8 @@ class DownloadExecutorImpl(
                         state = DownloadState.Downloading,
                         totalBytes = totalBytes,
                         downloadedBytes = downloadedBytes,
-                        speed = speed
+                        speed = speed,
+                        resumeSupported = resumeSupported
                     )
                 )
             }
@@ -178,7 +183,8 @@ class DownloadExecutorImpl(
                             state = DownloadState.Completed,
                             totalBytes = outcome.totalBytes ?: outcome.downloadedBytes,
                             downloadedBytes = outcome.downloadedBytes,
-                            progress = 1f
+                            progress = 1f,
+                            resumeSupported = resumeSupported
                         )
                     )
                 }
@@ -192,7 +198,8 @@ class DownloadExecutorImpl(
                             state = DownloadState.Failed,
                             totalBytes = totalBytes,
                             downloadedBytes = downloadedBytes,
-                            error = outcome.error
+                            error = outcome.error,
+                            resumeSupported = resumeSupported
                         )
                     )
                 }
@@ -219,7 +226,10 @@ class DownloadExecutorImpl(
                             totalBytes = event.totalBytes,
                             downloadedBytes = current.downloadedBytes,
                             name = event.name,
-                            files = event.files
+                            files = event.files,
+                            // A torrent resumes from its own piece bitmap, independently of any
+                            // server header, so the answer is known from the very first metadata.
+                            resumeSupported = true
                         )
                         send(current)
                     }
@@ -245,7 +255,8 @@ class DownloadExecutorImpl(
                             totalBytes = total,
                             downloadedBytes = calculatedDownloaded,
                             speed = event.downloadSpeed,
-                            progress = progress
+                            progress = progress,
+                            resumeSupported = true
                         ).copy(
                             uploadSpeed = event.uploadSpeed,
                             peers = event.peers
@@ -291,7 +302,8 @@ class DownloadExecutorImpl(
         progress: Float? = null,
         error: DownloadError? = null,
         name: String? = null,
-        files: List<DownloadFileMetadata>? = null
+        files: List<DownloadFileMetadata>? = null,
+        resumeSupported: Boolean? = null
     ): DownloadTask {
         val total = totalBytes?.takeIf { it > 0 }
         val calculatedProgress = progress ?: run {
@@ -312,7 +324,8 @@ class DownloadExecutorImpl(
             eta = eta,
             error = error,
             completedAt = if (state == DownloadState.Completed) Instant.now() else task.completedAt,
-            files = files ?: task.files
+            files = files ?: task.files,
+            resumeSupported = resumeSupported ?: task.resumeSupported
         )
     }
 

@@ -7,6 +7,7 @@ import org.blaze.download.api.DownloadState as PublicState
 import org.blaze.download.api.NewDownloadRequest
 import org.blaze.download.api.TransferHeaders
 import org.blaze.engine.api.DownloadId
+import org.blaze.engine.api.DownloadMetadata
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState as EngineState
 import org.blaze.engine.api.DownloadTask
@@ -17,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -136,5 +138,35 @@ class MappingTest {
         assertEquals(PublicState.PAUSED, dto.state)
         assertTrue(dto.resumable)
         assertEquals(0.5f, dto.progress ?: 0f, 0.001f)
+        assertNull(dto.sourceSupportsResume, "an unproven source must not be reported as resumable either way")
+    }
+
+    @Test
+    fun `source capability survives mapping and stays distinct from the state-derived flag`() {
+        // `resumable` answers "does the UI offer a resume button"; `sourceSupportsResume` answers
+        // "will that resume keep the bytes". Only the second one can justify a warning, so the
+        // mapper must not let the optimistic first one overwrite it.
+        fun projected(answer: Boolean?) = DownloadTask(
+            id = DownloadId("cap"),
+            name = "big.zip",
+            request = DownloadRequest.Http("big.zip", "https://example.com/big.zip", dir.resolve("big.zip")),
+            state = EngineState.Paused,
+            totalBytes = 100,
+            downloadedBytes = 40,
+            downloadSpeed = 0,
+            resumeSupported = answer,
+        ).toDto()
+
+        assertEquals(true, projected(true).sourceSupportsResume)
+        assertEquals(false, projected(false).sourceSupportsResume)
+        assertNull(projected(null).sourceSupportsResume)
+        assertTrue(projected(false).resumable, "a host that refuses ranges is still offered a resume button")
+    }
+
+    @Test
+    fun `probed metadata reports its resume answer to the dto`() {
+        assertEquals(false, DownloadMetadata("a.bin", 10L, resumeSupported = false).toDto().resumeSupported)
+        assertEquals(true, DownloadMetadata("a.bin", 10L, resumeSupported = true).toDto().resumeSupported)
+        assertNull(DownloadMetadata("a.bin", 10L).toDto().resumeSupported)
     }
 }

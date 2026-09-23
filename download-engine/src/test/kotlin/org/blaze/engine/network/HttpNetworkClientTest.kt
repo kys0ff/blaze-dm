@@ -100,6 +100,7 @@ class HttpNetworkClientTest {
             assertEquals(payload.size.toLong(), probe.totalBytes)
             assertEquals("\"v1\"", probe.validator)
             assertTrue(probe.knownSize)
+            assertEquals(true, probe.rangeSupport, "a proven 206 is evidence the UI may promise a resume")
         }
     }
 
@@ -110,6 +111,37 @@ class HttpNetworkClientTest {
 
             assertFalse(probe.acceptsRanges, "Accept-Ranges must never be trusted on its own")
             assertEquals(64L * 1024, probe.totalBytes)
+            assertEquals(
+                false,
+                probe.rangeSupport,
+                "answering a one-byte range with the whole body is a refusal, not silence"
+            )
+        }
+    }
+
+    @Test
+    fun `an explicit Accept-Ranges none is a refusal the user can be told about`(): Unit = runBlocking {
+        TestHttpServer(TestHttpServer.of(64 * 1024), acceptRangesHeader = "none").use { server ->
+            val probe = subject.probe(request(server.url))
+
+            assertFalse(probe.acceptsRanges)
+            assertEquals(false, probe.rangeSupport)
+        }
+    }
+
+    @Test
+    fun `a server that never advertises ranges leaves the answer unknown`(): Unit = runBlocking {
+        // Advertising is optional, so a missing header proves nothing. Reporting false here would
+        // make the UI warn about a source that may resume perfectly well.
+        TestHttpServer(
+            TestHttpServer.of(64 * 1024),
+            supportsRanges = false,
+            acceptRangesHeader = null
+        ).use { server ->
+            val probe = subject.probe(request(server.url))
+
+            assertFalse(probe.acceptsRanges)
+            assertNull(probe.rangeSupport, "silence must stay unknown")
         }
     }
 
@@ -130,6 +162,7 @@ class HttpNetworkClientTest {
         assertEquals(0, probe.status)
         assertFalse(probe.acceptsRanges)
         assertFalse(probe.knownSize)
+        assertNull(probe.rangeSupport, "a socket that never spoke cannot be reported as refusing ranges")
     }
 
     // ------------------------------------------------------------------ streaming

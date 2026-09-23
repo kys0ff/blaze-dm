@@ -15,6 +15,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.screens.downloads.components.AdvisoryCallout
+import org.blaze.presentation.screens.downloads.components.AdvisoryChip
+import org.blaze.presentation.screens.downloads.components.AdvisoryTone
 import org.blaze.presentation.util.formatSize
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.*
@@ -27,6 +30,16 @@ fun AddDownloadListView(
     val dStrings = strings.downloads.dialogs
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Same pre-flight check as the single-source step: a batch of 40 links onto a full drive
+        // should fail here, not 40 times in the download list.
+        val destinationProblem = when {
+            state.destinationStatus.isError -> dStrings.destinationNotWritable
+            else -> state.destinationStatus.notEnoughSpaceText(state.announcedBytes, strings)
+        }
+        destinationProblem?.let { problem ->
+            AdvisoryCallout(problem, AdvisoryTone.ERROR)
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -93,6 +106,13 @@ fun AddDownloadListView(
                                 style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
                                 color = JewelTheme.globalColors.text.info
                             )
+                            // Marked per link, because only some servers refuse ranges.
+                            if (metadata.resumeSupported == false) {
+                                AdvisoryChip(
+                                    strings.downloads.advisories.cannotResume,
+                                    AdvisoryTone.WARNING
+                                )
+                            }
                         } else if (item.isFetching) {
                             Text(
                                 text = dStrings.fetchingMetadata,

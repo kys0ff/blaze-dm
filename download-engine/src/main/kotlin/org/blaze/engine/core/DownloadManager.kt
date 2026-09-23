@@ -236,7 +236,10 @@ class DownloadManager(
             retryCount = record.retryCount,
             createdAt = Instant.ofEpochMilli(record.addedAt),
             scheduledAt = record.scheduledAt?.let { Instant.ofEpochMilli(it) },
-            files = record.files
+            files = record.files,
+            // What the last attempt learned about the source survives a restart, so a download the
+            // user paused before closing the app is still warned about correctly when they resume it.
+            resumeSupported = record.resumeSupported
         )
     }
 
@@ -268,7 +271,8 @@ class DownloadManager(
                 scheduledAt = task.scheduledAt?.toEpochMilli(),
                 retryCount = task.retryCount,
                 fileIndices = (task.request as? DownloadRequest.Torrent)?.fileIndices,
-                files = task.files
+                files = task.files,
+                resumeSupported = task.resumeSupported
             )
         }
         withContext(Dispatchers.IO) {
@@ -336,7 +340,14 @@ class DownloadManager(
                 maxRedirects = settingsRepository.settings.value.maxRedirects
             )
             return@withContext runCatching { client.probe(request) }.getOrNull()?.let { probe ->
-                DownloadMetadata(request.name, probe.totalBytes.takeIf { it > 0 }, null)
+                DownloadMetadata(
+                    name = request.name,
+                    totalSize = probe.totalBytes.takeIf { it > 0 },
+                    files = null,
+                    // The probe already had to prove ranged reads (or watch a `Range` request get
+                    // answered with a whole body), so this is a real answer about resumability.
+                    resumeSupported = probe.rangeSupport
+                )
             }
         }
 
@@ -366,7 +377,7 @@ class DownloadManager(
             executor.execute().firstOrNull { it.totalBytes != null && it.totalBytes > 0 }
         }
 
-        metadata?.let { DownloadMetadata(it.name, it.totalBytes, it.files) }
+        metadata?.let { DownloadMetadata(it.name, it.totalBytes, it.files, resumeSupported = true) }
     }
 
     override suspend fun detectPortableDownload(path: Path): PortableDownloadInfo? =

@@ -13,7 +13,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.engine.settings.EngineSettingsRepository
@@ -25,6 +28,7 @@ import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputV
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadListView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
+import org.blaze.presentation.screens.downloads.components.add.resolveDestinationStatus
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
 import org.blaze.resolver.core.LoadedResolver
@@ -64,6 +68,15 @@ fun AddDownloadDialog(
 
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
+
+    // The save folder is checked here rather than in the input view, because the review step needs
+    // the answer too - does the announced size fit? - and the folder is known whether or not the
+    // user was asked to pick one.
+    LaunchedEffect(state.destination.text) {
+        delay(DESTINATION_CHECK_DEBOUNCE_MS)
+        state.destinationStatus =
+            withContext(Dispatchers.IO) { resolveDestinationStatus(state.destination.text) }
+    }
 
     // Keep the inline "which extension will handle this?" notice in sync with what the user
     // has typed, so the outcome is visible *before* Fetch is pressed. Torrents and magnet
@@ -215,7 +228,7 @@ fun AddDownloadDialog(
             state.batchItems.any { it.isSelected }
         } else {
             state.metadata?.files == null || state.selectedFileIndices.isNotEmpty()
-        }
+        } && !state.destinationBlocked
         Triple(dStrings.addAction, ::submit, enabled)
     }
 
@@ -268,3 +281,6 @@ fun AddDownloadDialog(
         )
     }
 }
+
+/** Keeps a folder that is being typed at from being stat-ed on every keystroke. */
+private const val DESTINATION_CHECK_DEBOUNCE_MS = 200L

@@ -2,6 +2,7 @@ package org.blaze.presentation.screens.downloads
 
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.blaze.domain.models.Download
+import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.usecase.AddDownloadUseCase
@@ -69,6 +71,12 @@ class DownloadsScreenModel(
 
     private val _searchQuery = MutableStateFlow("")
 
+    /** The same shared list the state renders, kept so the transition watcher can re-check a fact. */
+    private val downloadsFlow = getDownloads()
+
+    /** Latest snapshot seen by [watchTransitions], used to confirm a failure was not a retry hop. */
+    private val latestDownloads = MutableStateFlow<List<Download>>(emptyList())
+
     /** Capabilities are fixed for the host; resolved once so the row menu can hide unsupported actions. */
     private val capabilities = DownloadCapabilities(
         canOpenFiles = systemFileService.canOpenFiles,
@@ -78,7 +86,7 @@ class DownloadsScreenModel(
     )
 
     val state: StateFlow<DownloadsState> = combine(
-        getDownloads(),
+        downloadsFlow,
         _searchQuery,
         settingsRepository.settings
     ) { downloads, query, settings ->
@@ -98,8 +106,54 @@ class DownloadsScreenModel(
         )
     }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), DownloadsState(capabilities = capabilities))
 
-    private val _effects = MutableSharedFlow<DownloadsEffect>()
+    private val _effects = MutableSharedFlow<DownloadsEffect>(extraBufferCapacity = 8)
     val effects = _effects.asSharedFlow()
+
+    init {
+        screenModelScope.launch { watchTransitions() }
+    }
+
+    /**
+     * Announces the changes a user did not cause by pressing anything: a file that finished, a transfer
+     * that gave up, progress a forced restart threw away. They are read off the list's own stream, so
+     * the notices arrive even while the window shows a different screen.
+     *
+     * The first snapshot is only remembered, never announced - the downloads restored at startup are
+     * history the user already knows about.
+     */
+    private suspend fun watchTransitions() {
+        var previous: List<Download>? = null
+        downloadsFlow.collect { current ->
+            val before = previous
+            previous = current
+            latestDownloads.value = current
+            if (before == null) return@collect
+
+            diffDownloadTransitions(before, current).forEach { advisory ->
+                // Each notice gets its own job: waiting out a retry must not stall the list stream.
+                screenModelScope.launch { deliver(advisory) }
+            }
+        }
+    }
+
+    private suspend fun deliver(advisory: DownloadAdvisory) {
+        when (advisory) {
+            is DownloadAdvisory.Completed ->
+                _effects.emit(DownloadsEffect.DownloadCompleted(advisory.download.name))
+
+            is DownloadAdvisory.Restarted ->
+                _effects.emit(DownloadsEffect.DownloadRestarted(advisory.download.name, advisory.lostPercent))
+
+            is DownloadAdvisory.Failed -> {
+                // Automatic retries hop through Failed on the way back to Queued, and telling the
+                // user about an attempt that is already being retried is noise, not a warning.
+                delay(RETRY_GRACE_MILLIS)
+                val live = latestDownloads.value.find { it.id == advisory.download.id } ?: return
+                if (live.state != DownloadState.FAILED) return
+                _effects.emit(DownloadsEffect.DownloadFailed(live.name, live.error))
+            }
+        }
+    }
 
     fun onEvent(event: DownloadsEvent) = when (event) {
         is DownloadsEvent.SearchChanged -> _searchQuery.value = event.query
@@ -251,4 +305,9 @@ class DownloadsScreenModel(
      */
     suspend fun importPortable(artifactPath: String, destinationDir: String): Boolean =
         importPortableDownload(artifactPath, destinationDir)
+
+    private companion object {
+        /** How long a download must stay failed before it is worth interrupting the user for. */
+        const val RETRY_GRACE_MILLIS = 5_000L
+    }
 }

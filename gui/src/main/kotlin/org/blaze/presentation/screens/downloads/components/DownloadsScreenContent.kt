@@ -20,8 +20,13 @@ import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.i18n.blazeStrings
 import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.osintegration.displaySource
+import org.blaze.presentation.components.notifications.NotificationType
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsState
+import org.blaze.presentation.screens.downloads.findDuplicateOf
+import org.blaze.presentation.screens.downloads.pauseLosesProgress
+import org.blaze.presentation.screens.downloads.percentDone
+import org.blaze.presentation.screens.downloads.resumeStartsOver
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import java.io.File
@@ -35,7 +40,7 @@ fun DownloadsScreenContent(
     onResolveDestinationPath: suspend (String, String, String?) -> String,
     onDetectPortable: suspend (String) -> PortableInfo?,
     onImportPortable: suspend (String, String) -> Boolean,
-    onNotify: (message: String, isError: Boolean) -> Unit,
+    onNotify: (message: String, type: NotificationType) -> Unit,
     fileConflictBehavior: FileConflictBehavior,
     externalRequests: List<ExternalOpenRequest> = emptyList(),
     onExternalShown: (ExternalOpenRequest) -> Unit = {},
@@ -47,6 +52,8 @@ fun DownloadsScreenContent(
     // the dialog pre-fills and auto-fetches this source, and manual "+" opens clear it.
     var addDialogSource by remember { mutableStateOf<String?>(null) }
     var downloadToRemove by remember { mutableStateOf<Download?>(null) }
+    // Set when pausing would cost the download its progress, so the user confirms the loss first.
+    var downloadToPause by remember { mutableStateOf<Download?>(null) }
     var detailsId by remember { mutableStateOf<String?>(null) }
     var conflictData by remember { mutableStateOf<ConflictData?>(null) }
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -87,6 +94,32 @@ fun DownloadsScreenContent(
         }
     }
 
+    // Pausing is the irreversible one of the transport controls: when the server proved it cannot
+    // continue a ranged read, the bytes on disk are discarded, so the row asks first.
+    val handlePauseRequest: (Download) -> Unit = { download ->
+        if (download.pauseLosesProgress()) downloadToPause = download
+        else onEvent(DownloadsEvent.Pause(download.id))
+    }
+
+    // Resuming stays unconfirmed - there is nothing left to lose by pressing it - but the cost of
+    // the restart is named, so a user who expected to continue at 60% is not surprised by 0%.
+    val handleResumeRequest: (Download) -> Unit = { download ->
+        if (download.resumeStartsOver()) {
+            onNotify(strings.downloads.advisories.resumeStartsOver(download.name), NotificationType.WARNING)
+        }
+        onEvent(DownloadsEvent.Resume(download.id))
+    }
+
+    val handleEvent: (DownloadsEvent) -> Unit = { event ->
+        if (event == DownloadsEvent.PauseAll) {
+            val costly = state.downloads.count { it.pauseLosesProgress() }
+            if (costly > 0) {
+                onNotify(strings.downloads.advisories.pauseAllCosts(costly), NotificationType.WARNING)
+            }
+        }
+        onEvent(event)
+    }
+
     if (showAddDialog) {
         AddDownloadDialog(
             onDismiss = { showAddDialog = false },
@@ -117,6 +150,14 @@ fun DownloadsScreenContent(
                         }
                     }
                 } else {
+                    // Without the conflict dialog in the way, a second copy of the same source into
+                    // the same folder would otherwise be queued quietly.
+                    state.downloads.findDuplicateOf(url, destination)?.let { existing ->
+                        onNotify(
+                            strings.downloads.advisories.duplicateSource(existing.name),
+                            NotificationType.WARNING
+                        )
+                    }
                     onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt))
                 }
             },
@@ -155,6 +196,13 @@ fun DownloadsScreenContent(
     downloadToRemove?.let { download ->
         RemoveDownloadDialog(
             downloadName = download.name,
+            // An unfinished transfer has partial data on the line, and a source that cannot be
+            // continued means that data is the only thing the user would have left.
+            notice = if (download.state == DownloadState.DOWNLOADING || download.state == DownloadState.QUEUED) {
+                strings.downloads.advisories.removeInProgress(download.percentDone())
+            } else {
+                null
+            },
             onDismiss = { downloadToRemove = null },
             onConfirm = { deleteFile, setAsDefault ->
                 if (setAsDefault) {
@@ -162,6 +210,17 @@ fun DownloadsScreenContent(
                 }
                 onEvent(DownloadsEvent.Remove(download.id, deleteFile))
                 downloadToRemove = null
+            }
+        )
+    }
+
+    downloadToPause?.let { download ->
+        PauseRiskDialog(
+            download = download,
+            onDismiss = { downloadToPause = null },
+            onConfirm = {
+                onEvent(DownloadsEvent.Pause(download.id))
+                downloadToPause = null
             }
         )
     }
@@ -187,7 +246,7 @@ fun DownloadsScreenContent(
                 scope.launch {
                     val info = onDetectPortable(artifactPath)
                     if (info == null) {
-                        onNotify(strings.downloads.portable.notPortable(path.fileName.toString()), true)
+                        onNotify(strings.downloads.portable.notPortable(path.fileName.toString()), NotificationType.ERROR)
                     } else {
                         importDestination = path.toAbsolutePath().parent?.toString() ?: artifactPath
                         pendingImport = artifactPath to info
@@ -212,8 +271,11 @@ fun DownloadsScreenContent(
                         val ok = onImportPortable(artifactPath, importDestination)
                         importBusy = false
                         pendingImport = null
-                        if (ok) onNotify(strings.downloads.portable.imported, false)
-                        else onNotify(strings.downloads.portable.notPortable(Path.of(artifactPath).fileName.toString()), true)
+                        if (ok) onNotify(strings.downloads.portable.imported, NotificationType.INFO)
+                        else onNotify(
+                            strings.downloads.portable.notPortable(Path.of(artifactPath).fileName.toString()),
+                            NotificationType.ERROR
+                        )
                     }
                 }
             },
@@ -240,7 +302,7 @@ fun DownloadsScreenContent(
             hasPausedDownloads = hasPaused,
             hasCompletedDownloads = hasCompleted,
             searchQuery = state.searchQuery,
-            onEvent = onEvent,
+            onEvent = handleEvent,
             onAddDownload = { addDialogSource = null; showAddDialog = true },
             onImportPortable = { showArtifactPicker = true }
         )
@@ -261,6 +323,8 @@ fun DownloadsScreenContent(
                 listState = listState,
                 onEvent = onEvent,
                 onRemoveRequested = handleRemoveRequest,
+                onPauseRequested = handlePauseRequest,
+                onResumeRequested = handleResumeRequest,
                 onShowDetailsRequested = { id -> detailsId = id },
                 onSelect = { id -> selectedId = id },
                 hideResumeForQueued = hideResumeForQueued,

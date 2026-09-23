@@ -74,6 +74,56 @@ class DownloadApiContractTest {
     }
 
     @Test
+    fun `resume capability keeps all three of its states on the wire`() {
+        // Clients warn about lost progress from this field, so `false` (proved refusal) and `null`
+        // (never proved) must survive serialization as different values.
+        val refused = baseDto().copy(sourceSupportsResume = false)
+        assertTrue(
+            "\"sourceSupportsResume\":false" in json.encodeToString(DownloadDto.serializer(), refused),
+            "an explicit refusal must not be dropped as a default"
+        )
+
+        val proved = baseDto().copy(sourceSupportsResume = true)
+        assertTrue("\"sourceSupportsResume\":true" in json.encodeToString(DownloadDto.serializer(), proved))
+
+        val unproven = json.encodeToString(DownloadDto.serializer(), baseDto())
+        assertTrue(
+            "sourceSupportsResume" in unproven,
+            "the field must be present so a client can tell 'unknown' from a missing older build"
+        )
+    }
+
+    @Test
+    fun `a payload from an older service still decodes with an unknown resume capability`() {
+        val legacy = """
+            {"id":"7","name":"stream","state":"QUEUED",
+             "source":{"kind":"HTTPS","locator":"https://example.com/s","mayRequireCredentials":false},
+             "destination":"/d","createdAtEpochMs":123}
+        """.trimIndent()
+        val back = json.decodeFromString(DownloadDto.serializer(), legacy)
+
+        assertNull(back.sourceSupportsResume, "a response that never mentioned the field is unproven, not refusing")
+    }
+
+    @Test
+    fun `probed metadata carries the same three-state resume answer`() {
+        val text = json.encodeToString(DownloadMetadataDto.serializer(), DownloadMetadataDto(name = "a", resumeSupported = false))
+        assertTrue("\"resumeSupported\":false" in text)
+        assertNull(
+            json.decodeFromString(DownloadMetadataDto.serializer(), """{"name":"a"}""").resumeSupported
+        )
+    }
+
+    private fun baseDto() = DownloadDto(
+        id = "7",
+        name = "stream",
+        state = DownloadState.QUEUED,
+        source = SourceInfo(SourceKind.HTTPS, "https://example.com/s"),
+        destination = "/d",
+        createdAtEpochMs = 123,
+    )
+
+    @Test
     fun `state activity and terminality are explicit, not inferred`() {
         assertTrue(DownloadState.DOWNLOADING.isActive)
         assertTrue(DownloadState.QUEUED.isTerminal.not())

@@ -26,6 +26,12 @@ class TestHttpServer(
     @Volatile var earlyCloseAfterBytes: Long = Long.MAX_VALUE,
     private val perConnectionBytesPerSec: Long = 0L,
     private val headAllowed: Boolean = true,
+    /**
+     * Value of the `Accept-Ranges` header: "bytes", "none", or null to send no header at all.
+     * Servers omit it constantly (advertising is optional in RFC 9110), and a client must read that
+     * silence as "unknown" - which is a different answer from the outright refusal `none` means.
+     */
+    private val acceptRangesHeader: String? = "bytes",
     private val validator: String? = null,
     /**
      * How many ranged bodies are cut short after a third of their length. Models the flaky host
@@ -177,7 +183,7 @@ class TestHttpServer(
                             append("Content-Length: ").append(length).append("\r\n")
                             append("Content-Range: bytes ").append(from).append('-').append(to)
                                 append('/').append(payload.size).append("\r\n")
-                            append("Accept-Ranges: bytes\r\n")
+                            if (acceptRangesHeader != null) append("Accept-Ranges: ").append(acceptRangesHeader).append("\r\n")
                             if (validator != null) append("ETag: ").append(validator).append("\r\n")
                             append("Connection: ").append(connection).append("\r\n\r\n")
                         }.toByteArray(StandardCharsets.ISO_8859_1)
@@ -212,7 +218,9 @@ class TestHttpServer(
             append(status).append("\r\n")
             if (length >= 0) {
                 append("Content-Length: ").append(length).append("\r\n")
-                append("Accept-Ranges: bytes\r\n")
+                if (acceptRangesHeader != null) {
+                    append("Accept-Ranges: ").append(acceptRangesHeader).append("\r\n")
+                }
             }
             if (validator != null) append("ETag: ").append(validator).append("\r\n")
             append("Connection: ").append(connection).append("\r\n\r\n")

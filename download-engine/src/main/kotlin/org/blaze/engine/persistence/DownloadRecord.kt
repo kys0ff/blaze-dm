@@ -19,5 +19,7 @@ data class DownloadRecord(
     val scheduledAt: Long? = null,
     val retryCount: Int = 0,
     val fileIndices: List<Int>? = null,
-    val files: List<DownloadFileMetadata>? = null
+    val files: List<DownloadFileMetadata>? = null,
+    /** Proven ranged-read support of the source; null means the transfer never answered the question. */
+    val resumeSupported: Boolean? = null
 )

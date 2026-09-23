@@ -35,6 +35,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.BitSet
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicIntegerArray
 import java.util.concurrent.atomic.AtomicLong
@@ -67,6 +68,24 @@ class HttpDownloadCoordinator(
 ) {
     private val logger = LoggerFactory.getLogger(HttpDownloadCoordinator::class.java)
 
+    /**
+     * Keeps the first definitive answer about ranged reads and hands it to the caller exactly once.
+     * Silence is allowed: a source that never answers simply reports nothing, which is honest where
+     * a guessed "no" would scare the user away from a perfectly resumable host.
+     *
+     * Segmented runs call this from several worker coroutines at once, so the claim is made with a
+     * compare-and-set rather than a flag: the winner reports, everybody else stays out of the way.
+     */
+    private class RangeSupportReporter(private val onFound: suspend (Boolean) -> Unit) {
+        private val reported = AtomicBoolean(false)
+
+        suspend fun note(answer: Boolean?) {
+            if (answer == null) return
+            if (!reported.compareAndSet(false, true)) return
+            onFound(answer)
+        }
+    }
+
     data class Progress(val downloadedBytes: Long, val totalBytes: Long?)
 
     sealed interface Outcome {
@@ -77,14 +96,21 @@ class HttpDownloadCoordinator(
     /**
      * Fills [partial] with the full body of [request]. The caller owns the final
      * partial -> destination rename, exactly like before acceleration existed.
+     *
+     * [onRangeSupport] hears, as soon as the exchange proves it, whether the source can serve the
+     * ranged requests a resume depends on. It is fired at most once per run and only with evidence
+     * (a 206, an `Accept-Ranges` answer, an ignored `Range`), so a client can promise - or refuse to
+     * promise - a resume without guessing.
      */
     suspend fun download(
         request: DownloadRequest.Http,
         destination: Path,
         partial: Path,
         connections: Int,
+        onRangeSupport: suspend (Boolean) -> Unit = {},
         onProgress: suspend (Progress) -> Unit
     ): Outcome = withContext(Dispatchers.IO) {
+        val support = RangeSupportReporter(onRangeSupport)
         // `contentLength` (not the physical file size) is the resume cursor: a portable segmented
         // partial carries a metadata region *past* the content, so its size on disk is content +
         // reserved region. Reading the content length from the embedded locator keeps every
@@ -94,14 +120,15 @@ class HttpDownloadCoordinator(
 
         if (settings.httpAccelerationEnabled && connections > 1) {
             val probe = client.probe(request)
+            support.note(probe.rangeSupport)
             if (probe.status == RANGE_NOT_SATISFIABLE && resumeFrom > 0) {
                 // The bytes we already have go beyond the end of the file: it is complete.
                 return@withContext Outcome.Success(resumeFrom, resumeFrom)
             }
             if (probe.acceptsRanges && probe.totalBytes >= settings.httpMinParallelSizeBytes) {
-                segmented(request, destination, partial, probe, connections, onProgress)
+                segmented(request, destination, partial, probe, connections, support, onProgress)
             } else {
-                singleStream(request, destination, partial, resumeFrom, probe.totalBytes, onProgress)
+                singleStream(request, destination, partial, resumeFrom, probe.totalBytes, support, onProgress)
             }
         } else if (readResumeState(statePath) != null) {
             // A previous accelerated run left a chunked, *sparse* partial. Its file size is the
@@ -111,21 +138,23 @@ class HttpDownloadCoordinator(
             // record of which bytes really exist, so honor the chunk map even though the caller now
             // asked for a single connection: run the segmented path with however many workers fit.
             val probe = client.probe(request)
+            support.note(probe.rangeSupport)
             if (probe.status == RANGE_NOT_SATISFIABLE && resumeFrom > 0) {
                 return@withContext Outcome.Success(resumeFrom, resumeFrom)
             }
             if (probe.acceptsRanges && probe.totalBytes > 0) {
-                segmented(request, destination, partial, probe, connections.coerceAtLeast(1), onProgress)
+                segmented(request, destination, partial, probe, connections.coerceAtLeast(1), support, onProgress)
             } else {
                 // The ranges the sidecar's bytes were read with can no longer be served; the chunk
                 // map is useless, so start clean instead of mis-resuming.
                 logger.warn("Cannot resume the chunked partial for {} (server no longer supports ranges); restarting", destination.fileName)
+                support.note(false)
                 runCatching { storage.delete(statePath) }
                 runCatching { storage.delete(partial) }
-                singleStream(request, destination, partial, 0L, probe.totalBytes, onProgress)
+                singleStream(request, destination, partial, 0L, probe.totalBytes, support, onProgress)
             }
         } else {
-            singleStream(request, destination, partial, resumeFrom, totalHint = -1L, onProgress)
+            singleStream(request, destination, partial, resumeFrom, -1L, support, onProgress)
         }
     }
 
@@ -143,6 +172,7 @@ class HttpDownloadCoordinator(
         partial: Path,
         resumeFrom: Long,
         totalHint: Long,
+        support: RangeSupportReporter,
         onProgress: suspend (Progress) -> Unit
     ): Outcome {
         var offset = resumeFrom
@@ -150,7 +180,7 @@ class HttpDownloadCoordinator(
         val statePath = storage.getResumeStateFile(destination).toPath()
 
         while (true) {
-            val result = streamOnce(request, partial, offset, totalHint, onProgress)
+            val result = streamOnce(request, partial, offset, totalHint, support, onProgress)
             // Two ways the resume position we chose turns out to be bogus, and both are only
             // repairable by starting over (deleting first, so a leftover sparse/shifted body can
             // never be mistaken for a valid contiguous prefix):
@@ -167,6 +197,8 @@ class HttpDownloadCoordinator(
             }
             if (restartNeeded) {
                 logger.warn("Resuming {} from byte {} is not honoured by the server; restarting from byte 0", destination.fileName, offset)
+                // Asking for a range and being served the whole body is the clearest "no" there is.
+                support.note(false)
                 runCatching { storage.delete(partial) }
                 runCatching { storage.delete(statePath) }
                 offset = 0L
@@ -186,6 +218,7 @@ class HttpDownloadCoordinator(
         partial: Path,
         offset: Long,
         totalHint: Long,
+        support: RangeSupportReporter,
         onProgress: suspend (Progress) -> Unit
     ): StreamOutcome {
         var total = totalHint.takeIf { it > 0 }
@@ -208,6 +241,7 @@ class HttpDownloadCoordinator(
                 start = offset,
                 end = null,
                 onHead = { head ->
+                    support.note(head.rangeSupport)
                     val known = when {
                         head.totalBytes > 0 -> head.totalBytes
                         head.bodyLength > 0 -> head.bodyLength + offset
@@ -259,6 +293,7 @@ class HttpDownloadCoordinator(
         partial: Path,
         probe: HttpNetworkClient.Probe,
         connections: Int,
+        support: RangeSupportReporter,
         onProgress: suspend (Progress) -> Unit
     ): Outcome {
         val total = probe.totalBytes
@@ -295,7 +330,11 @@ class HttpDownloadCoordinator(
             runCatching { storage.delete(partial) }
         }
 
-        if (plan.chunkCount < 2) return singleStream(request, destination, partial, sizeOf(partial), total, onProgress)
+        if (plan.chunkCount < 2) {
+            // Too small to split: the single stream inherits the probe's answer, which the caller
+            // already heard - handing the reporter along lets a restart found below correct it.
+            return singleStream(request, destination, partial, sizeOf(partial), total, support, onProgress)
+        }
 
         val completed = CompletedChunks(plan.chunkCount)
         if (usable) {

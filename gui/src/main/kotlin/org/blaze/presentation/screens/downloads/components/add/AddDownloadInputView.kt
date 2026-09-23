@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -34,9 +33,6 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.platform.clipboard.SystemClipboard
@@ -59,7 +55,6 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.koin.compose.koinInject
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Strings that aren't in blazeStrings yet. Move them there when you get a chance.
@@ -185,13 +180,9 @@ fun AddDownloadInputView(
 
         // ── Destination ───────────────────────────────────────────────────────
         if (askWhereToSave) {
-            val status by produceState<DestinationStatus>(
-                DestinationStatus.Empty,
-                state.destination.text
-            ) {
-                delay(200.milliseconds) // debounce while typing; produceState cancels on key change
-                value = withContext(Dispatchers.IO) { resolveDestination(state.destination.text) }
-            }
+            // Validated by the dialog (it also feeds the size check on the next step), debounced so
+            // the disk is not touched on every keystroke.
+            val status = state.destinationStatus
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(text = dStrings.saveTo)
@@ -354,37 +345,9 @@ private fun sourceKind(text: String): String? {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Destination validation (runs on Dispatchers.IO)
+// Destination validation lives in DestinationStatus.kt, shared with the dialog and
+// the review step so all three agree on what a folder promises.
 // ─────────────────────────────────────────────────────────────────────────────
-
-private sealed interface DestinationStatus {
-    data object Empty : DestinationStatus
-    data object Invalid : DestinationStatus
-    data object NotADirectory : DestinationStatus
-    data object NotWritable : DestinationStatus
-    data object WillCreate : DestinationStatus
-    data class Ready(val freeBytes: Long) : DestinationStatus
-
-    val isError: Boolean
-        get() = this == Invalid || this == NotADirectory || this == NotWritable
-}
-
-private fun resolveDestination(raw: String): DestinationStatus {
-    val text = raw.trim()
-    if (text.isEmpty()) return DestinationStatus.Empty
-    val path = runCatching { Path.of(text) }.getOrNull() ?: return DestinationStatus.Invalid
-    return when {
-        Files.isDirectory(path) ->
-            if (Files.isWritable(path)) {
-                DestinationStatus.Ready(runCatching { path.toFile().usableSpace }.getOrDefault(-1L))
-            } else {
-                DestinationStatus.NotWritable
-            }
-
-        Files.exists(path) -> DestinationStatus.NotADirectory
-        else -> DestinationStatus.WillCreate
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Small UI building blocks

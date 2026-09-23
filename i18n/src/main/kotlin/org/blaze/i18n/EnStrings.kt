@@ -102,7 +102,26 @@ object EnStrings : BlazeStrings {
                 override val scheduled = "Scheduled to start"
                 override val files = "Files"
                 override val error = "Error"
+                override val resumeSupport = "Pause & resume"
             }
+
+            override val pauseRisk = object : BlazeStrings.Downloads.Dialogs.PauseRisk {
+                override val title = "Pause this download?"
+                override fun message(name: String) = "Pause $name?"
+                override fun detail(percent: Int) = if (percent > 0) {
+                    "This server can't continue an interrupted download, so pausing discards the " +
+                        "$percent% already fetched and starts over from zero next time."
+                } else {
+                    "This server can't continue an interrupted download, so it will start over from zero."
+                }
+                override val confirm = "Pause anyway"
+            }
+
+            override val destinationNotWritable = "The save folder can't be written to. Go back and choose another one."
+            override fun notEnoughSpace(needed: String, free: String) =
+                "Not enough space on this drive: $needed needed, $free free."
+            override val sourceCannotResume =
+                "This server can't continue an interrupted download. If you pause it, it starts over from zero."
         }
 
         override val status = object : BlazeStrings.Downloads.Status {
@@ -152,6 +171,39 @@ object EnStrings : BlazeStrings {
             override val importAction = "Resume download"
             override fun notPortable(path: String) = "\u201c$path\u201d is not a Blaze portable download."
             override val imported = "Portable download added to the queue."
+        }
+
+        override val advisories = object : BlazeStrings.Downloads.Advisories {
+            override val cannotResume = "Can't resume"
+            override val waitingForPeers = "Waiting for peers"
+            override val resumeSupported = "Can resume where it stopped"
+            override val titleCompleted = "Download completed"
+            override val titleFailed = "Download failed"
+            override val titleRestarted = "Download restarted"
+            override fun completed(name: String) = "$name finished downloading."
+            override fun failed(name: String, reason: String) = "$name failed: $reason"
+            override fun restarted(name: String, percent: Int) =
+                "$name had to start over, discarding $percent% of already-downloaded data."
+            override fun resumeStartsOver(name: String) =
+                "$name can't be continued by its server, so resuming starts it over from zero."
+            override fun pauseAllCosts(count: Int) = if (count == 1) {
+                "1 download can't be resumed by its server; pausing it discards its progress."
+            } else {
+                "$count downloads can't be resumed by their server; pausing them discards their progress."
+            }
+            override fun duplicateSource(name: String) = "$name is already in the download list."
+            override fun removeInProgress(percent: Int) =
+                "This download is only $percent% done; removing it throws that data away."
+            override fun alertCannotResume(count: Int) = if (count == 1) {
+                "1 download can't be resumed"
+            } else {
+                "$count downloads can't be resumed"
+            }
+            override fun alertWaitingPeers(count: Int) = if (count == 1) {
+                "1 download is waiting for peers"
+            } else {
+                "$count downloads are waiting for peers"
+            }
         }
     }
 

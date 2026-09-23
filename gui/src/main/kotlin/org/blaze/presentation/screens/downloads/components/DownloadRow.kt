@@ -46,6 +46,9 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
+import org.blaze.presentation.screens.downloads.isTorrentSource
+import org.blaze.presentation.screens.downloads.isUnresumableInProgress
+import org.blaze.presentation.screens.downloads.isWaitingForPeers
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
@@ -114,9 +117,7 @@ fun DownloadRow(
     // ── Derived state ─────────────────────────────────────────────────────────
     val isFailed = download.state == DownloadState.FAILED
     val isCompleted = download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
-    val isTorrent = download.url.startsWith("magnet:") ||
-        download.url.endsWith(".torrent", ignoreCase = true) ||
-        download.url == "Local Torrent"
+    val isTorrent = download.isTorrentSource()
 
     val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
         (download.totalSize == null || (download.downloadedSize == 0L && download.speed == 0L))
@@ -216,6 +217,14 @@ fun DownloadRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     StatusBadge(download.state)
+                    // Conditions the row can state up front, before a click spends something: a server
+                    // that refuses ranges makes pause destructive, a peerless torrent makes it endless.
+                    if (download.isWaitingForPeers()) {
+                        AdvisoryChip(strings.downloads.advisories.waitingForPeers, AdvisoryTone.WARNING)
+                    }
+                    if (!isCompleted && !isFailed && download.isUnresumableInProgress()) {
+                        AdvisoryChip(strings.downloads.advisories.cannotResume, AdvisoryTone.WARNING)
+                    }
                     // Every in-flight download carries self-contained resume state, so the artifact can
                     // be moved to another PC and continued. Show an unobtrusive badge until completion,
                     // when the metadata is stripped and the badge disappears with it.

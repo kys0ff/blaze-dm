@@ -20,5 +20,11 @@ data class DownloadTask(
     val retryCount: Int = 0,
     val createdAt: Instant = Instant.now(),
     val completedAt: Instant? = null,
-    val files: List<DownloadFileMetadata>? = null
+    val files: List<DownloadFileMetadata>? = null,
+    /**
+     * Whether the source can serve the ranged requests a resume depends on, as proven by the
+     * transfer itself. Null while unknown: a paused download whose value is still null may or may
+     * not continue where it stopped, and no client should claim otherwise.
+     */
+    val resumeSupported: Boolean? = null
 )

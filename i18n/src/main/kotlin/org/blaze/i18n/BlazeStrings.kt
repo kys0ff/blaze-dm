@@ -115,7 +115,25 @@ interface BlazeStrings {
                 val scheduled: String
                 val files: String
                 val error: String
+                /** Label for the proven ability to survive a pause. */
+                val resumeSupport: String
             }
+
+            /** Shown before pausing a download whose source cannot be continued. */
+            val pauseRisk: PauseRisk
+            interface PauseRisk {
+                val title: String
+                fun message(name: String): String
+                /** Explains the cost of pausing, in the progress that will be thrown away. */
+                fun detail(percent: Int): String
+                val confirm: String
+            }
+
+            /** Inline notice in the add-download review step. */
+            val destinationNotWritable: String
+            fun notEnoughSpace(needed: String, free: String): String
+            /** The probe already proved a pause would cost the whole transfer. */
+            val sourceCannotResume: String
         }
 
         val status: Status
@@ -170,6 +188,39 @@ interface BlazeStrings {
             val importAction: String
             fun notPortable(path: String): String
             val imported: String
+        }
+
+        /**
+         * Copy for the risky-situation notices the downloads list raises: chips on a row, balloon
+         * notifications about lifecycle transitions, and the status bar's attention line.
+         */
+        val advisories: Advisories
+        interface Advisories {
+            /** Row chip: the source proved it cannot continue an interrupted transfer. */
+            val cannotResume: String
+            /** Row chip: a torrent with no peers connected and no bytes moving. */
+            val waitingForPeers: String
+            /** Details-dialog answer for a source that can pick a pause back up. */
+            val resumeSupported: String
+            val titleCompleted: String
+            val titleFailed: String
+            val titleRestarted: String
+            fun completed(name: String): String
+            fun failed(name: String, reason: String): String
+            /** The transfer had to begin again, so progress on disk was thrown away. */
+            fun restarted(name: String, percent: Int): String
+            /** Warns that resuming a paused, non-resumable download restarts it from the beginning. */
+            fun resumeStartsOver(name: String): String
+            /** Warns that pausing several transfers at once costs some of them their progress. */
+            fun pauseAllCosts(count: Int): String
+            /** Warns that the same destination is already being downloaded. */
+            fun duplicateSource(name: String): String
+            /** Shown when removing a download that still has progress on disk to lose. */
+            fun removeInProgress(percent: Int): String
+            /** Status-bar attention text for transfers that cannot survive a pause. */
+            fun alertCannotResume(count: Int): String
+            /** Status-bar attention text for transfers idle because they found no peers. */
+            fun alertWaitingPeers(count: Int): String
         }
     }
 

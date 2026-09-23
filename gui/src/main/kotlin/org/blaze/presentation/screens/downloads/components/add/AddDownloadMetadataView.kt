@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.screens.downloads.components.AdvisoryCallout
+import org.blaze.presentation.screens.downloads.components.AdvisoryTone
 import org.blaze.presentation.util.formatSize
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
@@ -61,6 +63,19 @@ fun AddDownloadMetadataView(
                 Text(dStrings.url, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
                 Text(state.source, maxLines = 1, overflow = TextOverflow.Ellipsis, color = JewelTheme.globalColors.text.info)
             }
+        }
+
+        // ── Pre-flight: what is already known to be wrong, said before the transfer rather than after ──
+        val destinationProblem = when {
+            state.destinationStatus.isError -> dStrings.destinationNotWritable
+            else -> state.destinationStatus.notEnoughSpaceText(state.announcedBytes, strings)
+        }
+        destinationProblem?.let { problem ->
+            AdvisoryCallout(problem, AdvisoryTone.ERROR)
+        }
+        // A server that will not continue a stopped range turns every later pause into a restart.
+        if (metadata.resumeSupported == false) {
+            AdvisoryCallout(dStrings.sourceCannotResume, AdvisoryTone.WARNING)
         }
 
         if (metadata.files != null) {

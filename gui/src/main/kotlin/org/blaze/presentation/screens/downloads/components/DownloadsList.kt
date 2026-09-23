@@ -21,6 +21,8 @@ fun DownloadsList(
     listState: LazyListState,
     onEvent: (DownloadsEvent) -> Unit,
     onRemoveRequested: (Download) -> Unit,
+    onPauseRequested: (Download) -> Unit,
+    onResumeRequested: (Download) -> Unit,
     onShowDetailsRequested: (String) -> Unit,
     onSelect: (String) -> Unit,
     hideResumeForQueued: Boolean,
@@ -36,8 +38,10 @@ fun DownloadsList(
             items(downloads, key = { it.id }) { download ->
                 val id = download.id
                 val actions = DownloadRowActions(
-                    pause = { onEvent(DownloadsEvent.Pause(id)) },
-                    resume = { onEvent(DownloadsEvent.Resume(id)) },
+                    // Pause and resume go through the screen, which may interpose a warning when the
+                    // source cannot survive the transition; everything else is a plain command.
+                    pause = { onPauseRequested(download) },
+                    resume = { onResumeRequested(download) },
                     retry = { onEvent(DownloadsEvent.Retry(id)) },
                     cancel = { onEvent(DownloadsEvent.Cancel(id)) },
                     remove = { onRemoveRequested(download) },

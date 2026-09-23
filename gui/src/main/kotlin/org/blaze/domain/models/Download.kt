@@ -17,6 +17,11 @@ data class Download(
     val savePath: String,
     val error: ApiErrorBody? = null,
     val selectedFiles: List<SelectedFile>? = null,
+    /**
+     * Whether the source itself can continue from where a pause stopped. Null means unproven - only a
+     * measured answer justifies warning the user, so "unknown" must never render as "impossible".
+     */
+    val resumeSupported: Boolean? = null,
     val progress: Float = if (totalSize != null && totalSize > 0) {
         (downloadedSize.toFloat() / totalSize).coerceIn(0f, 1f)
     } else if (state == DownloadState.COMPLETED || state == DownloadState.SEEDING) {
