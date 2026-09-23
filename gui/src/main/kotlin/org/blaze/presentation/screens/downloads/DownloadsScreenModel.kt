@@ -35,6 +35,7 @@ import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.platform.files.SystemFileService
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.milliseconds
 
 class DownloadsScreenModel(
     getDownloads: GetDownloadsUseCase,
@@ -147,7 +148,7 @@ class DownloadsScreenModel(
             is DownloadAdvisory.Failed -> {
                 // Automatic retries hop through Failed on the way back to Queued, and telling the
                 // user about an attempt that is already being retried is noise, not a warning.
-                delay(RETRY_GRACE_MILLIS)
+                delay(RETRY_GRACE_MILLIS.milliseconds)
                 val live = latestDownloads.value.find { it.id == advisory.download.id } ?: return
                 if (live.state != DownloadState.FAILED) return
                 _effects.emit(DownloadsEffect.DownloadFailed(live.name, live.error))

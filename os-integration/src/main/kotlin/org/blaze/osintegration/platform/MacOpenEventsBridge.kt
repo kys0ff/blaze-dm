@@ -5,8 +5,6 @@ import org.blaze.osintegration.ExternalOpenParser
 import org.slf4j.LoggerFactory
 import java.awt.Desktop
 import java.awt.desktop.AppReopenedListener
-import java.awt.desktop.OpenFilesHandler
-import java.awt.desktop.OpenURIHandler
 import java.io.File
 
 /**
@@ -36,17 +34,17 @@ object MacOpenEventsBridge {
         var registered = false
         runCatching {
             if (desktop.isSupported(Desktop.Action.APP_OPEN_FILE)) {
-                desktop.setOpenFileHandler(OpenFilesHandler { event ->
+                desktop.setOpenFileHandler { event ->
                     submitAll(inbox, parser, event.files.orEmpty().map(File::getAbsolutePath))
-                })
+                }
                 registered = true
             }
         }.onFailure { logger.warn("Could not register the macOS open-files handler", it) }
         runCatching {
             if (desktop.isSupported(Desktop.Action.APP_OPEN_URI)) {
-                desktop.setOpenURIHandler(OpenURIHandler { event ->
+                desktop.setOpenURIHandler { event ->
                     event.uri?.toString()?.let { submitAll(inbox, parser, listOf(it)) }
-                })
+                }
                 registered = true
             }
         }.onFailure { logger.warn("Could not register the macOS open-URI handler", it) }

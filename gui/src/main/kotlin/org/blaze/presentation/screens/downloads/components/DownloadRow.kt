@@ -3,11 +3,11 @@ package org.blaze.presentation.screens.downloads.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ContextMenuArea
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.ContextMenuArea
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
@@ -65,7 +66,7 @@ import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.theme.simpleListItemStyle
 import java.io.File
-import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 private val ListItemShape = RoundedCornerShape(6.dp)
 private val RowMinHeight = 52.dp
@@ -137,7 +138,7 @@ fun DownloadRow(
         LaunchedEffect(download.id, download.savePath) {
             while (true) {
                 fileMissing = !downloadArtifactExists(download.savePath)
-                delay(ARTIFACT_CHECK_INTERVAL_MS)
+                delay(ARTIFACT_CHECK_INTERVAL_MS.milliseconds)
             }
         }
     }

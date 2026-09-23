@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
-import java.util.concurrent.TimeUnit
 
 /**
  * Blaze's own OS-integration cleanup: the app-specific glue that reaches every registration and
@@ -57,7 +56,7 @@ class OsIntegrationCleanup(
     }
 
     /**
-     * Startup self-heal. Removes the desktop registrations this machine can no longer honour and the
+     * Startup self-heal. Removes the desktop registrations this machine can no longer honor and the
      * debris of a previously killed run; a healthy install is left completely untouched.
      *
      * The dead `.desktop` entry itself is pruned by [LauncherEntryInstaller.ensureInstalled], which the

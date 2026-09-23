@@ -1,6 +1,5 @@
 package org.blaze.osintegration.singleinstance
 
-import kotlinx.coroutines.flow.first
 import org.blaze.download.api.ServicePaths
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
@@ -8,9 +7,9 @@ import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.osintegration.PathProbe
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.nio.channels.SocketChannel
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
+import java.nio.channels.SocketChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -100,7 +99,7 @@ class SingleInstanceForwardingTest {
         assertEquals(0, exit, "the forwarding launcher must exit cleanly; out=$out")
         assertTrue("OUTCOME=Forwarded" in out, "the warm launcher must forward, not start; out=$out")
         awaitUntil { inboxA.pending.value.containsAll(listOf(ExternalOpenRequest.MagnetUri(magnetRaw), ExternalOpenRequest.TorrentFile(torrent))) }
-        (owner as SingleInstanceOutcome.Owner).coordinator.close()
+        owner.coordinator.close()
     }
 
     @Test
@@ -155,7 +154,7 @@ class SingleInstanceForwardingTest {
             InstanceTokenStore(ServicePaths.instanceTokenFileFor(dir)).readPublished()!!, listOf(magnet),
         )))
         awaitUntil { inbox.pending.value == listOf(magnet) }
-        (owner as SingleInstanceOutcome.Owner).coordinator.close()
+        owner.coordinator.close()
     }
 
     @Test
@@ -185,7 +184,7 @@ class SingleInstanceForwardingTest {
             InstanceProtocol.encode(token, listOf(magnet)),
         ))
         awaitUntil { inbox.pending.value == listOf(magnet) }
-        (owner as SingleInstanceOutcome.Owner).coordinator.close()
+        owner.coordinator.close()
     }
 
     // ── wire format fidelity for hostile/exotic content ───────────────────────────────────────

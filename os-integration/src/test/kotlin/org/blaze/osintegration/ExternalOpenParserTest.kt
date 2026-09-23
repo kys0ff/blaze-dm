@@ -1,6 +1,5 @@
 package org.blaze.osintegration
 
-import java.nio.file.Path
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -218,7 +217,7 @@ class ExternalOpenParserTest {
 
     @Test
     fun `the cleanup option is a known argument, not a resource or a rejection`() {
-        // `blaze --cleanup` is handled by the launcher before anything is parsed; recognising the flag
+        // `blaze --cleanup` is handled by the launcher before anything is parsed; recognizing the flag
         // here is what keeps it out of the "unsupported launch argument" log after every cleanup run.
         val result = parserAcceptingAllFiles().parse(listOf(ExternalOpenParser.OPTION_CLEANUP))
 

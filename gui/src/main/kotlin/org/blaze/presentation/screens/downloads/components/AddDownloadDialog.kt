@@ -37,6 +37,7 @@ import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Text
 import org.koin.compose.koinInject
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalJewelApi::class)
 @Composable
@@ -70,10 +71,10 @@ fun AddDownloadDialog(
     val focusRequester = remember { FocusRequester() }
 
     // The save folder is checked here rather than in the input view, because the review step needs
-    // the answer too - does the announced size fit? - and the folder is known whether or not the
+    // the answer too - does the announced size fit? - and the folder is known whether the
     // user was asked to pick one.
     LaunchedEffect(state.destination.text) {
-        delay(DESTINATION_CHECK_DEBOUNCE_MS)
+        delay(DESTINATION_CHECK_DEBOUNCE_MS.milliseconds)
         state.destinationStatus =
             withContext(Dispatchers.IO) { resolveDestinationStatus(state.destination.text) }
     }

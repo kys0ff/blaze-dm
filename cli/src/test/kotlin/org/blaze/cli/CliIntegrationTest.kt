@@ -26,6 +26,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * End-to-end proof of the CLI as just another client of the public API.
@@ -184,7 +185,7 @@ class CliIntegrationTest {
         while (System.currentTimeMillis() - start < deadlineMs) {
             val s = fetch()
             if (s != null && s.isTerminal) return s
-            delay(150)
+            delay(150.milliseconds)
         }
         return fetch() ?: DownloadState.FAILED
     }
