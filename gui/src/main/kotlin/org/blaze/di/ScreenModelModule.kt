@@ -17,6 +17,7 @@ val screenModelModule = module {
             cancelDownload = get(),
             removeDownload = get(),
             retryDownload = get(),
+            setPriority = get(),
             pauseAllDownloads = get(),
             resumeAllDownloads = get(),
             clearCompletedDownloads = get(),

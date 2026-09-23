@@ -32,7 +32,8 @@ interface DownloadEngine {
         request: DownloadRequest,
         totalBytes: Long? = null,
         files: List<DownloadFileMetadata>? = null,
-        scheduledAt: Instant? = null
+        scheduledAt: Instant? = null,
+        priority: DownloadPriority? = null
     ): DownloadId
     suspend fun start(id: DownloadId)
     suspend fun pause(id: DownloadId)
@@ -40,6 +41,13 @@ interface DownloadEngine {
     suspend fun cancel(id: DownloadId)
     suspend fun retry(id: DownloadId)
     suspend fun remove(id: DownloadId, deleteFiles: Boolean = false)
+
+    /**
+     * Re-ranks an existing download. Takes effect for a still-queued task immediately (it may be
+     * started ahead of lower-priority peers on the next tick); for a running one it only changes the
+     * ordering of everything still waiting behind it, without interrupting the transfer.
+     */
+    suspend fun setPriority(id: DownloadId, priority: DownloadPriority)
 
     suspend fun getTask(id: DownloadId): DownloadTask?
     fun observeTask(id: DownloadId): Flow<DownloadTask>

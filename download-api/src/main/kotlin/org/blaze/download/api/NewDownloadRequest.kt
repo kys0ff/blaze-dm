@@ -89,6 +89,11 @@ data class NewDownloadRequest(
     val files: List<DownloadFileHint>? = null,
     /** Schedule the start for a future instant (epoch millis); null means "as soon as a slot frees". */
     val scheduledAtEpochMs: Long? = null,
+    /**
+     * How urgent this download is. Null defers to the engine's configured default priority; an
+     * explicit value always wins. Only honored when [ApiCapabilities.prioritySupport] says so.
+     */
+    val priority: DownloadPriority? = null,
 ) {
     /** The combined header set handed to the engine for this (in-memory) transfer only. */
     fun effectiveHeaders(): Map<String, String> = transferHeaders.toMap() + credentials

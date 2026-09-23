@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
+import org.blaze.download.api.DownloadPriority
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.IdeDialog
@@ -50,7 +51,8 @@ fun AddDownloadDialog(
         fileIndices: List<Int>?,
         totalSize: Long?,
         files: List<DownloadFile>?,
-        scheduledAt: Long?
+        scheduledAt: Long?,
+        priority: DownloadPriority
     ) -> Unit,
     onFetchMetadata: suspend (url: String) -> DownloadMetadata?,
     initialSource: String? = null
@@ -59,10 +61,15 @@ fun AddDownloadDialog(
     val registry = koinInject<LinkResolverRegistry>()
     val resolverSettings = koinInject<LinkResolverSettingsRepository>()
     val defaultPath = remember { settingsRepository.settings.value.defaultDownloadDir }
+    val defaultPriority = remember {
+        // The engine stores its own priority enum; map by name onto the api enum the GUI uses.
+        DownloadPriority.valueOf(settingsRepository.settings.value.defaultDownloadPriority.name)
+    }
     // An external open (OS file association / magnet link) arrives with the source already
     // filled in - exactly what the user would have pasted - so every normal step still applies.
     val state = remember {
         AddDownloadState(defaultPath).apply {
+            priority = defaultPriority
             if (initialSource != null) url = TextFieldValue(initialSource)
         }
     }
@@ -198,7 +205,8 @@ fun AddDownloadDialog(
                     item.metadata?.files?.map { it.index },
                     item.metadata?.totalSize,
                     item.metadata?.files,
-                    scheduledAt
+                    scheduledAt,
+                    state.priority
                 )
             }
         } else {
@@ -210,7 +218,8 @@ fun AddDownloadDialog(
                     .sorted() else null,
                 state.metadata?.totalSize,
                 state.metadata?.files,
-                scheduledAt
+                scheduledAt,
+                state.priority
             )
         }
         onDismiss()

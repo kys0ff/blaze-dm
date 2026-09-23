@@ -63,4 +63,6 @@ data class DownloadDto(
     val sourceSupportsResume: Boolean? = null,
     val portable: Boolean = false,
     val files: List<DownloadFile>? = null,
+    /** Scheduling priority of this download; see [DownloadPriority]. */
+    val priority: DownloadPriority = DownloadPriority.NORMAL,
 )

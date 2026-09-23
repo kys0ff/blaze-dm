@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
@@ -260,6 +261,12 @@ fun DownloadRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     StatusBadge(download.state, dimmed = fileMissing)
+                    // Priority is a persistent property of the row, not an in-progress hint - so unlike
+                    // the portable indicator it stays visible after completion, letting the user see and
+                    // confirm what setting the download was queued under.
+                    if (download.priority != DownloadPriority.NORMAL) {
+                        PriorityChip(download.priority)
+                    }
                     // The file is gone: say so up front, since opening it (double-click, menu) is no longer possible.
                     if (fileMissing) {
                         AdvisoryChip(strings.downloads.advisories.fileMissing, AdvisoryTone.ERROR)

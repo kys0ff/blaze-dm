@@ -1,6 +1,7 @@
 package org.blaze.engine.settings
 
 import kotlinx.serialization.Serializable
+import org.blaze.engine.api.DownloadPriority
 
 @Serializable
 enum class FileConflictBehavior {
@@ -36,6 +37,12 @@ data class DownloadSettings(
     val maxConcurrentDownloads: Int = 4,
     val maxConnectionsPerDownload: Int = 4,
     val httpAccelerationEnabled: Boolean = true,
+
+    /**
+     * Priority given to a new download when the client does not choose one. Defaults to NORMAL, so
+     * out of the box every transfer is ranked equally and the queue stays strictly first-in-first-out.
+     */
+    val defaultDownloadPriority: DownloadPriority = DownloadPriority.NORMAL,
 
     /** Below this size the extra requests of a segmented transfer cost more than they save. */
     val httpMinParallelSizeBytes: Long = 4L * 1024 * 1024,

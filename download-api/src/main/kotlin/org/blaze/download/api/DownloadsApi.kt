@@ -50,6 +50,12 @@ interface DownloadsApi {
     suspend fun remove(id: String, deleteFiles: Boolean = false)
 
     /**
+     * Re-ranks an existing download. Succeeds as a no-op only when the engine reports
+     * [PrioritySupport.EXPLICIT]; a FIFO build rejects it rather than silently ignoring the request.
+     */
+    suspend fun setPriority(id: String, priority: DownloadPriority)
+
+    /**
      * Probes [request]'s source (a HEAD/range check for HTTP, a metadata fetch for torrent) and returns a
      * preview without committing to a transfer. Returns null when the source cannot be described.
      */

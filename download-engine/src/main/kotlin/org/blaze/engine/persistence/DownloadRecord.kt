@@ -20,6 +20,8 @@ data class DownloadRecord(
     val retryCount: Int = 0,
     val fileIndices: List<Int>? = null,
     val files: List<DownloadFileMetadata>? = null,
+    /** Scheduling priority name; unknown/absent values are read back as NORMAL. */
+    val priority: String = "NORMAL",
     /** Proven ranged-read support of the source; null means the transfer never answered the question. */
     val resumeSupported: Boolean? = null
 )

@@ -16,13 +16,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
+import org.blaze.download.api.DownloadPriority
 import org.blaze.presentation.screens.downloads.components.AdvisoryCallout
 import org.blaze.presentation.screens.downloads.components.AdvisoryTone
+import org.blaze.presentation.screens.downloads.components.label
+import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatSize
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
@@ -62,6 +67,38 @@ fun AddDownloadMetadataView(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(dStrings.url, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
                 Text(state.source, maxLines = 1, overflow = TextOverflow.Ellipsis, color = JewelTheme.globalColors.text.info)
+            }
+            // Priority is picked here, next to the resolved name/size, so it's set alongside the
+            // other per-download choices rather than buried in a separate step.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    strings.downloads.priority.label,
+                    color = JewelTheme.globalColors.text.info,
+                    modifier = Modifier.width(60.dp)
+                )
+                val p = strings.downloads.priority
+                DownloadPriority.entries.forEach { level ->
+                    val selected = state.priority == level
+                    Text(
+                        text = level.label(p),
+                        color = if (selected) BlazeColors.accent else JewelTheme.globalColors.text.info,
+                        style = JewelTheme.defaultTextStyle.copy(
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                if (selected) BlazeColors.accent.copy(alpha = 0.15f)
+                                else Color.Transparent
+                            )
+                            .clickable { state.priority = level }
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
             }
         }
 

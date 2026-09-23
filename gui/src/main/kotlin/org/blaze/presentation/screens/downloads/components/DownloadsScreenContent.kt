@@ -124,7 +124,7 @@ fun DownloadsScreenContent(
         AddDownloadDialog(
             onDismiss = { showAddDialog = false },
             initialSource = addDialogSource,
-            onAdd = { url, destination, name, fileIndices, totalSize, files, scheduledAt ->
+            onAdd = { url, destination, name, fileIndices, totalSize, files, scheduledAt, priority ->
                 if (fileConflictBehavior == FileConflictBehavior.ASK) {
                     scope.launch {
                         val fullPathStr = onResolveDestinationPath(url, destination, name)
@@ -143,10 +143,11 @@ fun DownloadsScreenContent(
                                 fileName = file.name,
                                 fullPathStr = fullPathStr,
                                 fileIndices = fileIndices,
-                                conflictingDownloadId = conflictingDownload?.id
+                                conflictingDownloadId = conflictingDownload?.id,
+                                priority = priority
                             )
                         } else {
-                            onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt))
+                            onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt, priority))
                         }
                     }
                 } else {
@@ -158,7 +159,7 @@ fun DownloadsScreenContent(
                             NotificationType.WARNING
                         )
                     }
-                    onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt))
+                    onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt, priority))
                 }
             },
             onFetchMetadata = onFetchMetadata
@@ -180,11 +181,11 @@ fun DownloadsScreenContent(
                             f.delete()
                             val partFile = File(data.fullPathStr + ".part")
                             partFile.delete()
-                            onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices))
+                            onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices, priority = data.priority))
                         }
                     }
                     FileConflictBehavior.RENAME -> {
-                        onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices))
+                        onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices, priority = data.priority))
                     }
                     else -> {} // SKIP: do nothing
                 }

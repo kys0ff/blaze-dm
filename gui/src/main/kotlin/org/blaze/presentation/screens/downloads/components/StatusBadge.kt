@@ -4,16 +4,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.domain.models.DownloadState
+import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.BlazeColors
@@ -65,4 +69,29 @@ fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier, dimmed: Boo
             style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
         )
     }
+}
+
+/**
+ * Small chip marking a download whose [priority] stands out from the default. Rendered only for
+ * non-[DownloadPriority.NORMAL] rows so the common case stays uncluttered; the accent color echoes
+ * urgency so a background transfer reads differently from an urgent one at a glance.
+ */
+@Composable
+fun PriorityChip(priority: DownloadPriority, modifier: Modifier = Modifier) {
+    val strings = blazeStrings
+    val color = when (priority) {
+        DownloadPriority.HIGH -> BlazeColors.success
+        DownloadPriority.LOW -> BlazeColors.warning
+        DownloadPriority.IDLE -> JewelTheme.globalColors.text.disabled
+        DownloadPriority.NORMAL -> JewelTheme.globalColors.text.info
+    }
+    Text(
+        text = priority.label(strings.downloads.priority),
+        color = color,
+        style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = 0.14f))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
 }

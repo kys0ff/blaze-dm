@@ -135,6 +135,14 @@ object EnStrings : BlazeStrings {
             override val seeding = "Seeding"
             override val scheduled = "Scheduled"
         }
+
+        override val priority = object : BlazeStrings.Downloads.Priority {
+            override val idle = "Idle"
+            override val low = "Low"
+            override val normal = "Normal"
+            override val high = "High"
+            override val label = "Priority"
+        }
         
         override fun progress(downloaded: String, total: String) = "$downloaded / $total"
         override fun completedCount(count: Int) = if (count == 1) "1 download completed" else "$count downloads completed"
@@ -272,6 +280,8 @@ object EnStrings : BlazeStrings {
         override val maxConcurrentDownloadsDesc = "Controls how many downloads can actively transfer at the same time. Downloads exceeding this limit remain queued until a slot becomes available."
         override val maxConnectionsLabel = "Maximum connections per download"
         override val maxConnectionsDesc = "The number of concurrent HTTP connections/segments or torrent streams established per individual download task."
+        override val defaultPriorityLabel = "Default priority for new downloads"
+        override val defaultPriorityDesc = "How urgent a freshly added download is relative to the others. Higher priorities start first when a slot frees and get a larger share of the connections; lower ones yield."
         override val bandwidthHeader = "Bandwidth Limit"
         override val speedLimitEnabledLabel = "Limit download speed globally"
         override val speedLimitLabel = "Download speed limit (KB/s)"

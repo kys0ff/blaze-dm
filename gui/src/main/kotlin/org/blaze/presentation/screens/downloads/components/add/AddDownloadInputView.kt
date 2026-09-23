@@ -57,7 +57,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Strings that aren't in blazeStrings yet. Move them there when you get a chance.
+ * TODO: Strings that aren't in blazeStrings yet. Move them there when you get a chance.
  */
 private object Fallback {
     const val PASTE = "Paste from clipboard"

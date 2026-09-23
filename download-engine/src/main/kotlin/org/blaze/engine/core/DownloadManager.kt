@@ -24,6 +24,7 @@ import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadMetadata
+import org.blaze.engine.api.DownloadPriority
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
@@ -242,6 +243,7 @@ class DownloadManager(
             createdAt = Instant.ofEpochMilli(record.addedAt),
             scheduledAt = record.scheduledAt?.let { Instant.ofEpochMilli(it) },
             files = record.files,
+            priority = DownloadPriority.fromString(record.priority),
             // What the last attempt learned about the source survives a restart, so a download the
             // user paused before closing the app is still warned about correctly when they resume it.
             resumeSupported = record.resumeSupported
@@ -277,6 +279,7 @@ class DownloadManager(
                 retryCount = task.retryCount,
                 fileIndices = (task.request as? DownloadRequest.Torrent)?.fileIndices,
                 files = task.files,
+                priority = task.priority.name,
                 resumeSupported = task.resumeSupported
             )
         }
@@ -448,9 +451,13 @@ class DownloadManager(
         request: DownloadRequest,
         totalBytes: Long?,
         files: List<DownloadFileMetadata>?,
-        scheduledAt: Instant?
+        scheduledAt: Instant?,
+        priority: DownloadPriority?
     ): DownloadId {
         val id = DownloadId.generate()
+        // A null priority means "no explicit choice": fall back to the engine-wide default the user
+        // configured, so an omitted value is not silently pinned to NORMAL.
+        val resolvedPriority = priority ?: settingsRepository.settings.value.defaultDownloadPriority
         val finalRequest = if (request is DownloadRequest.Torrent && request.torrentSource is TorrentSource.Magnet) {
             val key = getCacheKey(request)
             val cachedTorrentFile = repository.storageDir.resolve("cache").resolve("$key.torrent")
@@ -472,6 +479,7 @@ class DownloadManager(
             downloadedBytes = 0,
             downloadSpeed = 0,
             scheduledAt = scheduledAt,
+            priority = resolvedPriority,
             files = files
         )
         tasks.update { it + (id to task) }
@@ -524,6 +532,11 @@ class DownloadManager(
                 }
             }
         }
+        persist()
+    }
+
+    override suspend fun setPriority(id: DownloadId, priority: DownloadPriority) {
+        scheduler.setPriority(id, priority)
         persist()
     }
 

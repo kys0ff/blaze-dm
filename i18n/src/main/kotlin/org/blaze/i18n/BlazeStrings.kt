@@ -149,6 +149,17 @@ interface BlazeStrings {
             val seeding: String
             val scheduled: String
         }
+
+        /** Names for the download priority levels, shared by the add dialog, row menu, badge and settings. */
+        val priority: Priority
+        interface Priority {
+            val idle: String
+            val low: String
+            val normal: String
+            val high: String
+            /** Title of the priority submenu / selector. */
+            val label: String
+        }
         
         fun progress(downloaded: String, total: String): String
         fun completedCount(count: Int): String
@@ -301,6 +312,8 @@ interface BlazeStrings {
         val maxConcurrentDownloadsDesc: String
         val maxConnectionsLabel: String
         val maxConnectionsDesc: String
+        val defaultPriorityLabel: String
+        val defaultPriorityDesc: String
         val bandwidthHeader: String
         val speedLimitEnabledLabel: String
         val speedLimitLabel: String

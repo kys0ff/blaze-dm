@@ -13,6 +13,7 @@ val useCaseModule = module {
     factory { CancelDownloadUseCase(get()) }
     factory { RemoveDownloadUseCase(get()) }
     factory { RetryDownloadUseCase(get()) }
+    factory { SetPriorityDownloadUseCase(get()) }
     factory { PauseAllDownloadsUseCase(get()) }
     factory { ResumeAllDownloadsUseCase(get()) }
     factory { ClearCompletedDownloadsUseCase(get()) }

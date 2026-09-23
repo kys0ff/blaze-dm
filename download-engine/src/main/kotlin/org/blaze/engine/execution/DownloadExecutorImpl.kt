@@ -130,11 +130,15 @@ class DownloadExecutorImpl(
                 metrics = metrics
             )
 
-            // An explicit per-download request overrides the global preference; either way the
-            // worker count is bounded, because more connections than this only gets us throttled
-            // or banned by the host.
-            val connections = (request.segmentCount.takeIf { it > 0 } ?: settings.maxConnectionsPerDownload)
-                .coerceIn(1, EngineSettingsRepository.MAX_CONNECTIONS_PER_DOWNLOAD)
+            // An explicit per-download request overrides everything: priority never second-guesses a
+            // hand-picked connection count. Otherwise the global budget is scaled by this download's
+            // priority, so an idle transfer trickles along on one connection while an urgent one takes
+            // a larger share. Either way the worker count stays bounded - more connections than this
+            // only gets us throttled or banned by the host.
+            val connections = (
+                if (request.segmentCount > 0) request.segmentCount
+                else task.priority.connectionsFor(settings.maxConnectionsPerDownload)
+            ).coerceIn(1, EngineSettingsRepository.MAX_CONNECTIONS_PER_DOWNLOAD)
             if (finalPartialPath.let { storage.exists(it) } && storage.size(finalPartialPath) > 0) {
                 metrics.recordResumed()
             }

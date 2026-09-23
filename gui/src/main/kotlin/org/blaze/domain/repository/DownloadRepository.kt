@@ -2,6 +2,7 @@ package org.blaze.domain.repository
 
 import kotlinx.coroutines.flow.Flow
 import org.blaze.domain.models.Download
+import org.blaze.download.api.DownloadPriority
 
 interface DownloadRepository {
     val downloads: Flow<List<Download>>
@@ -15,7 +16,8 @@ interface DownloadRepository {
         fileIndices: List<Int>? = null,
         totalSize: Long? = null,
         files: List<DownloadFile>? = null,
-        scheduledAt: Long? = null
+        scheduledAt: Long? = null,
+        priority: DownloadPriority? = null,
     )
     suspend fun getDestinationPath(url: String, savePath: String, name: String? = null): String
     suspend fun pauseDownload(id: String)
@@ -23,6 +25,7 @@ interface DownloadRepository {
     suspend fun cancelDownload(id: String)
     suspend fun removeDownload(id: String, deleteFile: Boolean = false)
     suspend fun retryDownload(id: String)
+    suspend fun setPriority(id: String, priority: DownloadPriority)
     suspend fun pauseAll()
     suspend fun resumeAll()
     suspend fun clearCompleted()

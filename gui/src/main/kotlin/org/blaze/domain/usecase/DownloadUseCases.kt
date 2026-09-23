@@ -6,6 +6,7 @@ import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.domain.repository.PortableInfo
+import org.blaze.download.api.DownloadPriority
 
 class GetDownloadsUseCase(private val repository: DownloadRepository) {
     operator fun invoke(): Flow<List<Download>> = repository.downloads
@@ -23,8 +24,9 @@ class AddDownloadUseCase(private val repository: DownloadRepository) {
         fileIndices: List<Int>? = null,
         totalSize: Long? = null,
         files: List<DownloadFile>? = null,
-        scheduledAt: Long? = null
-    ) = repository.addDownload(url, savePath, name, fileIndices, totalSize, files, scheduledAt)
+        scheduledAt: Long? = null,
+        priority: DownloadPriority? = null,
+    ) = repository.addDownload(url, savePath, name, fileIndices, totalSize, files, scheduledAt, priority)
 }
 
 class GetDestinationPathUseCase(private val repository: DownloadRepository) {
@@ -51,6 +53,11 @@ class RemoveDownloadUseCase(private val repository: DownloadRepository) {
 
 class RetryDownloadUseCase(private val repository: DownloadRepository) {
     suspend operator fun invoke(id: String) = repository.retryDownload(id)
+}
+
+class SetPriorityDownloadUseCase(private val repository: DownloadRepository) {
+    suspend operator fun invoke(id: String, priority: DownloadPriority) =
+        repository.setPriority(id, priority)
 }
 
 class PauseAllDownloadsUseCase(private val repository: DownloadRepository) {

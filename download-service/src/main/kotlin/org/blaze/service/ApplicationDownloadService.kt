@@ -14,6 +14,7 @@ import org.blaze.download.api.BandwidthControlSupport
 import org.blaze.download.api.DownloadDto
 import org.blaze.download.api.DownloadEvent
 import org.blaze.download.api.DownloadMetadataDto
+import org.blaze.download.api.DownloadPriority
 import org.blaze.download.api.DownloadState
 import org.blaze.download.api.DownloadsApi
 import org.blaze.download.api.NewDownloadRequest
@@ -67,7 +68,7 @@ class ApplicationDownloadService(
         supportsScheduling = true,
         supportsEventStream = true,
         bandwidthControl = BandwidthControlSupport.GLOBAL_ONLY,
-        prioritySupport = PrioritySupport.FIFO_ONLY,
+        prioritySupport = PrioritySupport.EXPLICIT,
         authentication = authMode,
         requiresLocalhost = true,
     )
@@ -121,6 +122,7 @@ class ApplicationDownloadService(
             totalBytes = request.expectedSizeBytes,
             files = engineFiles,
             scheduledAt = request.scheduledAtEpochMs?.let { java.time.Instant.ofEpochMilli(it) },
+            priority = request.priority?.let { org.blaze.engine.api.DownloadPriority.valueOf(it.name) },
         )
         if (key != null) idempotency.record(key, id.value)
         if (request.autoStart) {
@@ -179,6 +181,10 @@ class ApplicationDownloadService(
     override suspend fun retry(id: String) = guard(id) { engine.retry(DownloadId(id)) }
 
     override suspend fun remove(id: String, deleteFiles: Boolean) = guard(id) { engine.remove(DownloadId(id), deleteFiles) }
+
+    override suspend fun setPriority(id: String, priority: DownloadPriority) = guard(id) {
+        engine.setPriority(DownloadId(id), org.blaze.engine.api.DownloadPriority.valueOf(priority.name))
+    }
 
     /**
      * Shared plumbing for the lifecycle verbs: reject an unknown id with [ApiErrorCode.DOWNLOAD_NOT_FOUND]

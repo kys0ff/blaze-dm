@@ -22,6 +22,12 @@ data class DownloadTask(
     val completedAt: Instant? = null,
     val files: List<DownloadFileMetadata>? = null,
     /**
+     * Scheduling importance. Drives queue order and the transfer's connection share; see
+     * [DownloadPriority]. Defaults to [DownloadPriority.NORMAL], which preserves the old FIFO
+     * behaviour for anything that never sets it explicitly.
+     */
+    val priority: DownloadPriority = DownloadPriority.NORMAL,
+    /**
      * Whether the source can serve the ranged requests a resume depends on, as proven by the
      * transfer itself. Null while unknown: a paused download whose value is still null may or may
      * not continue where it stopped, and no client should claim otherwise.

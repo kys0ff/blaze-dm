@@ -8,6 +8,7 @@ import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadMetadata
+import org.blaze.engine.api.DownloadPriority
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
@@ -64,6 +65,7 @@ class FakeEngine(
         totalBytes: Long?,
         files: List<DownloadFileMetadata>?,
         scheduledAt: Instant?,
+        priority: DownloadPriority?,
     ): DownloadId {
         val id = DownloadId("dl-${counter.incrementAndGet()}")
         _tasks.value = _tasks.value + DownloadTask(
@@ -75,9 +77,15 @@ class FakeEngine(
             downloadedBytes = 0,
             downloadSpeed = 0,
             scheduledAt = scheduledAt,
+            priority = priority ?: DownloadPriority.NORMAL,
             files = files,
         )
         return id
+    }
+
+    override suspend fun setPriority(id: DownloadId, priority: DownloadPriority) {
+        calls += "setPriority:${id.value}"
+        mutate(id.value) { it.copy(priority = priority) }
     }
 
     override suspend fun start(id: DownloadId) = record("start", id) { DownloadState.Downloading }

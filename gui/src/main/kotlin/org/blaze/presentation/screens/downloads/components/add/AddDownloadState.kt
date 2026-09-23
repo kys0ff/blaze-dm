@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.domain.repository.DownloadMetadata
+import org.blaze.download.api.DownloadPriority
 import org.blaze.resolver.core.LoadedResolver
 
 class AddDownloadState(
@@ -16,6 +17,9 @@ class AddDownloadState(
     var scheduleDelay by mutableStateOf(TextFieldValue(""))
     var showFolderPicker by mutableStateOf(false)
     var showFilePicker by mutableStateOf(false)
+
+    /** Scheduling importance for the download(s) about to be queued; seeded from the global default. */
+    var priority by mutableStateOf(DownloadPriority.NORMAL)
 
     var metadata by mutableStateOf<DownloadMetadata?>(null)
     var selectedFileIndices by mutableStateOf(emptySet<Int>())

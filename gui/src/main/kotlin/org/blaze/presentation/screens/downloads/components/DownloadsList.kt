@@ -55,6 +55,7 @@ fun DownloadsList(
                     copyLink = { onEvent(DownloadsEvent.CopyDownloadLink(id)) },
                     copyFileLocation = { onEvent(DownloadsEvent.CopyFileLocation(id)) },
                     showDetails = { onShowDetailsRequested(id) },
+                    setPriority = { priority -> onEvent(DownloadsEvent.SetPriority(id, priority)) },
                 )
                 DownloadRow(
                     download = download,

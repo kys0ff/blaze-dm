@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.blaze.engine.api.DownloadId
+import org.blaze.engine.api.DownloadPriority
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.execution.DownloadExecutor
@@ -84,7 +85,12 @@ class DownloadScheduler(
         val queuedTasks = currentTasks.values
             .filter { it.state == DownloadState.Queued && (it.scheduledAt == null || !it.scheduledAt.isAfter(now)) }
             .filter { !jobs.containsKey(it.id) }
-            .sortedBy { it.createdAt }
+            // Highest priority first; within a priority, oldest first. All-NORMAL therefore keeps the
+            // old strict FIFO order, so this only changes behaviour for someone who opted in.
+            .sortedWith(
+                compareByDescending<DownloadTask> { it.priority.weight }
+                    .thenBy { it.createdAt }
+            )
 
         var slotsAvailable = maxConcurrent - activeCount
         for (task in queuedTasks) {
@@ -115,8 +121,17 @@ class DownloadScheduler(
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 executor.execute().collect { updatedTask ->
-                    tasks.update { it + (id to updatedTask) }
-                    onTaskUpdated(updatedTask)
+                    // Priority is scheduler-owned: if the user changed it mid-flight, don't let the
+                    // next progress emission (whose snapshot predates the change) revert it. Read the
+                    // current value inside the update block so a setPriority that races with this
+                    // emission still wins on the retry (update CAS-retries on contention).
+                    var merged = updatedTask
+                    tasks.update { map ->
+                        val authoritative = map[id]?.priority
+                        merged = authoritative?.let { updatedTask.copy(priority = it) } ?: updatedTask
+                        map + (id to merged)
+                    }
+                    onTaskUpdated(merged)
                 }
             } catch (_: Exception) {
             } finally {
@@ -167,6 +182,17 @@ class DownloadScheduler(
         stopJobLocked(id)
         val task = tasks.value[id] ?: return@withLock
         val updated = task.copy(state = DownloadState.Cancelled, downloadSpeed = 0)
+        tasks.update { it + (id to updated) }
+        onTaskUpdated(updated)
+        processQueueLocked()
+    }
+
+    suspend fun setPriority(id: DownloadId, priority: DownloadPriority) = queueMutex.withLock {
+        val task = tasks.value[id] ?: return@withLock
+        if (task.priority == priority) return@withLock
+        // Only the ranking changes - never the state - so a running transfer is left undisturbed and
+        // a queued one is simply re-slotted on the next processQueue pass.
+        val updated = task.copy(priority = priority)
         tasks.update { it + (id to updated) }
         onTaskUpdated(updated)
         processQueueLocked()

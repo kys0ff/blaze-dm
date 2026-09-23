@@ -29,6 +29,7 @@ import org.blaze.domain.usecase.RemoveDownloadUseCase
 import org.blaze.domain.usecase.ResumeAllDownloadsUseCase
 import org.blaze.domain.usecase.ResumeDownloadUseCase
 import org.blaze.domain.usecase.RetryDownloadUseCase
+import org.blaze.domain.usecase.SetPriorityDownloadUseCase
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenRequest
@@ -48,6 +49,7 @@ class DownloadsScreenModel(
     private val cancelDownload: CancelDownloadUseCase,
     private val removeDownload: RemoveDownloadUseCase,
     private val retryDownload: RetryDownloadUseCase,
+    private val setPriority: SetPriorityDownloadUseCase,
     private val pauseAllDownloads: PauseAllDownloadsUseCase,
     private val resumeAllDownloads: ResumeAllDownloadsUseCase,
     private val clearCompletedDownloads: ClearCompletedDownloadsUseCase,
@@ -173,10 +175,19 @@ class DownloadsScreenModel(
                     fileIndices = event.fileIndices,
                     totalSize = event.totalSize,
                     files = event.files,
-                    scheduledAt = event.scheduledAt
+                    scheduledAt = event.scheduledAt,
+                    priority = event.priority,
                 )
             } catch (e: Exception) {
                 _effects.emit(DownloadsEffect.ShowError("Failed to add download: ${e.message}"))
+            }
+        }
+
+        is DownloadsEvent.SetPriority -> screenModelScope.launch {
+            try {
+                setPriority(event.id, event.priority)
+            } catch (e: Exception) {
+                _effects.emit(DownloadsEffect.ShowError("Failed to change priority: ${e.message}"))
             }
         }
 

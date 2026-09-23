@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.blaze.engine.api.DownloadId
+import org.blaze.engine.api.DownloadPriority
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
@@ -151,5 +152,97 @@ class DownloadSchedulerTest {
         scheduler.start(paused.id)
 
         assertEquals(500L, updates.last { it.id == paused.id }.downloadedBytes)
+    }
+
+    @Test
+    fun `when a slot frees the higher-priority download overtakes an older queued one`() = runTest {
+        val tempDir = Files.createTempDirectory("blaze-priority")
+        val storageDir = tempDir.resolve("storage")
+        Files.createDirectories(storageDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        settingsRepo.updateSettings { it.copy(maxConcurrentDownloads = 1) }
+
+        val executors = mutableListOf<MockExecutor>()
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo,
+            executorFactory = { task -> MockExecutor(task).also { executors.add(it) } }
+        )
+
+        // Occupy the single slot first.
+        val running = manager.enqueue(DownloadRequest.Http("Running", "http://r", Path.of(".")))
+        manager.start(running)
+        delay(200.milliseconds)
+        assertEquals(DownloadState.Downloading, manager.getTask(running)?.state)
+
+        // An older LOW, then a newer HIGH - recency alone would favour LOW, priority must win.
+        val low = manager.enqueue(
+            DownloadRequest.Http("Low", "http://l", Path.of(".")),
+            priority = DownloadPriority.LOW,
+        )
+        delay(20.milliseconds)
+        val high = manager.enqueue(
+            DownloadRequest.Http("High", "http://h", Path.of(".")),
+            priority = DownloadPriority.HIGH,
+        )
+        delay(200.milliseconds)
+        assertEquals(DownloadState.Queued, manager.getTask(low)?.state)
+        assertEquals(DownloadState.Queued, manager.getTask(high)?.state)
+
+        executors.first { it.task.request.name == "Running" }.complete()
+        delay(300.milliseconds)
+
+        assertEquals(DownloadState.Downloading, manager.getTask(high)?.state, "priority beats creation order")
+        assertEquals(DownloadState.Queued, manager.getTask(low)?.state)
+
+        tempDir.toFile().deleteRecursively()
+    }
+
+    @Test
+    fun `setPriority on a running download survives the next executor emission`() = runTest {
+        val tempDir = Files.createTempDirectory("blaze-setpriority-midflight")
+        val storageDir = tempDir.resolve("storage")
+        Files.createDirectories(storageDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+
+        val executors = mutableListOf<MockExecutor>()
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo,
+            executorFactory = { task -> MockExecutor(task).also { executors.add(it) } }
+        )
+
+        val id = manager.enqueue(DownloadRequest.Http("live", "http://u", Path.of(".")))
+        manager.start(id)
+        delay(200.milliseconds)
+        assertEquals(DownloadState.Downloading, manager.getTask(id)?.state)
+        assertEquals(DownloadPriority.NORMAL, manager.getTask(id)?.priority, "starts at the default")
+
+        // The user raises the priority mid-flight, through the same verb the row's context menu hits.
+        manager.setPriority(id, DownloadPriority.HIGH)
+        assertEquals(DownloadPriority.HIGH, manager.getTask(id)?.priority)
+
+        // The next progress emission comes from the executor's launch-time snapshot, whose priority
+        // is still NORMAL. Without the scheduler-side merge this reverts the user's change (the
+        // badge appeared for a moment then disappeared again).
+        val exec = executors.first { it.task.request.name == "live" }
+        exec.flow.value = exec.flow.value?.copy(downloadedBytes = 500)
+        delay(200.milliseconds)
+
+        val after = manager.getTask(id)
+        assertEquals(500L, after?.downloadedBytes, "the executor's own progress is preserved")
+        assertEquals(
+            DownloadPriority.HIGH,
+            after?.priority,
+            "priority set mid-flight must not be reverted by a later executor emission",
+        )
+
+        tempDir.toFile().deleteRecursively()
     }
 }

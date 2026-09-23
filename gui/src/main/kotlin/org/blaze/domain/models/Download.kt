@@ -1,6 +1,7 @@
 package org.blaze.domain.models
 
 import org.blaze.download.api.ApiErrorBody
+import org.blaze.download.api.DownloadPriority
 
 data class Download(
     val id: String,
@@ -22,6 +23,8 @@ data class Download(
      * measured answer justifies warning the user, so "unknown" must never render as "impossible".
      */
     val resumeSupported: Boolean? = null,
+    /** Scheduling importance; [DownloadPriority.NORMAL] matches the pre-priority FIFO behaviour. */
+    val priority: DownloadPriority = DownloadPriority.NORMAL,
     val progress: Float = if (totalSize != null && totalSize > 0) {
         (downloadedSize.toFloat() / totalSize).coerceIn(0f, 1f)
     } else if (state == DownloadState.COMPLETED || state == DownloadState.SEEDING) {

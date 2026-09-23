@@ -7,6 +7,8 @@ import org.blaze.download.api.SourceKind
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.DownloadState as EngineState
+import org.blaze.download.api.DownloadPriority as ApiPriority
+import org.blaze.engine.api.DownloadPriority as EnginePriority
 import org.blaze.engine.api.TorrentSource
 
 /**
@@ -66,8 +68,12 @@ fun DownloadTask.toDto(): DownloadDto {
         sourceSupportsResume = resumeSupported,
         portable = false,
         files = files,
+        priority = priority.toApi(),
     )
 }
+
+/** The two enums share their constant names, so the mapping is a straight rename. */
+private fun EnginePriority.toApi(): ApiPriority = ApiPriority.valueOf(name)
 
 private fun DownloadRequest.toSourceInfo(): SourceInfo = when (this) {
     is DownloadRequest.Http -> SourceInfo(

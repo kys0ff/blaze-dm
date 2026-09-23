@@ -1,5 +1,7 @@
 package org.blaze.presentation.screens.downloads.components
 
+import org.blaze.download.api.DownloadPriority
+
 /**
  * Every user-invokable operation for a single download row. Bundling them keeps the row's
  * signature focused and lets the hover buttons and the right-click menu share one wiring
@@ -22,4 +24,6 @@ class DownloadRowActions(
     val copyLink: () -> Unit,
     val copyFileLocation: () -> Unit,
     val showDetails: () -> Unit,
+    /** Re-ranks a live download; bound to [org.blaze.presentation.screens.downloads.DownloadsEvent.SetPriority]. */
+    val setPriority: (DownloadPriority) -> Unit,
 )

@@ -3,10 +3,12 @@ package org.blaze.presentation.screens.downloads.components
 import androidx.compose.foundation.ContextMenuItem
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.jetbrains.jewel.ui.component.ContextMenuDivider
 import org.jetbrains.jewel.ui.component.ContextMenuItemOption
+import org.jetbrains.jewel.ui.component.ContextSubmenu
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
@@ -38,6 +40,9 @@ fun buildDownloadContextMenu(
     val isCancellable = state == DownloadState.DOWNLOADING || state == DownloadState.SEEDING ||
         state == DownloadState.PAUSED || state == DownloadState.QUEUED
     val isFailed = state == DownloadState.FAILED
+    // Priority only steers work that still has queue time ahead of it; a terminal row can't be re-ranked.
+    val canSetPriority = state == DownloadState.QUEUED ||
+        state == DownloadState.DOWNLOADING || state == DownloadState.PAUSED
     val isWebLink = download.url.startsWith("http://", ignoreCase = true) ||
         download.url.startsWith("https://", ignoreCase = true)
 
@@ -69,6 +74,23 @@ fun buildDownloadContextMenu(
         }
         if (isCancellable) {
             add(option(labels.cancel, AllIconsKeys.Actions.Cancel, actions.cancel))
+        }
+
+        // ── Priority (only while the transfer still has queue time ahead of it) ──
+        if (canSetPriority) {
+            val p = strings.downloads.priority
+            add(
+                ContextSubmenu(p.label) {
+                    DownloadPriority.entries.map { level ->
+                        ContextMenuItemOption(
+                            icon = null,
+                            enabled = download.priority != level,
+                            label = level.label(p),
+                            action = { actions.setPriority(level) },
+                        )
+                    }
+                }
+            )
         }
         divider()
 
@@ -109,3 +131,11 @@ private fun option(
     icon: IconKey,
     action: () -> Unit,
 ) = ContextMenuItemOption(icon = icon, label = label, action = action)
+
+/** Localized name for a priority level, shared by the row menu, badge and add dialog. */
+internal fun DownloadPriority.label(strings: BlazeStrings.Downloads.Priority): String = when (this) {
+    DownloadPriority.IDLE -> strings.idle
+    DownloadPriority.LOW -> strings.low
+    DownloadPriority.NORMAL -> strings.normal
+    DownloadPriority.HIGH -> strings.high
+}

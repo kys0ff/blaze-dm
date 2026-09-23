@@ -16,6 +16,7 @@ import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.repository.PortableKind
 import org.blaze.download.api.DownloadDto
 import org.blaze.download.api.DownloadFileHint
+import org.blaze.download.api.DownloadPriority
 import org.blaze.download.api.DownloadSource
 import org.blaze.download.api.DownloadState as ApiState
 import org.blaze.download.api.NewDownloadRequest
@@ -73,6 +74,7 @@ class DownloadRepositoryImpl(
         totalSize: Long?,
         files: List<DownloadFile>?,
         scheduledAt: Long?,
+        priority: DownloadPriority?,
     ) {
         val destinationDir = Path.of(savePath)
         withContext(Dispatchers.IO) {
@@ -88,6 +90,7 @@ class DownloadRepositoryImpl(
             selectedFileIndices = fileIndices,
             files = files?.map { DownloadFileHint(path = it.name, size = it.size) },
             scheduledAtEpochMs = scheduledAt,
+            priority = priority,
         )
         api.create(request)
     }
@@ -99,6 +102,7 @@ class DownloadRepositoryImpl(
     override suspend fun resumeDownload(id: String) = api.resume(id)
     override suspend fun cancelDownload(id: String) = api.cancel(id)
     override suspend fun retryDownload(id: String) = api.retry(id)
+    override suspend fun setPriority(id: String, priority: DownloadPriority) = api.setPriority(id, priority)
     override suspend fun removeDownload(id: String, deleteFile: Boolean) = api.remove(id, deleteFile)
 
     override suspend fun pauseAll() {
@@ -166,6 +170,7 @@ class DownloadRepositoryImpl(
             error = error,
             selectedFiles = selected?.mapIndexed { index, f -> SelectedFile(path = f.path, size = f.size, index = index) },
             resumeSupported = sourceSupportsResume,
+            priority = priority,
         )
     }
 

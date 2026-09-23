@@ -166,6 +166,9 @@ class SettingsScreenModel(
             is SettingsEvent.UpdateSpeedLimitEnabled -> _state.update {
                 it.copy(settings = it.settings.copy(globalSpeedLimitEnabled = event.enabled))
             }
+            is SettingsEvent.UpdateDefaultDownloadPriority -> _state.update {
+                it.copy(settings = it.settings.copy(defaultDownloadPriority = event.priority))
+            }
             is SettingsEvent.UpdateSpeedLimitKbps -> {
                 val text = event.value.text
                 val err = if (text.toLongOrNull() == null || text.toLong() < 1) "Must be > 0" else null

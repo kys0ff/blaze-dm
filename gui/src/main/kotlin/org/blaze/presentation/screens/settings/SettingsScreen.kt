@@ -43,6 +43,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import org.blaze.engine.api.DownloadPriority
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.engine.settings.LogLevel
 import org.blaze.engine.settings.ThemeMode
@@ -426,6 +427,31 @@ private fun DownloadsSection(
             description = strings.settings.maxConnectionsDesc,
             onValueChange = { onEvent(SettingsEvent.UpdateMaxConnectionsPerDownload(it)) }
         )
+
+        // Default priority seeded onto every new download; the queue order and connection split
+        // both key off it, so it belongs beside the concurrency knobs it interacts with.
+        Text(text = strings.settings.defaultPriorityLabel)
+        Text(
+            text = strings.settings.defaultPriorityDesc,
+            style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+            color = JewelTheme.globalColors.text.info,
+        )
+        val priorityOptions = listOf(
+            DownloadPriority.IDLE to strings.downloads.priority.idle,
+            DownloadPriority.LOW to strings.downloads.priority.low,
+            DownloadPriority.NORMAL to strings.downloads.priority.normal,
+            DownloadPriority.HIGH to strings.downloads.priority.high,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            priorityOptions.forEach { (level, label) ->
+                RadioButtonRow(
+                    text = label,
+                    selected = state.settings.defaultDownloadPriority == level,
+                    onClick = { onEvent(SettingsEvent.UpdateDefaultDownloadPriority(level)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
     }
 
     SettingsSection(strings.settings.bandwidthHeader) {

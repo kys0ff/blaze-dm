@@ -1,6 +1,7 @@
 package org.blaze.presentation.screens.settings
 
 import androidx.compose.ui.text.input.TextFieldValue
+import org.blaze.engine.api.DownloadPriority
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.engine.settings.LogLevel
 import org.blaze.engine.settings.ThemeMode
@@ -12,6 +13,7 @@ sealed interface SettingsEvent {
     // Concurrency & Queueing
     data class UpdateMaxConcurrentDownloads(val value: TextFieldValue) : SettingsEvent
     data class UpdateMaxConnectionsPerDownload(val value: TextFieldValue) : SettingsEvent
+    data class UpdateDefaultDownloadPriority(val priority: DownloadPriority) : SettingsEvent
     
     // Bandwidth
     data class UpdateSpeedLimitEnabled(val enabled: Boolean) : SettingsEvent
