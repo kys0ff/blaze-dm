@@ -13,6 +13,7 @@ data class SettingsState(
     val maxConcurrentDownloadsText: TextFieldValue = TextFieldValue("4"),
     val maxConnectionsPerDownloadText: TextFieldValue = TextFieldValue("4"),
     val globalSpeedLimitKbpsText: TextFieldValue = TextFieldValue("10240"),
+    val snailSpeedKbpsText: TextFieldValue = TextFieldValue("64"),
     val maxRetriesText: TextFieldValue = TextFieldValue("3"),
     val retryDelaySecondsText: TextFieldValue = TextFieldValue("5"),
     val maxRedirectsText: TextFieldValue = TextFieldValue("5"),
@@ -23,6 +24,7 @@ data class SettingsState(
     val maxConcurrentDownloadsError: String? = null,
     val maxConnectionsPerDownloadError: String? = null,
     val globalSpeedLimitKbpsError: String? = null,
+    val snailSpeedKbpsError: String? = null,
     val maxRetriesError: String? = null,
     val retryDelaySecondsError: String? = null,
     val maxRedirectsError: String? = null,
@@ -70,6 +72,7 @@ data class SettingsState(
             return maxConcurrentDownloadsError != null ||
                     maxConnectionsPerDownloadError != null ||
                     (speedLimitEnabled && globalSpeedLimitKbpsError != null) ||
+                    (settings.snailModeEnabled && snailSpeedKbpsError != null) ||
                     (autoRetryEnabled && (maxRetriesError != null || retryDelaySecondsError != null)) ||
                     maxRedirectsError != null ||
                     maxPeerConnectionsError != null ||

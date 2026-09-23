@@ -89,6 +89,7 @@ class EngineSettingsRepository(storageDir: Path) {
         maxRetries = maxRetries.coerceAtLeast(0),
         retryDelaySeconds = retryDelaySeconds.coerceAtLeast(0),
         globalSpeedLimitKbps = globalSpeedLimitKbps.coerceAtLeast(1),
+        snailSpeedKbps = snailSpeedKbps.coerceAtLeast(1),
         maxRedirects = maxRedirects.coerceIn(0, 20),
         maxPeerConnections = maxPeerConnections.coerceAtLeast(1),
         seedTimeLimitMinutes = seedTimeLimitMinutes.coerceAtLeast(0),

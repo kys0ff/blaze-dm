@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import org.blaze.data.AppSettingsRepository
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadRepository
+import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.BlazeStrings
 import org.blaze.platform.tray.AppTrayIcon
 import org.blaze.tray.api.TrayConfig
@@ -31,9 +32,17 @@ fun AppTrayHost(strings: BlazeStrings, shell: AppShell) {
     val trayService = koinInject<TrayService>()
     val appSettingsRepository = koinInject<AppSettingsRepository>()
     val downloadRepository = koinInject<DownloadRepository>()
+    val engineSettingsRepository = koinInject<EngineSettingsRepository>()
     val appScope = koinInject<CoroutineScope>()
 
     val appSettings by appSettingsRepository.settings.collectAsState()
+
+    // Only the on/off flag is needed here; mapping to it keeps the tray menu from rebuilding on
+    // every unrelated settings change.
+    val snailModeEnabled by engineSettingsRepository.settings
+        .map { it.snailModeEnabled }
+        .distinctUntilChanged()
+        .collectAsState(initial = false)
 
     // Derive just enough download state to keep the tray menu honest: only offer
     // "Pause All" when something is still transferring/queued and "Resume All"
@@ -52,7 +61,7 @@ fun AppTrayHost(strings: BlazeStrings, shell: AppShell) {
         .distinctUntilChanged()
         .collectAsState(initial = TrayDownloadControls())
 
-    val trayConfig = remember(strings, trayControls) {
+    val trayConfig = remember(strings, trayControls, snailModeEnabled) {
         val downloadItems = buildList {
             if (trayControls.canPauseAll) {
                 add(TrayMenuItem.Item(strings.tray.pauseAll) {
@@ -65,6 +74,15 @@ fun AppTrayHost(strings: BlazeStrings, shell: AppShell) {
                 })
             }
         }
+        // The tray has no checkbox items, so the entry is worded for the action it performs from
+        // the current state. Toggling persists immediately so the running engine reacts at once.
+        val snailItem = TrayMenuItem.Item(
+            if (snailModeEnabled) strings.tray.disableSnailMode else strings.tray.enableSnailMode
+        ) {
+            appScope.launch {
+                engineSettingsRepository.updateSettings { it.copy(snailModeEnabled = !it.snailModeEnabled) }
+            }
+        }
         TrayConfig(
             id = "org.blaze.Downloader",
             title = "Blaze",
@@ -75,6 +93,7 @@ fun AppTrayHost(strings: BlazeStrings, shell: AppShell) {
                     shownLabel = strings.tray.hide,
                 ) { shell.windowVisible.value = !shell.windowVisible.value },
             ) + downloadItems + listOf(
+                snailItem,
                 TrayMenuItem.Separator,
                 TrayMenuItem.Item(strings.tray.quit) { shell.quit() },
             ),

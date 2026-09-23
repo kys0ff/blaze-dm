@@ -445,6 +445,21 @@ private fun DownloadsSection(
             modifier = Modifier.padding(start = DependentIndent),
             onValueChange = { onEvent(SettingsEvent.UpdateSpeedLimitKbps(it)) }
         )
+        CheckboxRow(
+            text = strings.settings.snailModeEnabledLabel,
+            checked = state.settings.snailModeEnabled,
+            onCheckedChange = { onEvent(SettingsEvent.UpdateSnailModeEnabled(it)) }
+        )
+        NumberField(
+            label = strings.settings.snailSpeedLabel,
+            value = state.snailSpeedKbpsText,
+            error = state.snailSpeedKbpsError,
+            description = strings.settings.snailSpeedDesc,
+            enabled = state.settings.snailModeEnabled,
+            fieldWidth = 150.dp,
+            modifier = Modifier.padding(start = DependentIndent),
+            onValueChange = { onEvent(SettingsEvent.UpdateSnailSpeedKbps(it)) }
+        )
     }
 
     SettingsSection(strings.settings.retryHeader) {

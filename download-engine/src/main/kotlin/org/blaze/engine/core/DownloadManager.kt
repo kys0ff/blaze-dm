@@ -125,10 +125,15 @@ class DownloadManager(
         // first download that starts: editing the limit in the settings now applies to transfers
         // that are already running. Deriving the bytes/sec first means unrelated settings edits
         // cannot reset a token bucket mid-download.
+        // Snail Mode wins over the normal global limit: when it is on, everything crawls.
         scope.launch {
             settingsRepository.settings
                 .map { settings ->
-                    if (settings.globalSpeedLimitEnabled) settings.globalSpeedLimitKbps * 1024 else 0L
+                    when {
+                        settings.snailModeEnabled -> settings.snailSpeedKbps * 1024
+                        settings.globalSpeedLimitEnabled -> settings.globalSpeedLimitKbps * 1024
+                        else -> 0L
+                    }
                 }
                 .distinctUntilChanged()
                 .collect(limiter::setLimit)

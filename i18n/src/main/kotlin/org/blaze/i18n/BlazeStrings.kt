@@ -46,6 +46,8 @@ interface BlazeStrings {
             val pauseAll: String
             val clearCompleted: String
             val importPortable: String
+            /** Tooltip for the Snail Mode toolbar toggle. */
+            val snailMode: String
         }
 
         val dialogs: Dialogs
@@ -271,6 +273,8 @@ interface BlazeStrings {
         fun queued(count: Int): String
         fun paused(count: Int): String
         fun failed(count: Int): String
+        /** Shown while Snail Mode throttles the whole engine; [rate] is a ready-made speed label. */
+        fun snailMode(rate: String): String
     }
 
     /** Labels for the system-tray context menu (rendered by AWT, not Compose). */
@@ -280,6 +284,9 @@ interface BlazeStrings {
         val pauseAll: String
         val resumeAll: String
         val quit: String
+        /** Snail Mode menu entry, worded for the action it performs from the current state. */
+        val enableSnailMode: String
+        val disableSnailMode: String
     }
     
     interface Settings {
@@ -315,6 +322,9 @@ interface BlazeStrings {
         val unlimitedSeedingLabel: String
         val seedRatioLimitLabel: String
         val seedRatioLimitDesc: String
+        val snailModeEnabledLabel: String
+        val snailSpeedLabel: String
+        val snailSpeedDesc: String
         val appearanceHeader: String
         val themeLabel: String
         val themeSystemOption: String

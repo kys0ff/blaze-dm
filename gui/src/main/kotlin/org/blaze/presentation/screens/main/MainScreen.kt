@@ -1,13 +1,19 @@
 package org.blaze.presentation.screens.main
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.Navigator
@@ -18,10 +24,14 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.Sidebar
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
+import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.screens.downloads.attention
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.settings.SettingsScreen
+import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.component.Icon
+import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 class MainScreen : Screen {
@@ -75,7 +85,30 @@ class MainScreen : Screen {
 
                 StatusBar(
                     info = downloads.toStatusSummary(strings),
-                    alert = downloads.toStatusAlert(strings)
+                    alert = downloads.toStatusAlert(strings),
+                    trailing = {
+                        if (state.snailModeEnabled) {
+                            val snailStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    key = AllIconsKeys.Actions.Suspend,
+                                    contentDescription = null,
+                                    tint = BlazeColors.warning,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = strings.statusSummary.snailMode("${state.snailSpeedKbps} KB/s"),
+                                    style = snailStyle,
+                                    color = BlazeColors.warning,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                 )
             }
         }

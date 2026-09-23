@@ -1,5 +1,6 @@
 package org.blaze.presentation.screens.downloads.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -11,14 +12,18 @@ import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
+import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.ToggleableIconActionButton
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DownloadsToolbar(
     hasActiveDownloads: Boolean,
     hasPausedDownloads: Boolean,
     hasCompletedDownloads: Boolean,
     searchQuery: String,
+    snailModeEnabled: Boolean,
     onEvent: (DownloadsEvent) -> Unit,
     onAddDownload: () -> Unit,
     onImportPortable: () -> Unit,
@@ -66,6 +71,13 @@ fun DownloadsToolbar(
                 tooltip = strings.downloads.toolbar.clearCompleted,
                 enabled = hasCompletedDownloads,
                 onClick = { onEvent(DownloadsEvent.ClearCompleted) }
+            )
+            ToggleableIconActionButton(
+                key = AllIconsKeys.Actions.Suspend,
+                contentDescription = strings.downloads.toolbar.snailMode,
+                value = snailModeEnabled,
+                onValueChange = { onEvent(DownloadsEvent.ToggleSnailMode(it)) },
+                tooltip = { Text(strings.downloads.toolbar.snailMode) }
             )
         }
     )

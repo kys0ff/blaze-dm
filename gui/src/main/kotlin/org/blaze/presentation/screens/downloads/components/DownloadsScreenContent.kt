@@ -302,6 +302,7 @@ fun DownloadsScreenContent(
             hasPausedDownloads = hasPaused,
             hasCompletedDownloads = hasCompleted,
             searchQuery = state.searchQuery,
+            snailModeEnabled = state.snailModeEnabled,
             onEvent = handleEvent,
             onAddDownload = { addDialogSource = null; showAddDialog = true },
             onImportPortable = { showArtifactPicker = true }

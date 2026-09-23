@@ -19,5 +19,8 @@ data class DownloadsState(
     val filteredDownloads: List<Download> = emptyList(),
     val searchQuery: String = "",
     val maxConcurrentDownloads: Int = 0,
+    /** Engine-wide "Snail Mode" crawl state, mirrored from the download settings for the toolbar/status bar. */
+    val snailModeEnabled: Boolean = false,
+    val snailSpeedKbps: Long = 64,
     val capabilities: DownloadCapabilities = DownloadCapabilities()
 )

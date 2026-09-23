@@ -47,6 +47,13 @@ data class DownloadSettings(
     val httpStalledConnectionSeconds: Int = 30,
     val globalSpeedLimitEnabled: Boolean = false,
     val globalSpeedLimitKbps: Long = 10240, // default 10 MB/s
+
+    /**
+     * "Snail Mode": a quick, engine-wide crawl that overrides the normal speed limit so the
+     * connection stays usable for other work while downloads keep trickling along.
+     */
+    val snailModeEnabled: Boolean = false,
+    val snailSpeedKbps: Long = 64,
     val autoRetryFailed: Boolean = true,
     val maxRetries: Int = 3,
     val retryDelaySeconds: Int = 5,

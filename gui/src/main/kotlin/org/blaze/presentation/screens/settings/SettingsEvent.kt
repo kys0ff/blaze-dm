@@ -16,6 +16,8 @@ sealed interface SettingsEvent {
     // Bandwidth
     data class UpdateSpeedLimitEnabled(val enabled: Boolean) : SettingsEvent
     data class UpdateSpeedLimitKbps(val value: TextFieldValue) : SettingsEvent
+    data class UpdateSnailModeEnabled(val enabled: Boolean) : SettingsEvent
+    data class UpdateSnailSpeedKbps(val value: TextFieldValue) : SettingsEvent
     
     // Retries
     data class UpdateAutoRetryFailed(val enabled: Boolean) : SettingsEvent

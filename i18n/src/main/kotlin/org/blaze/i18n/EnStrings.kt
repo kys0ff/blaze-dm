@@ -36,6 +36,7 @@ object EnStrings : BlazeStrings {
             override val pauseAll = "Pause all"
             override val clearCompleted = "Clear completed"
             override val importPortable = "Import portable download"
+            override val snailMode = "Snail Mode — throttle all downloads to a crawl"
         }
 
         override val dialogs = object : BlazeStrings.Downloads.Dialogs {
@@ -246,6 +247,7 @@ object EnStrings : BlazeStrings {
         override fun queued(count: Int) = "$count queued"
         override fun paused(count: Int) = "$count paused"
         override fun failed(count: Int) = "$count failed"
+        override fun snailMode(rate: String) = "Snail Mode · $rate"
     }
 
     override val tray = object : BlazeStrings.Tray {
@@ -254,6 +256,8 @@ object EnStrings : BlazeStrings {
         override val pauseAll = "Pause All Downloads"
         override val resumeAll = "Resume All Downloads"
         override val quit = "Quit Blaze"
+        override val enableSnailMode = "Enable Snail Mode"
+        override val disableSnailMode = "Disable Snail Mode"
     }
     
     override val settings = object : BlazeStrings.Settings {
@@ -289,6 +293,9 @@ object EnStrings : BlazeStrings {
         override val unlimitedSeedingLabel = "Seed indefinitely (until stopped manually)"
         override val seedRatioLimitLabel = "Stop seeding at share ratio"
         override val seedRatioLimitDesc = "Stop seeding once the uploaded/downloaded ratio reaches this value. Set 0 for no ratio limit."
+        override val snailModeEnabledLabel = "Snail Mode — crawl all downloads"
+        override val snailSpeedLabel = "Snail speed (KB/s)"
+        override val snailSpeedDesc = "Engine-wide ceiling applied while Snail Mode is on. It overrides the normal speed limit so your connection stays free for other work."
         override val appearanceHeader = "Appearance"
         override val themeLabel = "Theme"
         override val themeSystemOption = "Follow system"

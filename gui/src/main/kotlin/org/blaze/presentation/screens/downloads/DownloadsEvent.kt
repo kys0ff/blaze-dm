@@ -22,6 +22,9 @@ sealed interface DownloadsEvent {
     data object ResumeAll : DownloadsEvent
     data object ClearCompleted : DownloadsEvent
 
+    /** Engine-wide "Snail Mode" crawl toggle; [enabled] is the new desired state. */
+    data class ToggleSnailMode(val enabled: Boolean) : DownloadsEvent
+
     // Desktop integration actions surfaced from the row's right-click menu / double-click.
     data class OpenFile(val id: String) : DownloadsEvent
     data class ShowInFolder(val id: String) : DownloadsEvent

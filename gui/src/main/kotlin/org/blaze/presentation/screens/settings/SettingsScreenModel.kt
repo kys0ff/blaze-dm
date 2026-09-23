@@ -125,6 +125,7 @@ class SettingsScreenModel(
                 maxConcurrentDownloadsText = TextFieldValue(currentSettings.maxConcurrentDownloads.toString()),
                 maxConnectionsPerDownloadText = TextFieldValue(currentSettings.maxConnectionsPerDownload.toString()),
                 globalSpeedLimitKbpsText = TextFieldValue(currentSettings.globalSpeedLimitKbps.toString()),
+                snailSpeedKbpsText = TextFieldValue(currentSettings.snailSpeedKbps.toString()),
                 maxRetriesText = TextFieldValue(currentSettings.maxRetries.toString()),
                 retryDelaySecondsText = TextFieldValue(currentSettings.retryDelaySeconds.toString()),
                 maxRedirectsText = TextFieldValue(currentSettings.maxRedirects.toString()),
@@ -178,6 +179,20 @@ class SettingsScreenModel(
             }
             is SettingsEvent.UpdateAutoRetryFailed -> _state.update {
                 it.copy(settings = it.settings.copy(autoRetryFailed = event.enabled))
+            }
+            is SettingsEvent.UpdateSnailModeEnabled -> _state.update {
+                it.copy(settings = it.settings.copy(snailModeEnabled = event.enabled))
+            }
+            is SettingsEvent.UpdateSnailSpeedKbps -> {
+                val text = event.value.text
+                val err = if (text.toLongOrNull() == null || text.toLong() < 1) "Must be > 0" else null
+                _state.update {
+                    it.copy(
+                        snailSpeedKbpsText = event.value,
+                        snailSpeedKbpsError = err,
+                        settings = if (err == null) it.settings.copy(snailSpeedKbps = text.toLong()) else it.settings
+                    )
+                }
             }
             is SettingsEvent.UpdateExponentialBackoff -> _state.update {
                 it.copy(settings = it.settings.copy(exponentialBackoff = event.enabled))
@@ -429,6 +444,7 @@ class SettingsScreenModel(
                 maxConcurrentDownloadsText = TextFieldValue(s.maxConcurrentDownloads.toString()),
                 maxConnectionsPerDownloadText = TextFieldValue(s.maxConnectionsPerDownload.toString()),
                 globalSpeedLimitKbpsText = TextFieldValue(s.globalSpeedLimitKbps.toString()),
+                snailSpeedKbpsText = TextFieldValue(s.snailSpeedKbps.toString()),
                 maxRetriesText = TextFieldValue(s.maxRetries.toString()),
                 retryDelaySecondsText = TextFieldValue(s.retryDelaySeconds.toString()),
                 maxRedirectsText = TextFieldValue(s.maxRedirects.toString()),

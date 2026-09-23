@@ -95,6 +95,8 @@ class DownloadsScreenModel(
             downloads = downloads,
             searchQuery = query,
             maxConcurrentDownloads = settings.maxConcurrentDownloads,
+            snailModeEnabled = settings.snailModeEnabled,
+            snailSpeedKbps = settings.snailSpeedKbps,
             capabilities = capabilities,
             filteredDownloads = if (query.isBlank()) {
                 downloads
@@ -158,6 +160,10 @@ class DownloadsScreenModel(
 
     fun onEvent(event: DownloadsEvent) = when (event) {
         is DownloadsEvent.SearchChanged -> _searchQuery.value = event.query
+        is DownloadsEvent.ToggleSnailMode -> screenModelScope.launch {
+            // Operational switch: persist immediately so the engine's limiter flow reacts at once.
+            settingsRepository.updateSettings { it.copy(snailModeEnabled = event.enabled) }
+        }
         is DownloadsEvent.AddDownload -> screenModelScope.launch {
             try {
                 addDownload(
