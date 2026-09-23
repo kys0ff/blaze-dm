@@ -21,6 +21,18 @@ object ServicePaths {
     /** Advisory lock that enforces a single service per data directory. */
     const val LOCK_FILE_NAME: String = "api.lock"
 
+    /** Lock held by the one GUI process allowed to run against this data directory. */
+    const val INSTANCE_LOCK_FILE_NAME: String = "instance.lock"
+
+    /** Local IPC socket the owning GUI listens on to receive external-open requests. */
+    const val INSTANCE_SOCKET_FILE_NAME: String = "instance.sock"
+
+    /** Owner-only (`0600`) shared secret for the single-instance IPC channel. */
+    const val INSTANCE_TOKEN_FILE_NAME: String = "instance-token"
+
+    /** Port file for the loopback-TCP fallback when the platform has no unix-socket support. */
+    const val INSTANCE_TCP_FILE_NAME: String = "instance-tcp"
+
     /** The token file path a trusted client may read to authenticate against a discovered service. */
     fun tokenFileFor(storageDir: java.nio.file.Path): java.nio.file.Path =
         storageDir.resolve(TOKEN_FILE_NAME)
@@ -30,4 +42,20 @@ object ServicePaths {
 
     fun lockFileFor(storageDir: java.nio.file.Path): java.nio.file.Path =
         storageDir.resolve(LOCK_FILE_NAME)
+
+    fun instanceLockFileFor(storageDir: java.nio.file.Path): java.nio.file.Path =
+        storageDir.resolve(INSTANCE_LOCK_FILE_NAME)
+
+    fun instanceSocketFileFor(storageDir: java.nio.file.Path): java.nio.file.Path =
+        storageDir.resolve(INSTANCE_SOCKET_FILE_NAME)
+
+    fun instanceTokenFileFor(storageDir: java.nio.file.Path): java.nio.file.Path =
+        storageDir.resolve(INSTANCE_TOKEN_FILE_NAME)
+
+    fun instanceTcpFileFor(storageDir: java.nio.file.Path): java.nio.file.Path =
+        storageDir.resolve(INSTANCE_TCP_FILE_NAME)
+
+    /** The default data directory under the user's home, e.g. `~/.blaze`. */
+    fun defaultStorageDir(): java.nio.file.Path =
+        java.nio.file.Path.of(System.getProperty("user.home"), DEFAULT_STORAGE_DIR_NAME)
 }

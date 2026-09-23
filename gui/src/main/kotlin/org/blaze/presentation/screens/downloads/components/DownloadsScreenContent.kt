@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,6 +18,8 @@ import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.PortableInfo
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.i18n.blazeStrings
+import org.blaze.osintegration.ExternalOpenRequest
+import org.blaze.osintegration.displaySource
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsState
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
@@ -34,10 +37,15 @@ fun DownloadsScreenContent(
     onImportPortable: suspend (String, String) -> Boolean,
     onNotify: (message: String, isError: Boolean) -> Unit,
     fileConflictBehavior: FileConflictBehavior,
+    externalRequests: List<ExternalOpenRequest> = emptyList(),
+    onExternalShown: (ExternalOpenRequest) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = blazeStrings
     var showAddDialog by remember { mutableStateOf(false) }
+    // Non-null when the dialog was opened by an external (OS) request rather than by the user;
+    // the dialog pre-fills and auto-fetches this source, and manual "+" opens clear it.
+    var addDialogSource by remember { mutableStateOf<String?>(null) }
     var downloadToRemove by remember { mutableStateOf<Download?>(null) }
     var detailsId by remember { mutableStateOf<String?>(null) }
     var conflictData by remember { mutableStateOf<ConflictData?>(null) }
@@ -45,6 +53,19 @@ fun DownloadsScreenContent(
     val listState = rememberLazyListState()
     var defaultDeleteBehavior by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
+
+    // Surface queued external opens (torrent files / magnets from the OS) one at a time through
+    // the *normal* add-download dialog. The request is acked as it is shown: it has then reached
+    // the user's workflow, and dismissing the dialog is the user's choice - it must not
+    // resurrect the dialog. Acking shrinks the queue, which re-runs this effect for the next one.
+    LaunchedEffect(externalRequests, showAddDialog) {
+        if (!showAddDialog && externalRequests.isNotEmpty()) {
+            val request = externalRequests.first()
+            addDialogSource = request.displaySource
+            onExternalShown(request)
+            showAddDialog = true
+        }
+    }
 
     // ── Portable-import flow: pick the moved artifact, preview it, choose a destination, resume. ──
     var showArtifactPicker by remember { mutableStateOf(false) }
@@ -69,6 +90,7 @@ fun DownloadsScreenContent(
     if (showAddDialog) {
         AddDownloadDialog(
             onDismiss = { showAddDialog = false },
+            initialSource = addDialogSource,
             onAdd = { url, destination, name, fileIndices, totalSize, files, scheduledAt ->
                 if (fileConflictBehavior == FileConflictBehavior.ASK) {
                     scope.launch {
@@ -219,13 +241,13 @@ fun DownloadsScreenContent(
             hasCompletedDownloads = hasCompleted,
             searchQuery = state.searchQuery,
             onEvent = onEvent,
-            onAddDownload = { showAddDialog = true },
+            onAddDownload = { addDialogSource = null; showAddDialog = true },
             onImportPortable = { showArtifactPicker = true }
         )
 
         if (state.downloads.isEmpty()) {
             DownloadsEmptyState(
-                onAddDownload = { showAddDialog = true }
+                onAddDownload = { addDialogSource = null; showAddDialog = true }
             )
         } else {
             val activeCount = remember(state.downloads) {

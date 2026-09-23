@@ -3,7 +3,6 @@ package org.blaze.service.transport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import org.blaze.download.api.ApiVersion
 import org.blaze.download.api.AuthMode
 import org.blaze.service.ApplicationDownloadService

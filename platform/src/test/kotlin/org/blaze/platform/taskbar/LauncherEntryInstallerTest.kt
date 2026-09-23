@@ -38,7 +38,14 @@ class LauncherEntryInstallerTest {
 
         val content = Files.readString(file)
         assertTrue(content.contains("StartupWMClass=${TEST_IDENTITY.windowManagerClass}"))
-        assertTrue(content.contains("Exec=${appDir.resolve("bin").resolve("org.blaze")}"))
+        assertTrue(
+            content.contains("Exec=\"${appDir.resolve("bin").resolve("org.blaze")}\" %F"),
+            "the quoted launcher must accept file arguments for OS-initiated opens",
+        )
+        assertTrue(
+            content.contains("MimeType=application/x-bittorrent;x-scheme-handler/magnet;"),
+            "torrent + magnet associations make xdg resolve opens to this entry",
+        )
         assertTrue(content.contains("Name=${TEST_IDENTITY.appName}"))
         assertFalse(content.contains("Icon="), "no icon line when the icon file is missing")
         assertEquals(1, refreshes, "the KService cache should be refreshed once")

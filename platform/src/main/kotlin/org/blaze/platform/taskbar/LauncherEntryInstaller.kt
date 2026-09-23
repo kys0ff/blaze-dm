@@ -159,7 +159,10 @@ class LauncherEntryInstaller(
         appendLine("Name=${identity.appName}")
         appendLine("GenericName=${identity.genericName}")
         appendLine("Comment=${identity.genericName}")
-        appendLine("Exec=${launcher.executable}")
+        // `%F` receives the file URLs a file manager/xdg-open passes (`blaze file.torrent`);
+        // plain menu launches simply drop the field code per the desktop-entry spec. The
+        // executable path is quoted so install locations containing spaces survive parsing.
+        appendLine("Exec=\"${launcher.executable}\" %F")
         // Prefer the stable absolute path we just published; fall back to the packaging
         // layout's own PNG only when that could not be written.
         when {
@@ -168,6 +171,10 @@ class LauncherEntryInstaller(
         }
         appendLine("Terminal=false")
         appendLine("Categories=${identity.categories}")
+        // OS-integration declarations: opening a .torrent or a magnet: link resolves to this
+        // entry via xdg-mime/xdg-open (`x-scheme-handler/magnet` is the DE-standard way to
+        // claim a URL scheme). The launcher turns these arguments into ExternalOpenRequests.
+        appendLine("MimeType=application/x-bittorrent;x-scheme-handler/magnet;")
         // java.awt on X11 builds WM_CLASS from the main class name with dots replaced
         // by dashes, which is exactly how identity.windowManagerClass is derived.
         appendLine("StartupWMClass=${identity.windowManagerClass}")

@@ -3,7 +3,6 @@ package org.blaze.service
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.blaze.download.api.ApiErrorCode
 import org.blaze.download.api.DownloadApiException
@@ -24,10 +23,10 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.assertFalse
 
 /**
  * Unit coverage of the application service's contract, driven against an in-memory [FakeEngine].
@@ -60,7 +59,7 @@ class ApplicationDownloadServiceTest {
         NewDownloadRequest(source = DownloadSource.Url(url), destination = dest, autoStart = autoStart, idempotencyKey = key)
 
     @Test
-    fun `create queues and auto-starts when asked`() = runBlocking<Unit> {
+    fun `create queues and auto-starts when asked`() = runBlocking {
         val engine = FakeEngine()
         val api = service(engine)
         val dto = api.create(req("https://example.com/a.zip"))
@@ -74,7 +73,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `create with autoStart false does not start`() = runBlocking<Unit> {
+    fun `create with autoStart false does not start`() = runBlocking {
         val engine = FakeEngine()
         val api = service(engine)
         api.create(req("https://example.com/b.zip", autoStart = false))
@@ -82,7 +81,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `idempotent replay returns the same download and does not re-enqueue`() = runBlocking<Unit> {
+    fun `idempotent replay returns the same download and does not re-enqueue`() = runBlocking {
         val engine = FakeEngine()
         val api = service(engine)
         val first = api.create(req("https://example.com/c.zip", key = "K1"))
@@ -93,7 +92,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `unambiguous duplicate source is deduplicated without a key`() = runBlocking<Unit> {
+    fun `unambiguous duplicate source is deduplicated without a key`() = runBlocking {
         val engine = FakeEngine()
         val api = service(engine)
         val dest = tmpDest()
@@ -104,7 +103,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `distinct sources are not collapsed into one download`() = runBlocking<Unit> {
+    fun `distinct sources are not collapsed into one download`() = runBlocking {
         val engine = FakeEngine()
         val api = service(engine)
         val a = api.create(req("https://example.com/x.zip"))
@@ -113,7 +112,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `lifecycle verbs forward to the engine`() = runBlocking<Unit> {
+    fun `lifecycle verbs forward to the engine`() = runBlocking {
         val engine = FakeEngine()
         val api = service(engine)
         val id = api.create(req("https://example.com/e.zip")).id
@@ -133,7 +132,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `destination confinement rejects a path outside the allowed roots`() = runBlocking<Unit> {
+    fun `destination confinement rejects a path outside the allowed roots`() = runBlocking {
         val allowed = tmpDest()
         val api = service(FakeEngine(), PathValidator.roots(allowed))
         val ex = assertFailsWith<DownloadApiException> {
@@ -143,7 +142,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `credentials reach the engine request but never the dto`() = runBlocking<Unit> {
+    fun `credentials reach the engine request but never the dto`() = runBlocking {
         val engine = FakeEngine()
         val api = service(engine)
         val dto = api.create(
@@ -165,7 +164,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `snapshot reflects the engine tasks mapped to dtos`() = runBlocking<Unit> {
+    fun `snapshot reflects the engine tasks mapped to dtos`() = runBlocking {
         val engine = FakeEngine()
         val api = service(engine)
         api.create(req("https://example.com/s1.zip"))
@@ -174,7 +173,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `probe forwards to engine metadata and maps the result`() = runBlocking<Unit> {
+    fun `probe forwards to engine metadata and maps the result`() = runBlocking {
         val engine = FakeEngine(metadataResult = DownloadMetadata("movie.mkv", 1234L, listOf(DownloadFileMetadata("a", 1234))))
         val api = service(engine)
         val meta = api.probe(req("https://example.com/movie.mkv"))
@@ -184,7 +183,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `portable detection and import map through the api`() = runBlocking<Unit> {
+    fun `portable detection and import map through the api`() = runBlocking {
         val portable = PortableDownloadInfo(PortableTransferKind.HTTP, "file.bin", "https://x/file.bin", 100, 40, true)
         val engine = FakeEngine(portableResult = portable, importResult = DownloadId("imported-1"))
         val api = service(engine)
@@ -199,7 +198,7 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
-    fun `shutdown delegates to the engine`() = runBlocking<Unit> {
+    fun `shutdown delegates to the engine`() = runBlocking {
         val engine = FakeEngine()
         service(engine).shutdown()
         assertTrue(engine.shutdownCalled)

@@ -154,6 +154,14 @@ The local API is **localhost-only and token-authenticated by default**. Full tra
 exit codes, security model and browser-extension readiness are documented in
 **[`docs/DOWNLOAD_API.md`](docs/DOWNLOAD_API.md)**.
 
+### OS integration
+
+The packaged app registers itself with the operating system as the handler for `.torrent` files and
+`magnet:` links: clicking one in a browser, double-clicking a downloaded file, or `xdg-open`ing a link
+launches Blaze (or wakes the running instance — never a second one) and routes the resource through the
+same Add-download workflow as a manual paste. Platform registration, the single-instance IPC design and
+security assumptions are documented in **[`docs/OS_INTEGRATION.md`](docs/OS_INTEGRATION.md)**.
+
 ## License
 
 Blaze is licensed under the **MIT License** — see [LICENSE](LICENSE) for the

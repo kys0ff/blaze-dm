@@ -20,6 +20,7 @@ rootProject.name = "blaze-dm"
 include(":download-engine")
 include(":download-api")
 include(":download-service")
+include(":os-integration")
 include(":cli")
 include(":link-resolver")
 include(":theming")

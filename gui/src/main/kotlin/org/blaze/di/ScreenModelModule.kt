@@ -23,7 +23,8 @@ val screenModelModule = module {
             detectPortableDownload = get(),
             importPortableDownload = get(),
             systemFileService = get(),
-            clipboard = get()
+            clipboard = get(),
+            externalOpenInbox = get()
         )
     }
 

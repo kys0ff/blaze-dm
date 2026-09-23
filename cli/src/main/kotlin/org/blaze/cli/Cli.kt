@@ -1,7 +1,6 @@
 package org.blaze.cli
 
 import java.io.PrintStream
-import java.nio.file.Path
 import java.nio.file.Paths
 
 /**

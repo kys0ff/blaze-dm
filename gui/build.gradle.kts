@@ -20,6 +20,8 @@ dependencies {
     // The GUI talks to the engine only through the application-level download API now.
     implementation(project(":download-api"))
     implementation(project(":download-service"))
+    // OS-integration layer: external-open parsing + single-instance IPC (never the engine directly).
+    implementation(project(":os-integration"))
     implementation(project(":link-resolver"))
     implementation(project(":theming"))
     implementation(project(":tray"))
@@ -106,14 +108,57 @@ compose.desktop {
 
             linux {
                 iconFile = file("src/main/resources/app-icon.png")
+                // deb/rpm ship a jpackage-generated .desktop with these MimeType entries, and the
+                // AppImage/desktop-entry installer honors them the same way (xdg registration).
+                fileAssociation(
+                    mimeType = "application/x-bittorrent",
+                    extension = "torrent",
+                    description = "BitTorrent torrent file",
+                )
             }
 
             windows {
                 iconFile = file("src/main/resources/app-icon.ico")
+                // MSI-level .torrent association (HKCR write during install, cleaned on uninstall).
+                // A fixed upgradeUuid makes successive MSIs *replace* the old registration instead
+                // of stacking orphan entries. The magnet: URL protocol cannot be declared through
+                // jpackage at all, so the packaged launcher registers it per-user at runtime
+                // (see org.blaze.osintegration.platform.WindowsUrlSchemeRegistrar in Main.kt).
+                upgradeUuid = "7dc9b2e1-34f5-4c6a-9b3d-0a2e7b1c8f55"
+                fileAssociation(
+                    mimeType = "application/x-bittorrent",
+                    extension = "torrent",
+                    description = "BitTorrent torrent file",
+                    iconFile = file("src/main/resources/app-icon.ico"),
+                )
             }
 
             macOS {
                 iconFile = file("src/main/resources/app-icon.icns")
+                // -> CFBundleDocumentTypes: Launch Services learns to open .torrent with Blaze.
+                fileAssociation(
+                    mimeType = "application/x-bittorrent",
+                    extension = "torrent",
+                    description = "BitTorrent torrent file",
+                )
+                // jpackage/Compose has no URL-scheme knob, so the raw plist key is injected
+                // verbatim into Info.plist: CFBundleURLTypes registers magnet: with
+                // Launch Services. Warm opens arrive via MacOpenEventsBridge, not argv.
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                          <dict>
+                            <key>CFBundleURLName</key>
+                            <string>org.blaze.magnet</string>
+                            <key>CFBundleURLSchemes</key>
+                            <array>
+                              <string>magnet</string>
+                            </array>
+                          </dict>
+                        </array>
+                    """.trimIndent()
+                }
             }
         }
     }

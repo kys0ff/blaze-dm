@@ -15,6 +15,7 @@ import java.awt.event.WindowEvent
 fun BlazeWindow(
     windowState: WindowState,
     visible: Boolean,
+    raiseToken: Long,
     onCloseRequest: () -> Unit,
     onMinimize: () -> Unit,
 ) {
@@ -57,8 +58,10 @@ fun BlazeWindow(
         // frame fine, but re-showing it leaves the surface un-repainted (the window
         // never comes back). The composition - and the download engine - stay alive
         // while hidden either way. Clearing ICONIFIED plus raising/focusing covers a
-        // re-show of a frame that KDE left minimized.
-        LaunchedEffect(visible) {
+        // re-show of a frame that KDE left minimized. [raiseToken] bumps re-run the raise even
+        // when the window was already visible, so an external open (magnet/torrent) while the
+        // app is shown still drags the frame in front of the user's other windows.
+        LaunchedEffect(visible, raiseToken) {
             if (visible) {
                 window.extendedState = Frame.NORMAL
                 window.toFront()

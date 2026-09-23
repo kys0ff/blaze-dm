@@ -37,6 +37,7 @@ class DownloadsScreen : Screen {
         }
 
         val settings by screenModel.settingsRepository.settings.collectAsState()
+        val externalRequests by screenModel.externalRequests.collectAsState()
 
         // Route every row's right-click menu through Jewel's themed popup instead of the
         // default lightweight Compose representation.
@@ -53,6 +54,8 @@ class DownloadsScreen : Screen {
                         if (isError) notifications.error(message) else notifications.info(message)
                     },
                     fileConflictBehavior = settings.fileConflictBehavior,
+                    externalRequests = externalRequests,
+                    onExternalShown = screenModel::externalHandled,
                 )
 
                 NotificationHost(

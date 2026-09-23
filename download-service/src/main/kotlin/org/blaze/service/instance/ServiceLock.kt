@@ -14,6 +14,11 @@ import java.nio.file.StandardOpenOption
  * the kernel drops it automatically if the process dies, so a crash never wedges a stale lock. When the
  * lock is already held, [acquire] returns false and the caller should connect to the running service
  * instead of starting a new one.
+ *
+ * No `DELETE_ON_CLOSE` (measured bug): with it the JDK may unlink the *path* while the holder keeps
+ * locking the orphaned inode, so the next process creates a fresh file at the path, locks it and
+ * "wins" a directory somebody else owns. The empty lock file simply persists between runs - harmless,
+ * and the only race-free choice.
  */
 class ServiceLock(private val lockFile: Path) : AutoCloseable {
     private val logger = LoggerFactory.getLogger(ServiceLock::class.java)
@@ -34,7 +39,6 @@ class ServiceLock(private val lockFile: Path) : AutoCloseable {
                 lockFile,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE,
-                StandardOpenOption.DELETE_ON_CLOSE,
             )
             val acquired = ch.tryLock()
             if (acquired == null) {

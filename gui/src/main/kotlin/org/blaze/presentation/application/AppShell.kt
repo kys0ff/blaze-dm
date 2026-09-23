@@ -25,6 +25,7 @@ import org.koin.compose.koinInject
 class AppShell internal constructor(
     val windowState: WindowState,
     val windowVisible: MutableState<Boolean>,
+    val windowRaiseToken: MutableState<Long>,
     private val appSettingsRepository: AppSettingsRepository,
     private val trayService: TrayService,
     private val downloadsApi: DownloadsApi,
@@ -32,6 +33,16 @@ class AppShell internal constructor(
 ) {
     /** Whether the app is in its real shutdown path (as opposed to hidden to the tray). */
     private var exiting = false
+
+    /**
+     * Surface the window for an external open / Dock reopen: un-hide when minimized to tray and
+     * always re-raise + focus (the bump makes [BlazeWindow] re-run its raise even when the window
+     * was already "visible", e.g. behind another app).
+     */
+    fun raiseWindow() {
+        windowVisible.value = true
+        windowRaiseToken.value += 1
+    }
 
     /** Minimize-to-tray can only work when the tray is both enabled and supported. */
     private val trayActive: Boolean
@@ -76,6 +87,7 @@ fun ApplicationScope.rememberAppShell(): AppShell {
         size = DpSize(1100.dp, 720.dp),
     )
     val windowVisible = remember { mutableStateOf(true) }
+    val windowRaiseToken = remember { mutableStateOf(0L) }
     val appSettingsRepository = koinInject<AppSettingsRepository>()
     val trayService = koinInject<TrayService>()
     val downloadsApi = koinInject<DownloadsApi>()
@@ -84,6 +96,7 @@ fun ApplicationScope.rememberAppShell(): AppShell {
         AppShell(
             windowState = windowState,
             windowVisible = windowVisible,
+            windowRaiseToken = windowRaiseToken,
             appSettingsRepository = appSettingsRepository,
             trayService = trayService,
             downloadsApi = downloadsApi,

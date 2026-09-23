@@ -28,6 +28,8 @@ import org.blaze.domain.usecase.ResumeAllDownloadsUseCase
 import org.blaze.domain.usecase.ResumeDownloadUseCase
 import org.blaze.domain.usecase.RetryDownloadUseCase
 import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.osintegration.ExternalOpenInbox
+import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.platform.files.SystemFileService
 import java.nio.file.Path
@@ -49,8 +51,21 @@ class DownloadsScreenModel(
     private val detectPortableDownload: DetectPortableDownloadUseCase,
     private val importPortableDownload: ImportPortableDownloadUseCase,
     private val systemFileService: SystemFileService,
-    private val clipboard: SystemClipboard
+    private val clipboard: SystemClipboard,
+    private val externalOpenInbox: ExternalOpenInbox
 ) : ScreenModel {
+
+    /**
+     * Torrent/magnet requests delivered by the operating system (argv at cold start, macOS open
+     * events, IPC forwards from a second launcher). They are queued in the inbox before this screen
+     * exists, so nothing is lost; the UI shows each one through the normal add-download dialog and
+     * [externalHandled] acks it out of the queue.
+     */
+    val externalRequests: StateFlow<List<ExternalOpenRequest>> = externalOpenInbox.pending
+
+    fun externalHandled(request: ExternalOpenRequest) {
+        externalOpenInbox.ack(request)
+    }
 
     private val _searchQuery = MutableStateFlow("")
 

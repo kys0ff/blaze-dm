@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -46,13 +47,20 @@ fun AddDownloadDialog(
         files: List<DownloadFile>?,
         scheduledAt: Long?
     ) -> Unit,
-    onFetchMetadata: suspend (url: String) -> DownloadMetadata?
+    onFetchMetadata: suspend (url: String) -> DownloadMetadata?,
+    initialSource: String? = null
 ) {
     val settingsRepository = koinInject<EngineSettingsRepository>()
     val registry = koinInject<LinkResolverRegistry>()
     val resolverSettings = koinInject<LinkResolverSettingsRepository>()
     val defaultPath = remember { settingsRepository.settings.value.defaultDownloadDir }
-    val state = remember { AddDownloadState(defaultPath) }
+    // An external open (OS file association / magnet link) arrives with the source already
+    // filled in - exactly what the user would have pasted - so every normal step still applies.
+    val state = remember {
+        AddDownloadState(defaultPath).apply {
+            if (initialSource != null) url = TextFieldValue(initialSource)
+        }
+    }
 
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
@@ -145,6 +153,12 @@ fun AddDownloadDialog(
             }
             else -> resolveAndFetch(source, handlers.first())
         }
+    }
+
+    // Fetch once on arrival for external opens so the user lands directly on the normal
+    // metadata/destination step without having to press anything (fetch() re-checks canFetch).
+    if (initialSource != null) {
+        LaunchedEffect(Unit) { fetch() }
     }
 
     LaunchedEffect(state.metadata) {
