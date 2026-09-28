@@ -9,21 +9,21 @@ import org.jetbrains.jewel.window.defaultTitleBarStyle
 /**
  * JetBrains-IDE-style "ambient" glow for the title bar: Jewel's `TitleBar` paints a horizontal
  * gradient whose *center* is the color returned here (background at both ends, brightest left
- * of center - the exact geometry IntelliJ uses, -100dp..400dp). Blending the effective accent of
- * the active theme into the title-bar background reproduces the look: IDEA's stock blue ambient
- * on the default palette, and a matching tint when a theme carries its own accent.
+ * of center - the exact geometry IntelliJ uses, -100dp..400dp). The [accent] passed in - the
+ * icon-derived brand color when available, otherwise the active theme's accent - is blended
+ * into the title-bar background, reproducing IDEA's stock look on any palette.
  *
  * An inactive window gets [Color.Unspecified] - IntelliJ flattens the bar to the solid inactive
  * background, and Jewel's gradient machinery skips blending for unspecified colors.
  */
 @Composable
 @ReadOnlyComposable
-internal fun ambientTitleBarGradientColor(isActive: Boolean): Color {
+internal fun ambientTitleBarGradientColor(isActive: Boolean, accent: Color): Color {
     if (!isActive) return Color.Unspecified
     // Same style lookup the Jewel title bar itself renders with, so the endpoints of the
     // gradient and this center tint can never drift apart.
     val style = JewelTheme.defaultTitleBarStyle
-    return ambientTitleBarCenterColor(style.colors.background, BlazeColors.accent, JewelTheme.isDark)
+    return ambientTitleBarCenterColor(style.colors.background, accent, JewelTheme.isDark)
 }
 
 /**
