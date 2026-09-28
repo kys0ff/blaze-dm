@@ -45,6 +45,8 @@ internal object InstanceProtocol {
                         is ExternalOpenRequest.TorrentFile -> WireOpen(KIND_TORRENT, it.displaySourceString())
                         is ExternalOpenRequest.MagnetUri -> WireOpen(KIND_MAGNET, it.uri)
                         is ExternalOpenRequest.WebLink -> WireOpen(KIND_WEB, it.url)
+                        is ExternalOpenRequest.LinkListFile -> WireOpen(KIND_LINK_LIST, it.displaySourceString())
+                        is ExternalOpenRequest.PartialDownload -> WireOpen(KIND_PARTIAL, it.displaySourceString())
                     }
                 },
             ),
@@ -63,9 +65,12 @@ internal object InstanceProtocol {
         frame.requests.mapNotNull { wire ->
             when (wire.kind) {
                 KIND_TORRENT, KIND_MAGNET -> parser.classify(wire.value).getOrNull()
-                // Web links only originate from in-app surfaces (drops / clipboard) on the forwarding
-                // side, so the receiving side re-validates them with the same widened vocabulary.
+                // Web links and path artifacts (link lists, partial candidates) only originate from
+                // the in-app drop/clipboard surfaces on the forwarding side, so the receiving side
+                // re-validates them with the same widened vocabulary. The forwarder and the owner
+                // share this machine, so the forwarded paths still exist to be probed.
                 KIND_WEB -> parser.classify(wire.value, allowWebUrls = true).getOrNull()
+                KIND_LINK_LIST, KIND_PARTIAL -> parser.classifyForDrop(wire.value).getOrNull()
                 else -> null // unknown future kind: drop, never execute
             }
         }.takeIf { it.size == frame.requests.size }
@@ -108,10 +113,14 @@ internal object InstanceProtocol {
     private const val KIND_TORRENT = "torrent"
     private const val KIND_MAGNET = "magnet"
     private const val KIND_WEB = "web"
+    private const val KIND_LINK_LIST = "link-list"
+    private const val KIND_PARTIAL = "partial"
 
     private fun ExternalOpenRequest.displaySourceString(): String = when (this) {
         is ExternalOpenRequest.TorrentFile -> path.toString()
         is ExternalOpenRequest.MagnetUri -> uri
         is ExternalOpenRequest.WebLink -> url
+        is ExternalOpenRequest.LinkListFile -> path.toString()
+        is ExternalOpenRequest.PartialDownload -> path.toString()
     }
 }

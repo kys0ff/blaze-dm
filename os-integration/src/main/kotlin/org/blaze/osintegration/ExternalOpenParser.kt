@@ -92,34 +92,56 @@ class ExternalOpenParser(
      * anything unusable. [allowWebUrls] widens the accepted vocabulary with plain `http(s)` links -
      * only in-app surfaces (window drops, clipboard monitoring) set it; the OS launch path never does,
      * so a stray `http:` argv stays the "not a handler for this scheme" rejection it always was.
+     * [allowArtifactPaths] widens further to existing local *folders* and files: link-list text
+     * files become [ExternalOpenRequest.LinkListFile] and anything else that exists becomes a
+     * [ExternalOpenRequest.PartialDownload] candidate. Only the explicit, goal-directed window-drop
+     * gesture sets it - a stray copied file path on the clipboard must not queue an import attempt.
      */
-    fun classify(raw: String, allowWebUrls: Boolean = false): Result<ExternalOpenRequest?> = runCatching {
+    fun classify(
+        raw: String,
+        allowWebUrls: Boolean = false,
+        allowArtifactPaths: Boolean = false,
+    ): Result<ExternalOpenRequest?> = runCatching {
         val value = raw.trim()
         when {
             value.isEmpty() -> null
             value.startsWith("-") -> throw Rejection(RejectionReason.IGNORED_OPTION)
-            value.hasScheme() -> classifyUri(value, allowWebUrls)
-            else -> classifyTorrentPath(value)
+            value.hasScheme() -> classifyUri(value, allowWebUrls, allowArtifactPaths)
+            else -> classifyPath(value, allowArtifactPaths)
         }
     }
 
     /**
-     * Classifies one value handed over by an in-app drop/clipboard surface: magnets, local torrent
-     * files *and* plain web links all become downloads. Same guarantees as [classify].
+     * Classifies one value handed over by the window drop surface: magnets, web links, local torrent
+     * files, link-list text files and candidate partial downloads (files/folders that exist).
+     * Same guarantees as [classify].
      */
-    fun classifyForDrop(raw: String): Result<ExternalOpenRequest?> = classify(raw, allowWebUrls = true)
+    fun classifyForDrop(raw: String): Result<ExternalOpenRequest?> =
+        classify(raw, allowWebUrls = true, allowArtifactPaths = true)
 
-    private fun classifyUri(value: String, allowWebUrls: Boolean): ExternalOpenRequest? {
+    /**
+     * Classifies one value observed by the clipboard monitor: an implicit, non-goal-directed
+     * surface, so it takes links and magnets but never treats an arbitrary existing path as an
+     * import candidate (a copied file path in a file manager is not a download request).
+     */
+    fun classifyForClipboard(raw: String): Result<ExternalOpenRequest?> =
+        classify(raw, allowWebUrls = true)
+
+    private fun classifyUri(
+        value: String,
+        allowWebUrls: Boolean,
+        allowArtifactPaths: Boolean,
+    ): ExternalOpenRequest? {
         val scheme = value.substringBefore(':').lowercase()
         return when (scheme) {
             "magnet" -> classifyMagnet(value)
             "http", "https" -> if (allowWebUrls) classifyWebUrl(value) else throw Rejection(RejectionReason.UNSUPPORTED_SCHEME)
             // Browsers sometimes hand over file:// URIs for a downloaded .torrent; accept only when it
-            // decodes to a real local torrent file, otherwise treat it like any unsupported scheme.
+            // decodes to a real local artifact, otherwise treat it like any unsupported scheme.
             "file" -> {
                 val path = runCatching { Paths.get(URI(value)) }.getOrNull()
                     ?: throw Rejection(RejectionReason.MALFORMED_MAGNET)
-                classifyTorrentPath(path.toAbsolutePath().toString())
+                classifyPath(path.toAbsolutePath().toString(), allowArtifactPaths)
             }
             else -> throw Rejection(RejectionReason.UNSUPPORTED_SCHEME)
         }
@@ -165,16 +187,25 @@ class ExternalOpenParser(
         return ExternalOpenRequest.MagnetUri(value)
     }
 
-    private fun classifyTorrentPath(value: String): ExternalOpenRequest? {
+    private fun classifyPath(value: String, allowArtifactPaths: Boolean): ExternalOpenRequest? {
         if (value.length > MAX_PATH_LENGTH) throw Rejection(RejectionReason.TOO_LONG)
         if (value.any { it.code < 0x20 || it == '\u007f' }) throw Rejection(RejectionReason.INVALID_CHARACTERS)
-        if (!value.endsWith(".torrent", ignoreCase = true)) throw Rejection(RejectionReason.NOT_A_TORRENT_FILE)
+        val isTorrent = value.endsWith(".torrent", ignoreCase = true)
+        if (!isTorrent && !allowArtifactPaths) throw Rejection(RejectionReason.NOT_A_TORRENT_FILE)
         val path = runCatching { Paths.get(value) }
             .getOrElse { throw Rejection(RejectionReason.NOT_A_TORRENT_FILE) }
             .toAbsolutePath().normalize()
         return when (probe(path)) {
-            PathProbe.REGULAR_FILE -> ExternalOpenRequest.TorrentFile(path)
-            PathProbe.DIRECTORY -> throw Rejection(RejectionReason.FILE_NOT_READABLE)
+            PathProbe.REGULAR_FILE -> when {
+                isTorrent -> ExternalOpenRequest.TorrentFile(path)
+                isLinkListFile(path) -> ExternalOpenRequest.LinkListFile(path)
+                else -> ExternalOpenRequest.PartialDownload(path)
+            }
+            // A folder only ever means something on the drop surface: a candidate torrent folder
+            // whose portable marker the engine will look for. On argv it stays the classic error.
+            PathProbe.DIRECTORY ->
+                if (allowArtifactPaths) ExternalOpenRequest.PartialDownload(path)
+                else throw Rejection(RejectionReason.FILE_NOT_READABLE)
             PathProbe.MISSING -> throw Rejection(RejectionReason.FILE_NOT_FOUND)
             PathProbe.NOT_PERMITTED -> throw Rejection(RejectionReason.FILE_NOT_READABLE)
         }
@@ -215,6 +246,17 @@ class ExternalOpenParser(
 
         /** Ceiling for a dropped web link; signed CDN URLs grow long, but nothing legitimate reaches 8k. */
         const val MAX_URL_LENGTH: Int = 8 * 1024
+
+        /**
+         * Extensions the drop surface treats as link lists (one URL/magnet per line). Kept in step
+         * with what the batch add-download dialog knows how to load; plain `txt` is the contract,
+         * the others are the conventional names for the same "one link per line" format.
+         */
+        val LINK_LIST_EXTENSIONS: Set<String> = setOf("txt", "list", "links", "urls")
+
+        /** True when [path]'s extension marks it as a link-list text file (case-insensitive). */
+        fun isLinkListFile(path: Path): Boolean =
+            path.fileName.toString().substringAfterLast('.', "").lowercase() in LINK_LIST_EXTENSIONS
     }
 }
 
@@ -234,6 +276,10 @@ internal fun probePath(path: Path): PathProbe = when {
 fun ExternalOpenParser.classifyOrNull(raw: String): ExternalOpenRequest? =
     classify(raw).getOrNull()
 
-/** Same convenience for in-app drop/clipboard surfaces, which also accept plain web links. */
+/** Same convenience for the window-drop surface: links, magnets, torrents, link lists, partials. */
 fun ExternalOpenParser.classifyForDropOrNull(raw: String): ExternalOpenRequest? =
     classifyForDrop(raw).getOrNull()
+
+/** The clipboard monitor's narrower vocabulary: links and magnets, never arbitrary path artifacts. */
+fun ExternalOpenParser.classifyForClipboardOrNull(raw: String): ExternalOpenRequest? =
+    classifyForClipboard(raw).getOrNull()

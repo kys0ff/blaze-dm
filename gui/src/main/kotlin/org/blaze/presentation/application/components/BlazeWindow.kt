@@ -3,13 +3,19 @@ package org.blaze.presentation.application.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.WindowState
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
 import org.blaze.platform.tray.AppTrayIcon
+import org.blaze.presentation.components.notifications.LocalNotifications
+import org.blaze.presentation.components.notifications.NotificationHost
+import org.blaze.presentation.components.notifications.NotificationsState
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.koin.compose.koinInject
 import java.awt.Dimension
@@ -77,17 +83,26 @@ fun BlazeWindow(
 
         BlazeTitleBar()
 
-        // Whole-window drag-and-drop: a frame-level DropTarget catches URLs / magnets / .torrent
-        // files dropped anywhere over the window and routes them into the external-open inbox, so
-        // the drop reuses the exact same validated queue as browser handlers and IPC forwards.
+        // Whole-window drag-and-drop: Compose's own drop plumbing (a frame-level AWT DropTarget
+        // never fires on Linux because drops are delivered to the Compose surface itself). The
+        // modifier on the content root catches URLs / magnets / .torrent files / link lists /
+        // partial downloads dropped anywhere over the window and routes the validated ones into
+        // the external-open inbox - the exact same queue browser handlers and IPC forwards feed.
+        // Balloons live at the window level so drop feedback shows on every screen, and screens
+        // report through the same queue via LocalNotifications instead of stacking their own hosts.
+        val notifications = remember { NotificationsState() }
         val inbox = koinInject<ExternalOpenInbox>()
         val parser = koinInject<ExternalOpenParser>()
-        val dragInProgress = rememberWindowDropTarget(window, inbox, parser)
+        val drop = rememberWindowDropTarget(inbox, parser, notifications)
 
-        Box(modifier = Modifier.fillMaxSize()) {
-            BlazeContent()
-            if (dragInProgress) {
-                WindowDropOverlay()
+        CompositionLocalProvider(LocalNotifications provides notifications) {
+            Box(modifier = Modifier.fillMaxSize().then(drop.modifier)) {
+                BlazeContent()
+                WindowDropOverlay(drop)
+                NotificationHost(
+                    state = notifications,
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                )
             }
         }
     }

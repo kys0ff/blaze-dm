@@ -9,12 +9,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.notifications.NotificationHost
+import org.blaze.presentation.components.notifications.LocalNotifications
 import org.blaze.presentation.components.notifications.NotificationType
 import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.screens.downloads.components.DownloadsScreenContent
@@ -28,7 +27,9 @@ class DownloadsScreen : Screen {
     override fun Content() {
         val screenModel = koinScreenModel<DownloadsScreenModel>()
         val state by screenModel.state.collectAsState()
-        val notifications = remember { NotificationsState() }
+        // Balloons are hosted once per window (see BlazeWindow) so drag-and-drop notices and screen
+        // effects share a single stack; fall back to a private queue only when hosted standalone.
+        val notifications = LocalNotifications.current ?: remember { NotificationsState() }
         val strings = blazeStrings
         val advisories = strings.downloads.advisories
 
@@ -82,11 +83,6 @@ class DownloadsScreen : Screen {
                     fileConflictBehavior = settings.fileConflictBehavior,
                     externalRequests = externalRequests,
                     onExternalShown = screenModel::externalHandled,
-                )
-
-                NotificationHost(
-                    state = notifications,
-                    modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }
         }

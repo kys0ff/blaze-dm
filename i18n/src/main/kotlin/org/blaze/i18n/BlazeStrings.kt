@@ -40,6 +40,27 @@ interface BlazeStrings {
         val emptyPaste: String
         /** Empty-state hint that a torrent, magnet or link can be dropped straight onto the window. */
         val emptyDropHint: String
+
+        /** Feedback for the whole-window drag-and-drop surface. */
+        val drop: Drop
+        interface Drop {
+            /** Headline of the overlay while a usable drag hovers the window. */
+            val overlayTitle: String
+            /** Headline of the overlay when the dragged payload can't become a download. */
+            val overlayUnsupportedTitle: String
+            val hintTorrents: String
+            val hintLinks: String
+            val hintLinkLists: String
+            val hintPartials: String
+            /** Suffix on the hovered-items preview, e.g. "+3 more". */
+            fun itemsMore(count: Int): String
+            /** Balloon after a successful drop: the sources await review in the add dialog. */
+            fun queued(count: Int): String
+            /** Balloon naming the dropped values that could not be used. */
+            fun rejected(names: String): String
+            /** Balloon when nothing in the drop was usable at all. */
+            val nothingUsable: String
+        }
         val searchPlaceholder: String
         val clearSearch: String
 

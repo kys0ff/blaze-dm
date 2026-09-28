@@ -29,6 +29,20 @@ sealed interface ExternalOpenRequest {
      * over a bare URL, so the OS launch path keeps rejecting unknown schemes.
      */
     data class WebLink(val url: String) : ExternalOpenRequest
+
+    /**
+     * An existing local text file holding one link/magnet per line (a "link list"), produced only
+     * by the window-drop vocabulary. The consumer opens it through the batch add-download flow;
+     * the file's *contents* are never interpreted by the parser itself.
+     */
+    data class LinkListFile(val path: Path) : ExternalOpenRequest
+
+    /**
+     * A file or folder dropped onto the window that is a *candidate* portable (unfinished)
+     * download. Detection stays content-based downstream - the classifier only promises the path
+     * exists; whether it carries an embedded Blaze resume manifest is decided by the engine.
+     */
+    data class PartialDownload(val path: Path) : ExternalOpenRequest
 }
 
 /**
@@ -41,4 +55,6 @@ val ExternalOpenRequest.displaySource: String
         is ExternalOpenRequest.TorrentFile -> path.toAbsolutePath().normalize().toString()
         is ExternalOpenRequest.MagnetUri -> uri
         is ExternalOpenRequest.WebLink -> url
+        is ExternalOpenRequest.LinkListFile -> path.toAbsolutePath().normalize().toString()
+        is ExternalOpenRequest.PartialDownload -> path.toAbsolutePath().normalize().toString()
     }

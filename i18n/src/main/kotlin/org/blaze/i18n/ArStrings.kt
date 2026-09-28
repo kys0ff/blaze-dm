@@ -35,6 +35,20 @@ object ArStrings : BlazeStrings {
         override val emptyAction = "إضافة تنزيل"
         override val emptyPaste = "لصق الرابط من الحافظة"
         override val emptyDropHint = "تلميح: يمكنك أيضًا إفلات ملف ‎.torrent أو رابط magnet أو عنوان URL على النافذة."
+
+        override val drop = object : BlazeStrings.Downloads.Drop {
+            override val overlayTitle = "أفلت لإضافة تنزيلات"
+            override val overlayUnsupportedTitle = "لا يمكن إفلات هذا هنا"
+            override val hintTorrents = "ملفات التورنت وروابط magnet"
+            override val hintLinks = "روابط التنزيل المباشر"
+            override val hintLinkLists = "قوائم الروابط (‎.txt — رابط واحد في كل سطر)"
+            override val hintPartials = "التنزيلات غير المكتملة (ملفات ‎.part والمجلدات)"
+            override fun itemsMore(count: Int) = "+ $count أخرى"
+            override fun queued(count: Int) =
+                if (count == 1) "أُضيف مصدر واحد بانتظار التأكيد في نافذة الإضافة" else "$count مصادر بانتظار التأكيد في نافذة الإضافة"
+            override fun rejected(names: String) = "لا يمكن تنزيل: $names"
+            override val nothingUsable = "لا يوجد في ما أُفلت ما يمكن تنزيله"
+        }
         override val searchPlaceholder = "بحث في التنزيلات…"
         override val clearSearch = "مسح البحث"
 

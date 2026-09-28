@@ -8,7 +8,7 @@ import kotlinx.coroutines.delay
 import org.blaze.data.AppSettingsRepository
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
-import org.blaze.osintegration.classifyForDropOrNull
+import org.blaze.osintegration.classifyForClipboardOrNull
 import org.blaze.platform.clipboard.SystemClipboard
 import org.koin.compose.koinInject
 import kotlin.time.Duration
@@ -26,6 +26,9 @@ private val CLIPBOARD_POLL_INTERVAL: Duration = 1_500.milliseconds
  * with plain web links. Recognised links/magnets/`.torrent` paths are submitted to the
  * [ExternalOpenInbox], so a clipboard hit reuses the exact same user-visible flow as a browser
  * handler: the add-download dialog opens pre-filled, and nothing is queued until the user confirms.
+ * Classification uses the clipboard's narrower vocabulary ([classifyForClipboardOrNull]): a merely
+ * *copied* file path is not an import intent, so link lists and partial-download candidates are
+ * left to the deliberate window-drop gesture alone.
  *
  * Deliberate behaviours:
  * - the value already on the clipboard when monitoring starts is only remembered, never offered
@@ -52,7 +55,7 @@ fun AppClipboardMonitor() {
             val text = runCatching { clipboard.paste()?.trim() }.getOrNull()
             if (text != null && text != lastSeen) {
                 lastSeen = text
-                parser.classifyForDropOrNull(text)?.let(inbox::submit)
+                parser.classifyForClipboardOrNull(text)?.let(inbox::submit)
             }
         }
     }

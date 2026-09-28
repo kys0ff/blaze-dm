@@ -74,25 +74,45 @@ fun DownloadsScreenContent(
     val searchFocusRequester = remember { FocusRequester() }
     val clipboard = koinInject<SystemClipboard>()
 
-    // Surface queued external opens (torrent files / magnets from the OS) one at a time through
-    // the *normal* add-download dialog. The request is acked as it is shown: it has then reached
-    // the user's workflow, and dismissing the dialog is the user's choice - it must not
-    // resurrect the dialog. Acking shrinks the queue, which re-runs this effect for the next one.
-    LaunchedEffect(externalRequests, showAddDialog) {
-        if (!showAddDialog && externalRequests.isNotEmpty()) {
-            val request = externalRequests.first()
-            addDialogSource = request.displaySource
-            onExternalShown(request)
-            showAddDialog = true
-        }
-    }
-
     // ── Portable-import flow: pick the moved artifact, preview it, choose a destination, resume. ──
     var showArtifactPicker by remember { mutableStateOf(false) }
     var showDestPicker by remember { mutableStateOf(false) }
     var importBusy by remember { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<Pair<String, PortableInfo>?>(null) }
     var importDestination by remember { mutableStateOf("") }
+
+    // Surface queued external opens (torrent files / magnets / link lists / partial-download
+    // candidates from the OS or a window drop) one at a time. The request is acked as it is shown:
+    // it has then reached the user's workflow, and dismissing the dialog is the user's choice - it
+    // must not resurrect the dialog. Acking shrinks the queue, which re-runs this effect for the
+    // next one. Torrents, magnets, links and link lists go through the *normal* add-download
+    // dialog (a link list lands in its batch review step); a dropped `.part` file or folder goes
+    // through the portable-import preview after a content-based detection (never by name, §23),
+    // so the transfer continues from the bytes already on disk.
+    LaunchedEffect(externalRequests, showAddDialog, pendingImport) {
+        if (!showAddDialog && pendingImport == null && externalRequests.isNotEmpty()) {
+            val request = externalRequests.first()
+            onExternalShown(request)
+            if (request is ExternalOpenRequest.PartialDownload) {
+                val artifactPath = request.displaySource
+                val info = onDetectPortable(artifactPath)
+                if (info == null) {
+                    onNotify(
+                        strings.downloads.portable.notPortable(request.path.fileName.toString()),
+                        NotificationType.ERROR,
+                    )
+                } else {
+                    // A folder resumes in place; a loose partial file resumes in its parent folder.
+                    importDestination = if (java.nio.file.Files.isDirectory(request.path)) artifactPath
+                    else request.path.parent?.toString() ?: artifactPath
+                    pendingImport = artifactPath to info
+                }
+            } else {
+                addDialogSource = request.displaySource
+                showAddDialog = true
+            }
+        }
+    }
 
     val hasActive = remember(state.downloads) { state.downloads.any { it.state == DownloadState.DOWNLOADING } }
     val hasPaused = remember(state.downloads) { state.downloads.any { it.state == DownloadState.PAUSED } }

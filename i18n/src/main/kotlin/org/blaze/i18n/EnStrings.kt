@@ -29,6 +29,20 @@ object EnStrings : BlazeStrings {
         override val emptyAction = "Add a download"
         override val emptyPaste = "Paste link from clipboard"
         override val emptyDropHint = "Tip: you can also drop a .torrent file, a magnet link or a URL onto the window."
+
+        override val drop = object : BlazeStrings.Downloads.Drop {
+            override val overlayTitle = "Drop to add downloads"
+            override val overlayUnsupportedTitle = "Can't drop that here"
+            override val hintTorrents = "Torrent files & magnet links"
+            override val hintLinks = "Direct download links"
+            override val hintLinkLists = "Link lists (.txt — one link per line)"
+            override val hintPartials = "Unfinished downloads (.part files & folders)"
+            override fun itemsMore(count: Int) = "+$count more"
+            override fun queued(count: Int) =
+                if (count == 1) "1 source queued — confirm it in the add dialog" else "$count sources queued — confirm them in the add dialog"
+            override fun rejected(names: String) = "Can't download: $names"
+            override val nothingUsable = "Nothing in that drop can be downloaded"
+        }
         override val searchPlaceholder = "Search downloads…"
         override val clearSearch = "Clear search"
 

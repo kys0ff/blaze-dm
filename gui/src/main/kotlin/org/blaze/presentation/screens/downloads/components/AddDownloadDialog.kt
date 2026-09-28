@@ -29,6 +29,7 @@ import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputV
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadListView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
+import org.blaze.presentation.screens.downloads.components.add.loadSourceFile
 import org.blaze.presentation.screens.downloads.components.add.resolveDestinationStatus
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
@@ -65,12 +66,28 @@ fun AddDownloadDialog(
         // The engine stores its own priority enum; map by name onto the api enum the GUI uses.
         DownloadPriority.valueOf(settingsRepository.settings.value.defaultDownloadPriority.name)
     }
-    // An external open (OS file association / magnet link) arrives with the source already
-    // filled in - exactly what the user would have pasted - so every normal step still applies.
+    // An external open (OS file association / magnet link / window drop) arrives with the source
+    // already filled in - exactly what the user would have pasted - so every normal step still
+    // applies. A source that names an existing local file goes through the same loader the "Add
+    // from File" button uses, so a dropped link list lands in the batch review instead of as a
+    // literal path in the URL field.
+    val dStrings = blazeStrings.downloads.dialogs
     val state = remember {
         AddDownloadState(defaultPath).apply {
             priority = defaultPriority
-            if (initialSource != null) url = TextFieldValue(initialSource)
+            if (initialSource != null) {
+                val artifact = runCatching { java.nio.file.Path.of(initialSource) }.getOrNull()
+                    ?.takeIf { java.nio.file.Files.isRegularFile(it) }
+                if (artifact != null) {
+                    loadSourceFile(artifact, dStrings)?.let {
+                        // Unreadable/empty list: still show the raw path so the user can react.
+                        fetchError = it
+                        url = TextFieldValue(initialSource)
+                    }
+                } else {
+                    url = TextFieldValue(initialSource)
+                }
+            }
         }
     }
 
@@ -178,7 +195,9 @@ fun AddDownloadDialog(
 
     // Fetch once on arrival for external opens so the user lands directly on the normal
     // metadata/destination step without having to press anything (fetch() re-checks canFetch).
-    if (initialSource != null) {
+    // A batch is the exception: the review list is the landing step, and firing metadata for
+    // dozens of links unprompted is not what an unrequested drop should cost.
+    if (initialSource != null && !state.isBatch) {
         LaunchedEffect(Unit) { fetch() }
     }
 
@@ -228,7 +247,7 @@ fun AddDownloadDialog(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     val strings = blazeStrings
-    val dStrings = strings.downloads.dialogs
+    // dStrings was resolved above, next to the state it also seeds.
 
     // The primary action label/handler depend on the current step, so resolve them once.
     val (confirmText, onConfirm, confirmEnabled) = if (state.step == 1) {

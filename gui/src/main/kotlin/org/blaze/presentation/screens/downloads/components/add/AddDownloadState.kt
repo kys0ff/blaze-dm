@@ -4,10 +4,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.download.api.DownloadPriority
+import org.blaze.i18n.BlazeStrings
+import org.blaze.osintegration.ExternalOpenParser
 import org.blaze.resolver.core.LoadedResolver
+import java.io.File
+import java.nio.file.Path
 
 class AddDownloadState(
     defaultDestination: String
@@ -89,4 +94,58 @@ class AddDownloadState(
                 s.startsWith("magnet:") ||
                 s.endsWith(".torrent")
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Source-loading helpers, shared by the input view ("Add from File", paste) and
+// the dialog itself (a dropped/external link list arrives as an initialSource).
+// ─────────────────────────────────────────────────────────────────────────────
+
+internal fun AddDownloadState.clearSource() {
+    batchItems.clear()
+    url = TextFieldValue("")
+    resetMetadata()
+}
+
+internal fun AddDownloadState.setSource(urls: List<String>, batchLabel: String) {
+    resetMetadata()
+    batchItems.clear() // picking a second file must replace the batch, not append to it
+    when {
+        urls.size > 1 -> {
+            url = TextFieldValue(batchLabel)
+            batchItems.addAll(urls.map { BatchDownloadItem(it) })
+        }
+
+        urls.size == 1 -> url = TextFieldValue(urls[0], TextRange(urls[0].length))
+    }
+}
+
+/** Pasting several lines becomes a batch; a single line just fills the field. */
+internal fun AddDownloadState.applyPastedText(
+    raw: String,
+    d: BlazeStrings.Downloads.Dialogs,
+) {
+    val lines = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    setSource(lines, d.linkCount(lines.size))
+}
+
+/** Returns an error message, or null on success. */
+internal fun AddDownloadState.loadSourceFile(
+    path: Path,
+    d: BlazeStrings.Downloads.Dialogs,
+): String? {
+    if (!ExternalOpenParser.isLinkListFile(path)) {
+        // .TORRENT and friends: use the path as the source
+        setSource(listOf(path.toString()), "")
+        return null
+    }
+    val urls = runCatching { File(path.toString()).readLines() }
+        .getOrElse { return d.sourceFileReadFailed(it.message) }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") } // allow comments in link lists
+        .distinct()
+
+    if (urls.isEmpty()) return d.emptyLinkFile
+    setSource(urls, path.fileName.toString())
+    return null
 }

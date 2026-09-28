@@ -271,58 +271,9 @@ fun AddDownloadInputView(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// State helpers
+// State helpers (clearSource / setSource / applyPastedText / loadSourceFile)
+// live in AddDownloadState.kt, shared with the dialog's external-link-list path.
 // ─────────────────────────────────────────────────────────────────────────────
-
-private fun AddDownloadState.clearSource() {
-    batchItems.clear()
-    url = TextFieldValue("")
-    resetMetadata()
-}
-
-private fun AddDownloadState.setSource(urls: List<String>, batchLabel: String) {
-    resetMetadata()
-    batchItems.clear() // picking a second file must replace the batch, not append to it
-    when {
-        urls.size > 1 -> {
-            url = TextFieldValue(batchLabel)
-            batchItems.addAll(urls.map { BatchDownloadItem(it) })
-        }
-
-        urls.size == 1 -> url = TextFieldValue(urls[0], TextRange(urls[0].length))
-    }
-}
-
-/** Pasting several lines becomes a batch; a single line just fills the field. */
-private fun AddDownloadState.applyPastedText(
-    raw: String,
-    d: BlazeStrings.Downloads.Dialogs,
-) {
-    val lines = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-    setSource(lines, d.linkCount(lines.size))
-}
-
-/** Returns an error message, or null on success. */
-private fun AddDownloadState.loadSourceFile(
-    path: Path,
-    d: BlazeStrings.Downloads.Dialogs,
-): String? {
-    val file = path.toFile()
-    if (!file.extension.equals("txt", ignoreCase = true)) {
-        // .TORRENT and friends: use the path as the source
-        setSource(listOf(path.toString()), "")
-        return null
-    }
-    val urls = runCatching { file.readLines() }
-        .getOrElse { return d.sourceFileReadFailed(it.message) }
-        .map { it.trim() }
-        .filter { it.isNotEmpty() && !it.startsWith("#") } // allow comments in link lists
-        .distinct()
-
-    if (urls.isEmpty()) return d.emptyLinkFile
-    setSource(urls, file.name)
-    return null
-}
 
 private fun sourceKind(text: String, d: BlazeStrings.Downloads.Dialogs): String? {
     val t = text.trim()
