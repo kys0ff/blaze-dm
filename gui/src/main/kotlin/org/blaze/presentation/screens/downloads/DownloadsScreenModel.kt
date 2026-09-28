@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
@@ -74,6 +75,10 @@ class DownloadsScreenModel(
 
     private val _searchQuery = MutableStateFlow("")
 
+    /** Column order + narrowing chosen through the toolbar's sort/filter controls. */
+    private val _sort = MutableStateFlow(DownloadSortField.DATE_ADDED to false)
+    private val _filter = MutableStateFlow(DownloadFilter.ALL)
+
     /** The same shared list the state renders, kept so the transition watcher can re-check a fact. */
     private val downloadsFlow = getDownloads()
 
@@ -91,23 +96,30 @@ class DownloadsScreenModel(
     val state: StateFlow<DownloadsState> = combine(
         downloadsFlow,
         _searchQuery,
-        settingsRepository.settings
-    ) { downloads, query, settings ->
+        settingsRepository.settings,
+        _sort,
+        _filter,
+    ) { downloads, query, settings, (field, ascending), filter ->
+        val searched = if (query.isBlank()) {
+            downloads
+        } else {
+            downloads.filter {
+                it.name.contains(query, ignoreCase = true) ||
+                        it.url.contains(query, ignoreCase = true)
+            }
+        }
         DownloadsState(
             downloads = downloads,
             searchQuery = query,
+            sortField = field,
+            sortAscending = ascending,
+            filter = filter,
+            counts = downloads.toCounts(),
             maxConcurrentDownloads = settings.maxConcurrentDownloads,
             snailModeEnabled = settings.snailModeEnabled,
             snailSpeedKbps = settings.snailSpeedKbps,
             capabilities = capabilities,
-            filteredDownloads = if (query.isBlank()) {
-                downloads
-            } else {
-                downloads.filter {
-                    it.name.contains(query, ignoreCase = true) ||
-                            it.url.contains(query, ignoreCase = true)
-                }
-            }
+            filteredDownloads = searched.filterAndSort(filter, field, ascending),
         )
     }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), DownloadsState(capabilities = capabilities))
 
@@ -160,130 +172,99 @@ class DownloadsScreenModel(
         }
     }
 
-    fun onEvent(event: DownloadsEvent) = when (event) {
-        is DownloadsEvent.SearchChanged -> _searchQuery.value = event.query
-        is DownloadsEvent.ToggleSnailMode -> screenModelScope.launch {
-            // Operational switch: persist immediately so the engine's limiter flow reacts at once.
-            settingsRepository.updateSettings { it.copy(snailModeEnabled = event.enabled) }
-        }
-        is DownloadsEvent.AddDownload -> screenModelScope.launch {
-            try {
-                addDownload(
-                    url = event.url,
-                    savePath = event.savePath,
-                    name = event.name,
-                    fileIndices = event.fileIndices,
-                    totalSize = event.totalSize,
-                    files = event.files,
-                    scheduledAt = event.scheduledAt,
-                    priority = event.priority,
-                )
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to add download: ${e.message}"))
+    fun onEvent(event: DownloadsEvent) {
+        when (event) {
+            is DownloadsEvent.SearchChanged -> _searchQuery.value = event.query
+
+            is DownloadsEvent.SortBy -> _sort.update { (field, ascending) ->
+                if (field == event.field) field to !ascending
+                // A freshly chosen column starts in its natural direction: newest/fastest first for
+                // date and speed, A-z / smallest first for the rest.
+                else event.field to (event.field != DownloadSortField.DATE_ADDED && event.field != DownloadSortField.SPEED)
+            }
+
+            is DownloadsEvent.FilterBy -> _filter.value = event.filter
+
+            is DownloadsEvent.ToggleSnailMode -> screenModelScope.launch {
+                // Operational switch: persist immediately so the engine's limiter flow reacts at once.
+                settingsRepository.updateSettings { it.copy(snailModeEnabled = event.enabled) }
+            }
+
+            is DownloadsEvent.AddDownload -> screenModelScope.launch {
+                try {
+                    addDownload(
+                        url = event.url,
+                        savePath = event.savePath,
+                        name = event.name,
+                        fileIndices = event.fileIndices,
+                        totalSize = event.totalSize,
+                        files = event.files,
+                        scheduledAt = event.scheduledAt,
+                        priority = event.priority,
+                    )
+                } catch (e: Exception) {
+                    fail("Failed to add download", e)
+                }
+            }
+
+            is DownloadsEvent.SetPriority -> op("Failed to change priority") { setPriority(event.id, event.priority) }
+            is DownloadsEvent.Pause -> op("Failed to pause download") { pauseDownload(event.id) }
+            is DownloadsEvent.Resume -> op("Failed to resume download") { resumeDownload(event.id) }
+            is DownloadsEvent.Remove -> op("Failed to remove download") { removeDownload(id = event.id, deleteFile = event.deleteFile) }
+            is DownloadsEvent.Retry -> op("Failed to retry download") { retryDownload(event.id) }
+
+            is DownloadsEvent.Cancel -> screenModelScope.launch {
+                try {
+                    cancelDownload(event.id)
+                    _effects.emit(DownloadsEffect.ShowMessage("Download canceled"))
+                } catch (e: Exception) {
+                    fail("Failed to cancel download", e)
+                }
+            }
+
+            DownloadsEvent.PauseAll -> op("Failed to pause all downloads") { pauseAllDownloads() }
+            DownloadsEvent.ResumeAll -> op("Failed to resume all downloads") { resumeAllDownloads() }
+            DownloadsEvent.ClearCompleted -> op("Failed to clear completed downloads") { clearCompletedDownloads() }
+
+            is DownloadsEvent.OpenFile -> runDesktop(event.id) { download ->
+                systemFileService.openPath(download.destinationPath())
+            }
+
+            is DownloadsEvent.ShowInFolder -> runDesktop(event.id) { download ->
+                systemFileService.revealInFolder(download.destinationPath())
+            }
+
+            is DownloadsEvent.OpenSourceLink -> runDesktop(event.id) { download ->
+                if (download.url.startsWith("http://", ignoreCase = true) ||
+                    download.url.startsWith("https://", ignoreCase = true)
+                ) {
+                    systemFileService.openInBrowser(download.url)
+                } else {
+                    Result.failure(IllegalStateException("No web link to open for this download"))
+                }
+            }
+
+            is DownloadsEvent.CopyDownloadLink -> runDesktop(event.id) { download ->
+                clipboard.copy(download.url)
+            }
+
+            is DownloadsEvent.CopyFileLocation -> runDesktop(event.id) { download ->
+                clipboard.copy(download.destinationPath().toAbsolutePath().normalize().toString())
             }
         }
+    }
 
-        is DownloadsEvent.SetPriority -> screenModelScope.launch {
-            try {
-                setPriority(event.id, event.priority)
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to change priority: ${e.message}"))
-            }
+    /** Runs a single command, reporting any failure as an error effect with the given [context] prefix. */
+    private fun op(context: String, block: suspend () -> Unit) = screenModelScope.launch {
+        try {
+            block()
+        } catch (e: Exception) {
+            fail(context, e)
         }
+    }
 
-        is DownloadsEvent.Pause -> screenModelScope.launch {
-            try {
-                pauseDownload(event.id)
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to pause download: ${e.message}"))
-            }
-        }
-
-        is DownloadsEvent.Resume -> screenModelScope.launch {
-            try {
-                resumeDownload(event.id)
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to resume download: ${e.message}"))
-            }
-        }
-
-        is DownloadsEvent.Remove -> screenModelScope.launch {
-            try {
-                removeDownload(
-                    id = event.id,
-                    deleteFile = event.deleteFile
-                )
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to remove download: ${e.message}"))
-            }
-        }
-
-        is DownloadsEvent.Retry -> screenModelScope.launch {
-            try {
-                retryDownload(event.id)
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to retry download: ${e.message}"))
-            }
-        }
-
-        is DownloadsEvent.Cancel -> screenModelScope.launch {
-            try {
-                cancelDownload(event.id)
-                _effects.emit(DownloadsEffect.ShowMessage("Download canceled"))
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to cancel download: ${e.message}"))
-            }
-        }
-
-        DownloadsEvent.PauseAll -> screenModelScope.launch {
-            try {
-                pauseAllDownloads()
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to pause all downloads: ${e.message}"))
-            }
-        }
-
-        DownloadsEvent.ResumeAll -> screenModelScope.launch {
-            try {
-                resumeAllDownloads()
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to resume all downloads: ${e.message}"))
-            }
-        }
-
-        DownloadsEvent.ClearCompleted -> screenModelScope.launch {
-            try {
-                clearCompletedDownloads()
-            } catch (e: Exception) {
-                _effects.emit(DownloadsEffect.ShowError("Failed to clear completed downloads: ${e.message}"))
-            }
-        }
-
-        is DownloadsEvent.OpenFile -> runDesktop(event.id) { download ->
-            systemFileService.openPath(download.destinationPath())
-        }
-
-        is DownloadsEvent.ShowInFolder -> runDesktop(event.id) { download ->
-            systemFileService.revealInFolder(download.destinationPath())
-        }
-
-        is DownloadsEvent.OpenSourceLink -> runDesktop(event.id) { download ->
-            if (download.url.startsWith("http://", ignoreCase = true) ||
-                download.url.startsWith("https://", ignoreCase = true)
-            ) {
-                systemFileService.openInBrowser(download.url)
-            } else {
-                Result.failure(IllegalStateException("No web link to open for this download"))
-            }
-        }
-
-        is DownloadsEvent.CopyDownloadLink -> runDesktop(event.id) { download ->
-            clipboard.copy(download.url)
-        }
-
-        is DownloadsEvent.CopyFileLocation -> runDesktop(event.id) { download ->
-            clipboard.copy(download.destinationPath().toAbsolutePath().normalize().toString())
-        }
+    private suspend fun fail(context: String, error: Throwable) {
+        _effects.emit(DownloadsEffect.ShowError("$context: ${error.message}"))
     }
 
     /**

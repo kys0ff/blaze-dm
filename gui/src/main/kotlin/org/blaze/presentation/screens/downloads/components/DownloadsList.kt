@@ -17,18 +17,19 @@ import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 @Composable
 fun DownloadsList(
     downloads: List<Download>,
-    selectedId: String?,
+    selectedIds: Set<String>,
     listState: LazyListState,
     onEvent: (DownloadsEvent) -> Unit,
     onRemoveRequested: (Download) -> Unit,
     onPauseRequested: (Download) -> Unit,
     onResumeRequested: (Download) -> Unit,
     onShowDetailsRequested: (String) -> Unit,
-    onSelect: (String) -> Unit,
+    onSelect: (id: String, toggle: Boolean) -> Unit,
     hideResumeForQueued: Boolean,
     capabilities: DownloadCapabilities = DownloadCapabilities(),
     modifier: Modifier = Modifier
 ) {
+    val inSelectionMode = selectedIds.isNotEmpty()
     VerticallyScrollableContainer(listState, modifier = modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -60,8 +61,9 @@ fun DownloadsList(
                 DownloadRow(
                     download = download,
                     actions = actions,
-                    isSelected = download.id == selectedId,
-                    onSelect = { onSelect(download.id) },
+                    isSelected = download.id in selectedIds,
+                    inSelectionMode = inSelectionMode,
+                    onSelect = { toggle -> onSelect(id, toggle) },
                     hideResume = hideResumeForQueued && (download.state == DownloadState.QUEUED),
                     capabilities = capabilities
                 )

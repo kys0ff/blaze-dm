@@ -40,6 +40,8 @@ sealed interface SettingsEvent {
 
     // Appearance
     data class UpdateThemeMode(val mode: ThemeMode) : SettingsEvent
+    /** UI language as a BlazeLocale code; buffered in the app-settings draft like the rest. */
+    data class UpdateLanguage(val code: String) : SettingsEvent
     
     // Startup
     data class UpdateResumeDownloadsOnStartup(val enabled: Boolean) : SettingsEvent
@@ -49,6 +51,7 @@ sealed interface SettingsEvent {
     data class UpdateTrayEnabled(val enabled: Boolean) : SettingsEvent
     data class UpdateMinimizeToTrayOnClose(val enabled: Boolean) : SettingsEvent
     data class UpdateRunAtStartup(val enabled: Boolean) : SettingsEvent
+    data class UpdateClipboardMonitoring(val enabled: Boolean) : SettingsEvent
     
     // Destination & Conflicts
     data class UpdateDefaultDownloadDir(val path: String) : SettingsEvent

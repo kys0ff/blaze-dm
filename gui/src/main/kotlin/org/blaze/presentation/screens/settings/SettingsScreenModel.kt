@@ -282,6 +282,9 @@ class SettingsScreenModel(
             is SettingsEvent.UpdateThemeMode -> _state.update {
                 it.copy(settings = it.settings.copy(themeMode = event.mode))
             }
+            is SettingsEvent.UpdateLanguage -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(languageCode = event.code))
+            }
             is SettingsEvent.UpdateResumeDownloadsOnStartup -> _state.update {
                 it.copy(settings = it.settings.copy(resumeDownloadsOnStartup = event.enabled))
             }
@@ -296,6 +299,9 @@ class SettingsScreenModel(
             }
             is SettingsEvent.UpdateRunAtStartup -> _state.update {
                 it.copy(appSettings = it.appSettings.copy(runAtStartup = event.enabled))
+            }
+            is SettingsEvent.UpdateClipboardMonitoring -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(clipboardMonitoringEnabled = event.enabled))
             }
             is SettingsEvent.UpdateDefaultDownloadDir -> _state.update {
                 it.copy(settings = it.settings.copy(defaultDownloadDir = event.path))

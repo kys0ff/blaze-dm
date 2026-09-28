@@ -1,5 +1,8 @@
 package org.blaze.osintegration.platform
 
+import org.blaze.osintegration.platform.WindowsUrlSchemeRegistrar.ensureRegistered
+import org.blaze.osintegration.platform.WindowsUrlSchemeRegistrar.isOwnHandler
+import org.blaze.osintegration.platform.WindowsUrlSchemeRegistrar.runReg
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 
@@ -39,7 +42,7 @@ object WindowsUrlSchemeRegistrar {
 
     /**
      * Registers [scheme] for the current user. False on any failure (non-Windows host, missing reg.exe,
-     * refused write) - callers treat this as best-effort desktop polish, never a startup blocker.
+     * refused to write) - callers treat this as best-effort desktop polish, never a startup blocker.
      */
     fun ensureRegistered(scheme: String, displayName: String, executable: String, isWindows: Boolean = isWindowsHost()): Boolean {
         if (!isWindows) return false

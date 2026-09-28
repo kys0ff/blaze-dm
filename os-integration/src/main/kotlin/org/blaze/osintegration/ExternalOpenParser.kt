@@ -86,24 +86,34 @@ class ExternalOpenParser(
     }
 
     /**
-     * Classifies a single raw argument (a command-line entry, an argv from the macOS launcher, or one
-     * value from the IPC channel) into a request. Returns null for "accepted but nothing to do"
-     * results; fails with a [RejectionException] carrying the reason for anything unusable.
+     * Classifies a single raw argument (a command-line entry, an argv from the macOS launcher, one
+     * value from the IPC channel, or a dropped/pasted string) into a request. Returns null for
+     * "accepted but nothing to do" results; fails with a [RejectionException] carrying the reason for
+     * anything unusable. [allowWebUrls] widens the accepted vocabulary with plain `http(s)` links -
+     * only in-app surfaces (window drops, clipboard monitoring) set it; the OS launch path never does,
+     * so a stray `http:` argv stays the "not a handler for this scheme" rejection it always was.
      */
-    fun classify(raw: String): Result<ExternalOpenRequest?> = runCatching {
+    fun classify(raw: String, allowWebUrls: Boolean = false): Result<ExternalOpenRequest?> = runCatching {
         val value = raw.trim()
         when {
             value.isEmpty() -> null
             value.startsWith("-") -> throw Rejection(RejectionReason.IGNORED_OPTION)
-            value.hasScheme() -> classifyUri(value)
+            value.hasScheme() -> classifyUri(value, allowWebUrls)
             else -> classifyTorrentPath(value)
         }
     }
 
-    private fun classifyUri(value: String): ExternalOpenRequest? {
+    /**
+     * Classifies one value handed over by an in-app drop/clipboard surface: magnets, local torrent
+     * files *and* plain web links all become downloads. Same guarantees as [classify].
+     */
+    fun classifyForDrop(raw: String): Result<ExternalOpenRequest?> = classify(raw, allowWebUrls = true)
+
+    private fun classifyUri(value: String, allowWebUrls: Boolean): ExternalOpenRequest? {
         val scheme = value.substringBefore(':').lowercase()
         return when (scheme) {
             "magnet" -> classifyMagnet(value)
+            "http", "https" -> if (allowWebUrls) classifyWebUrl(value) else throw Rejection(RejectionReason.UNSUPPORTED_SCHEME)
             // Browsers sometimes hand over file:// URIs for a downloaded .torrent; accept only when it
             // decodes to a real local torrent file, otherwise treat it like any unsupported scheme.
             "file" -> {
@@ -113,6 +123,19 @@ class ExternalOpenParser(
             }
             else -> throw Rejection(RejectionReason.UNSUPPORTED_SCHEME)
         }
+    }
+
+    /**
+     * Sanity-checks a dropped/pasted web link without interpreting it: no control characters, a
+     * plausible length ceiling, and a non-empty authority after `scheme://`. The URL is kept
+     * verbatim (query strings, fragments, encodings) so the engine sees exactly what the user dropped.
+     */
+    private fun classifyWebUrl(value: String): ExternalOpenRequest {
+        if (value.length > MAX_URL_LENGTH) throw Rejection(RejectionReason.TOO_LONG)
+        if (value.any { it.code < 0x20 || it == '\u007f' }) throw Rejection(RejectionReason.INVALID_CHARACTERS)
+        val rest = value.substringAfter("://", "")
+        if (rest.isBlank() || rest[0] == '/') throw Rejection(RejectionReason.UNSUPPORTED_SCHEME)
+        return ExternalOpenRequest.WebLink(value)
     }
 
     private fun classifyMagnet(value: String): ExternalOpenRequest {
@@ -189,6 +212,9 @@ class ExternalOpenParser(
 
         /** Beyond this a "path" is an attack or corruption, not a file the user clicked. */
         const val MAX_PATH_LENGTH: Int = 4 * 1024
+
+        /** Ceiling for a dropped web link; signed CDN URLs grow long, but nothing legitimate reaches 8k. */
+        const val MAX_URL_LENGTH: Int = 8 * 1024
     }
 }
 
@@ -207,3 +233,7 @@ internal fun probePath(path: Path): PathProbe = when {
  */
 fun ExternalOpenParser.classifyOrNull(raw: String): ExternalOpenRequest? =
     classify(raw).getOrNull()
+
+/** Same convenience for in-app drop/clipboard surfaces, which also accept plain web links. */
+fun ExternalOpenParser.classifyForDropOrNull(raw: String): ExternalOpenRequest? =
+    classifyForDrop(raw).getOrNull()

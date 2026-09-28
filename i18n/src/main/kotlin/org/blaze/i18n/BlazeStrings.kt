@@ -36,8 +36,56 @@ interface BlazeStrings {
         val emptyTitle: String
         val emptyDescription: String
         val emptyAction: String
+        /** Empty-state shortcut that opens the add dialog with the clipboard contents pre-filled. */
+        val emptyPaste: String
+        /** Empty-state hint that a torrent, magnet or link can be dropped straight onto the window. */
+        val emptyDropHint: String
         val searchPlaceholder: String
         val clearSearch: String
+
+        /** Labels for the downloads-list state filter chips. */
+        val filters: Filters
+        interface Filters {
+            val all: String
+            val active: String
+            val queued: String
+            val paused: String
+            val completed: String
+            val failed: String
+            val seeding: String
+        }
+
+        /** Labels for the downloads-list sort control. */
+        val sorting: Sorting
+        interface Sorting {
+            val name: String
+            val size: String
+            val speed: String
+            val state: String
+            val dateAdded: String
+            val ascending: String
+            val descending: String
+        }
+
+        val selection: Selection
+        interface Selection {
+            /** Tooltip/label for the per-row selection checkbox. */
+            val select: String
+            /** Toolbar action that selects every row currently in view. */
+            val selectAll: String
+            /** Toolbar action that clears the current selection. */
+            val clearSelection: String
+            /** Prefix for the bulk-action bar, e.g. "3 selected". */
+            fun count(n: Int): String
+            /** Bulk action that pauses every selected transfer. */
+            val pause: String
+            /** Bulk action that resumes every selected transfer. */
+            val resume: String
+            /** Bulk action that cancels every selected transfer. */
+            val cancel: String
+            /** Bulk action that removes every selected row. */
+            val remove: String
+        }
         
         val toolbar: Toolbar
         interface Toolbar {
@@ -363,6 +411,7 @@ interface BlazeStrings {
         val snailSpeedDesc: String
         val appearanceHeader: String
         val themeLabel: String
+        val languageLabel: String
         val themeSystemOption: String
         val themeLightOption: String
         val themeDarkOption: String
@@ -375,6 +424,8 @@ interface BlazeStrings {
         val minimizeToTrayLabel: String
         val runAtStartupLabel: String
         val runAtStartupDesc: String
+        val clipboardMonitoringLabel: String
+        val clipboardMonitoringDesc: String
         val destinationHeader: String
         val defaultDownloadDirLabel: String
         val askWhereToSaveLabel: String

@@ -32,6 +32,8 @@ fun StatusBar(
     info: String,
     modifier: Modifier = Modifier,
     isConnected: Boolean = true,
+    /** Live aggregate throughput across all transferring downloads, as a ready-made label. */
+    throughput: String? = null,
     /** A risk worth keeping on screen: colored, unlike the running totals in [info]. */
     alert: String? = null,
     alertIsError: Boolean = false,
@@ -58,6 +60,25 @@ fun StatusBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            if (!throughput.isNullOrBlank()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        key = AllIconsKeys.Actions.Download,
+                        contentDescription = null,
+                        tint = BlazeColors.accent,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = throughput,
+                        style = small,
+                        color = BlazeColors.accent,
+                        maxLines = 1,
+                    )
+                }
+            }
             if (alert != null) {
                 val alertColor = if (alertIsError) BlazeColors.error else BlazeColors.warning
                 Row(

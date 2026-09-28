@@ -36,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,11 +99,59 @@ private const val ARTIFACT_CHECK_INTERVAL_MS = 3_000L
 private fun downloadArtifactExists(savePath: String): Boolean =
     runCatching { File(savePath).exists() }.getOrDefault(false)
 
-private fun DownloadState.iconKey(): IconKey = when (this) {
-    DownloadState.COMPLETED -> AllIconsKeys.FileTypes.Archive
-    DownloadState.SEEDING -> AllIconsKeys.Actions.Upload
-    DownloadState.FAILED -> AllIconsKeys.General.Error
+/**
+ * The row's selection toggle. Drawn as a small rounded box (rather than Jewel's `Checkbox`, which is
+ * bound to list-item styling) so it sits cleanly on the leading edge of a compact download row. The
+ * border only appears when [emphasized] — on hover, in selection mode, or when checked — so a resting
+ * list stays quiet.
+ */
+@Composable
+private fun SelectionCheckbox(checked: Boolean, emphasized: Boolean, onToggle: () -> Unit) {
+    val strings = blazeStrings
+    val shape = RoundedCornerShape(3.dp)
+    val borderColor = if (checked || emphasized) BlazeColors.accent else JewelTheme.globalColors.borders.normal
+    Box(
+        modifier = Modifier
+            .size(15.dp)
+            .clip(shape)
+            .background(if (checked) BlazeColors.accent else Color.Transparent)
+            .border(1.dp, borderColor, shape)
+            .semantics { contentDescription = strings.downloads.selection.select }
+            .clickable(onClick = onToggle)
+            .padding(1.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (checked) {
+            Text(
+                text = "\u2713",
+                color = Color.White,
+                style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
+            )
+        }
+    }
+}
+
+/**
+ * The row's leading icon. Active transport states own their glyph (uploading seeds, failures),
+ * while a resting row is identified by *what it is*: a torrent reads as a folder (its artifact is
+ * a directory tree), a finished single file reads as its file type, and an in-flight web link
+ * keeps the download glyph. Icons are decoration - the state is always spelled out by the badge,
+ * so the accessibility description stays on the state text for screen readers.
+ */
+private fun Download.leadingIconKey(): IconKey = when {
+    state == DownloadState.SEEDING -> AllIconsKeys.Actions.Upload
+    state == DownloadState.FAILED -> AllIconsKeys.General.Error
+    isTorrentSource() -> AllIconsKeys.Nodes.Folder
+    state == DownloadState.COMPLETED -> fileTypeIcon(name)
     else -> AllIconsKeys.Actions.Download
+}
+
+/** Extensions whose artifact is almost certainly an archive; anything else gets the generic file glyph. */
+private val ARCHIVE_EXTENSIONS = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "iso", "zst")
+
+private fun fileTypeIcon(fileName: String): IconKey {
+    val extension = fileName.substringAfterLast('.', "").lowercase()
+    return if (extension in ARCHIVE_EXTENSIONS) AllIconsKeys.FileTypes.Archive else AllIconsKeys.FileTypes.Any_type
 }
 
 @OptIn(ExperimentalJewelApi::class, ExperimentalFoundationApi::class)
@@ -111,7 +161,8 @@ fun DownloadRow(
     actions: DownloadRowActions,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
-    onSelect: () -> Unit = {},
+    inSelectionMode: Boolean = false,
+    onSelect: (toggle: Boolean) -> Unit = {},
     hideResume: Boolean = false,
     capabilities: DownloadCapabilities = DownloadCapabilities()
 ) {
@@ -216,16 +267,23 @@ fun DownloadRow(
                 .combinedClickable(
                     interactionSource = interaction,
                     indication = null,
-                    onClick = onSelect,
+                    onClick = { onSelect(false) },
                     onDoubleClick = { if (isCompleted && !fileMissing) actions.openFile() },
                 )
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Selection checkbox: always present so multi-select is discoverable, but only colored once
+            // the row is part of the selection (or the list is already in selection mode).
+            SelectionCheckbox(
+                checked = isSelected,
+                emphasized = isSelected || inSelectionMode || hovered,
+                onToggle = { onSelect(true) },
+            )
             Icon(
-                key = download.state.iconKey(),
-                contentDescription = null,
+                key = download.leadingIconKey(),
+                contentDescription = download.state.label(strings),
                 tint = if (fileMissing) disabledText else Color.Unspecified,
                 modifier = Modifier.size(LeadingIconSize)
             )

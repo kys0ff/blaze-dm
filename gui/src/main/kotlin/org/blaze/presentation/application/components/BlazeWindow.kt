@@ -1,11 +1,17 @@
 package org.blaze.presentation.application.components
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.WindowState
+import org.blaze.osintegration.ExternalOpenInbox
+import org.blaze.osintegration.ExternalOpenParser
 import org.blaze.platform.tray.AppTrayIcon
 import org.jetbrains.jewel.window.DecoratedWindow
+import org.koin.compose.koinInject
 import java.awt.Dimension
 import java.awt.Frame
 import java.awt.event.WindowAdapter
@@ -71,6 +77,18 @@ fun BlazeWindow(
 
         BlazeTitleBar()
 
-        BlazeContent()
+        // Whole-window drag-and-drop: a frame-level DropTarget catches URLs / magnets / .torrent
+        // files dropped anywhere over the window and routes them into the external-open inbox, so
+        // the drop reuses the exact same validated queue as browser handlers and IPC forwards.
+        val inbox = koinInject<ExternalOpenInbox>()
+        val parser = koinInject<ExternalOpenParser>()
+        val dragInProgress = rememberWindowDropTarget(window, inbox, parser)
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            BlazeContent()
+            if (dragInProgress) {
+                WindowDropOverlay()
+            }
+        }
     }
 }

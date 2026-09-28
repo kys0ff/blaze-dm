@@ -11,6 +11,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -36,6 +38,7 @@ fun DownloadsSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester = remember { FocusRequester() },
 ) {
     val strings = blazeStrings
     var fieldValue by remember { mutableStateOf(TextFieldValue(query)) }
@@ -82,6 +85,7 @@ fun DownloadsSearchField(
             .width(220.dp)
             .height(26.dp)
             .padding(horizontal = 6.dp)
+            .focusRequester(focusRequester)
             .onPreviewKeyEvent { event ->
                 if (
                     event.type == KeyEventType.KeyDown &&

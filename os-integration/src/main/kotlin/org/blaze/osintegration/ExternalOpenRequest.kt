@@ -22,6 +22,13 @@ sealed interface ExternalOpenRequest {
 
     /** A `magnet:?xt=urn:btih:...` URI, kept verbatim exactly as the OS delivered it. */
     data class MagnetUri(val uri: String) : ExternalOpenRequest
+
+    /**
+     * A plain `http(s)` web link. Only produced by in-app surfaces that legitimately receive links
+     * (drag-and-drop onto the window, clipboard monitoring); argv and file associations never hand
+     * over a bare URL, so the OS launch path keeps rejecting unknown schemes.
+     */
+    data class WebLink(val url: String) : ExternalOpenRequest
 }
 
 /**
@@ -33,4 +40,5 @@ val ExternalOpenRequest.displaySource: String
     get() = when (this) {
         is ExternalOpenRequest.TorrentFile -> path.toAbsolutePath().normalize().toString()
         is ExternalOpenRequest.MagnetUri -> uri
+        is ExternalOpenRequest.WebLink -> url
     }

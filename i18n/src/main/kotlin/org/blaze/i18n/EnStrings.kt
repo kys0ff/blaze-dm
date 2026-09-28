@@ -27,8 +27,41 @@ object EnStrings : BlazeStrings {
         override val emptyTitle = "No downloads yet"
         override val emptyDescription = "Add a download to get started"
         override val emptyAction = "Add a download"
+        override val emptyPaste = "Paste link from clipboard"
+        override val emptyDropHint = "Tip: you can also drop a .torrent file, a magnet link or a URL onto the window."
         override val searchPlaceholder = "Search downloads…"
         override val clearSearch = "Clear search"
+
+        override val filters = object : BlazeStrings.Downloads.Filters {
+            override val all = "All"
+            override val active = "Active"
+            override val queued = "Queued"
+            override val paused = "Paused"
+            override val completed = "Completed"
+            override val failed = "Failed"
+            override val seeding = "Seeding"
+        }
+
+        override val sorting = object : BlazeStrings.Downloads.Sorting {
+            override val name = "Name"
+            override val size = "Size"
+            override val speed = "Speed"
+            override val state = "Status"
+            override val dateAdded = "Date added"
+            override val ascending = "Ascending"
+            override val descending = "Descending"
+        }
+
+        override val selection = object : BlazeStrings.Downloads.Selection {
+            override val select = "Select"
+            override val selectAll = "Select all"
+            override val clearSelection = "Clear selection"
+            override fun count(n: Int) = "$n selected"
+            override val pause = "Pause"
+            override val resume = "Resume"
+            override val cancel = "Cancel"
+            override val remove = "Remove"
+        }
         
         override val toolbar = object : BlazeStrings.Downloads.Toolbar {
             override val add = "Add download"
@@ -324,6 +357,7 @@ object EnStrings : BlazeStrings {
         override val snailSpeedDesc = "Engine-wide ceiling applied while Snail Mode is on. It overrides the normal speed limit so your connection stays free for other work."
         override val appearanceHeader = "Appearance"
         override val themeLabel = "Theme"
+        override val languageLabel = "Language"
         override val themeSystemOption = "Follow system"
         override val themeLightOption = "Light"
         override val themeDarkOption = "Dark"
@@ -336,6 +370,8 @@ object EnStrings : BlazeStrings {
         override val minimizeToTrayLabel = "Hide the window to the tray when closed"
         override val runAtStartupLabel = "Run Blaze at system startup"
         override val runAtStartupDesc = "Registers Blaze to start automatically when you log in."
+        override val clipboardMonitoringLabel = "Monitor the clipboard for downloaded links"
+        override val clipboardMonitoringDesc = "When you copy a web link, magnet link or .torrent path, Blaze offers it as a new download. Nothing is added until you confirm."
         override val destinationHeader = "Download Destinations"
         override val defaultDownloadDirLabel = "Default download directory"
         override val askWhereToSaveLabel = "Ask where to save each download before starting"

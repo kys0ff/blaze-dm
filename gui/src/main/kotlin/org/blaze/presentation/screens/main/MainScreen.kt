@@ -24,7 +24,9 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.Sidebar
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
+import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.util.formatSpeed
 import org.blaze.presentation.screens.downloads.attention
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
@@ -85,6 +87,8 @@ class MainScreen : Screen {
 
                 StatusBar(
                     info = downloads.toStatusSummary(strings),
+                    throughput = downloads.aggregateSpeed().takeIf { it > 0 }
+                        ?.let { strings.downloads.speed(formatSpeed(it, strings)) },
                     alert = downloads.toStatusAlert(strings),
                     trailing = {
                         if (state.snailModeEnabled) {

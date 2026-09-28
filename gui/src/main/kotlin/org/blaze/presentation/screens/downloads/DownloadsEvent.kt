@@ -5,6 +5,12 @@ import org.blaze.download.api.DownloadPriority
 
 sealed interface DownloadsEvent {
     data class SearchChanged(val query: String) : DownloadsEvent
+
+    /** Picks the sort column; selecting the already-active column flips the direction. */
+    data class SortBy(val field: DownloadSortField) : DownloadsEvent
+
+    /** Narrows the list to a single state (or clears the narrowing with [DownloadFilter.ALL]). */
+    data class FilterBy(val filter: DownloadFilter) : DownloadsEvent
     data class AddDownload(
         val url: String,
         val savePath: String,

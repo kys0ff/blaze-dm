@@ -44,6 +44,7 @@ internal object InstanceProtocol {
                     when (it) {
                         is ExternalOpenRequest.TorrentFile -> WireOpen(KIND_TORRENT, it.displaySourceString())
                         is ExternalOpenRequest.MagnetUri -> WireOpen(KIND_MAGNET, it.uri)
+                        is ExternalOpenRequest.WebLink -> WireOpen(KIND_WEB, it.url)
                     }
                 },
             ),
@@ -62,6 +63,9 @@ internal object InstanceProtocol {
         frame.requests.mapNotNull { wire ->
             when (wire.kind) {
                 KIND_TORRENT, KIND_MAGNET -> parser.classify(wire.value).getOrNull()
+                // Web links only originate from in-app surfaces (drops / clipboard) on the forwarding
+                // side, so the receiving side re-validates them with the same widened vocabulary.
+                KIND_WEB -> parser.classify(wire.value, allowWebUrls = true).getOrNull()
                 else -> null // unknown future kind: drop, never execute
             }
         }.takeIf { it.size == frame.requests.size }
@@ -103,9 +107,11 @@ internal object InstanceProtocol {
 
     private const val KIND_TORRENT = "torrent"
     private const val KIND_MAGNET = "magnet"
+    private const val KIND_WEB = "web"
 
     private fun ExternalOpenRequest.displaySourceString(): String = when (this) {
         is ExternalOpenRequest.TorrentFile -> path.toString()
         is ExternalOpenRequest.MagnetUri -> uri
+        is ExternalOpenRequest.WebLink -> url
     }
 }
