@@ -12,6 +12,7 @@ import bt.data.file.FileSystemStorage
 import bt.metainfo.MetadataConstants
 import bt.metainfo.Torrent
 import bt.metainfo.TorrentId
+import bt.runtime.BtClient
 import bt.runtime.BtRuntime
 import bt.torrent.TorrentRegistry
 import bt.torrent.fileselector.FilePriority
@@ -354,7 +355,11 @@ class TorrentNetworkClient(
                     throw e
                 } finally {
                     watchdog.cancel()
-                    runCatching { btClient.stop() }
+                    // On cancellation the future's own `whenComplete -> stop()` inside bt has
+                    // already run, so this is typically a no-op (DefaultClient.stop() ignores a
+                    // start it has already consumed); it stays for the paths that end without
+                    // the future completing.
+                    runCatching { if (btClient.isStarted) btClient.stop() }
                     // `bt` only forgets a registered torrent when its processing chain finalizes,
                     // which happens asynchronously *after* stop() - and a chain still parked waiting
                     // for a first peer never finalizes at all until the runtime shuts down. Until
@@ -367,11 +372,8 @@ class TorrentNetworkClient(
                     // deterministic sequence.
                     withContext(NonCancellable + Dispatchers.IO) {
                         refreshPortableMarker(lastObservedPieces.get())
-                        if (!awaitTorrentSettled(runtime, torrentRef.get())) {
-                            logger.warn(
-                                "Torrent session still did not finalize after forced cleanup; an immediate resume may need one retry.",
-                            )
-                        }
+                        // awaitTorrentSettled warns on failure itself; nothing actionable here.
+                        awaitTorrentSettled(runtime, btClient, torrentRef.get())
                     }
                 }
             } finally {
@@ -568,33 +570,61 @@ class TorrentNetworkClient(
     }
 
     /**
-     * True once the runtime's torrent registry no longer holds a data descriptor for [torrent] -
+     * True once the runtime's torrent registry durably holds no descriptor at all for [torrent] -
      * i.e. the stopped session has been fully finalized and the same torrent can be registered
      * again. bt finalizes a session only when its processing chain runs to completion, and a chain
      * parked on peer discovery (a paused torrent with no peers, the common case) never gets there.
      * So after a short grace period for the natural path we fire the library's own teardown signal,
      * the synchronously-delivered TorrentStoppedEvent, which is what unregisters the torrent and
      * lets every per-torrent service (registry, block cache, peer sources, connection handlers)
-     * release the session. A false return means even the forced cleanup did not take effect.
+     * release the session.
+     *
+     * One cleanup round is not enough: the registry's `register()` inserts the descriptor *before*
+     * populating its data descriptor, on the dying session's executor thread - microseconds behind
+     * the metadata event that triggered our cancellation. A lone quiet observation can therefore
+     * catch a register still in flight, which lands its data descriptor after we returned. Each
+     * round demands quiet across a hold window instead, and re-fires the teardown if the
+     * descriptor surfaces late. Convergence is bounded by the round cap regardless.
      */
-    private fun awaitTorrentSettled(runtime: BtRuntime, torrent: Torrent?): Boolean {
+    private fun awaitTorrentSettled(runtime: BtRuntime, btClient: BtClient, torrent: Torrent?): Boolean {
         if (torrent == null) return true
         val registry = runCatching { runtime.service(TorrentRegistry::class.java) }.getOrNull() ?: return true
+        val eventSink = runCatching { runtime.service(EventSink::class.java) }.getOrNull()
         val torrentId = torrent.torrentId
-        if (awaitSettled(registry, torrentId, NATURAL_SETTLE_MS)) return true
-        runCatching { runtime.service(EventSink::class.java).fireTorrentStopped(torrentId) }
-            .onFailure { logger.warn("Could not fire the torrent-stopped cleanup event: {}", it.message) }
-        return awaitSettled(registry, torrentId, SETTLE_TIMEOUT_MS)
+        repeat(SETTLE_ROUNDS) { round ->
+            if (!awaitSettled(registry, torrentId, if (round == 0) NATURAL_SETTLE_MS else SETTLE_POLL_MS * 4)) {
+                // Parked chain: force the library's own teardown, synchronously delivered.
+                runCatching { eventSink?.fireTorrentStopped(torrentId) }
+                    .onFailure { logger.warn("Could not fire the torrent-stopped cleanup event: {}", it.message) }
+                if (!awaitSettled(registry, torrentId, SETTLE_TIMEOUT_MS)) return@repeat
+            }
+            // Hold window: an in-flight register needs a moment to populate the data descriptor;
+            // quiet across the whole window means nothing re-registered after the teardown landed.
+            Thread.sleep(SETTLE_HOLD_MS)
+            if (!btClient.isStarted && isSettled(registry, torrentId)) {
+                return true
+            }
+            runCatching { if (btClient.isStarted) btClient.stop() }
+        }
+        logger.warn(
+            "Torrent session did not settle after {} cleanup rounds; an immediate resume may need one retry.",
+            SETTLE_ROUNDS,
+        )
+        return false
     }
+
+    private fun isSettled(registry: TorrentRegistry, torrentId: TorrentId): Boolean = runCatching {
+        // `unregister` removes the map entry outright, so a finalized session leaves nothing
+        // behind. Demanding full absence (not merely a null data descriptor) also refuses to
+        // read a still-in-flight `register()` - which inserts the entry before populating it -
+        // as settled.
+        registry.getDescriptor(torrentId).isEmpty
+    }.getOrDefault(true)
 
     private fun awaitSettled(registry: TorrentRegistry, torrentId: TorrentId, timeoutMs: Long): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (true) {
-            val settled = runCatching {
-                val descriptor = registry.getDescriptor(torrentId).orElse(null)
-                descriptor == null || descriptor.dataDescriptor == null
-            }.getOrDefault(true)
-            if (settled) return true
+            if (isSettled(registry, torrentId)) return true
             if (System.currentTimeMillis() >= deadline) return false
             Thread.sleep(SETTLE_POLL_MS)
         }
@@ -666,14 +696,27 @@ class TorrentNetworkClient(
 /** Monotonic milliseconds; never wall-clock, so an NTP correction cannot fake a timeout. */
 private fun nowMs(): Long = System.nanoTime() / 1_000_000
 
-/** Grace period for bt to finalize a stopped session on its own before the cleanup is forced. */
-private const val NATURAL_SETTLE_MS = 2_000L
+/** Grace period for bt to finalize a stopped session on its own before the cleanup is forced.
+ *  Deliberately tiny: the scheduler holds the global queue mutex while joining this teardown, so
+ *  every millisecond here is pause/resume latency for *every* download. bt's natural finalization
+ *  runs on seconds-scale (or never, for a parked chain), so in practice the forced event wins. */
+private const val NATURAL_SETTLE_MS = 250L
 
 /** Upper bound for confirming the forced teardown actually released the registration. */
-private const val SETTLE_TIMEOUT_MS = 5_000L
+private const val SETTLE_TIMEOUT_MS = 2_000L
 
-/** Poll cadence for the settle wait; teardown normally lands within a few hundred ms. */
-private const val SETTLE_POLL_MS = 50L
+/** Poll cadence for the settle wait; the forced teardown is synchronous, so this only catches it. */
+private const val SETTLE_POLL_MS = 25L
+
+/**
+ * Cleanup rounds in [awaitTorrentSettled]. Each round either finds the registry quiet and
+ * holding, or re-fires the teardown; a late register can only surface once the in-flight
+ * `register()` completes, so one extra round suffices - 4 is generous headroom.
+ */
+private const val SETTLE_ROUNDS = 4
+
+/** Quiet period the registry and client must hold for the teardown to count as final. */
+private const val SETTLE_HOLD_MS = 100L
 
 /** 1-second progress ticks between portable-marker hint refreshes (~every 30s of download). */
 private const val MARKER_REFRESH_TICKS = 30

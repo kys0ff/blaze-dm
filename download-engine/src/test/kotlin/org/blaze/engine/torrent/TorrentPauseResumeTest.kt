@@ -18,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 
 /**
  * Regression guard for "pause a torrent, resume it, and nothing ever starts until the app is
@@ -27,7 +28,9 @@ import kotlin.time.Duration.Companion.seconds
  * "Torrent already registered and data descriptor created" and the download stops within a second.
  * The client now waits the teardown out (non-cancellably) before its flow completes, which the
  * scheduler's pause-join respects - this test reproduces the exact pause-then-immediate-resume
- * sequence against a real shared runtime and asserts the second session survives.
+ * sequence against a real shared runtime and asserts the second session survives. It also bounds
+ * the pause teardown itself: the scheduler holds the global queue mutex while joining this job,
+ * so a slow settle is felt as laggy pause/resume on every download, not just this one.
  */
 class TorrentPauseResumeTest {
 
@@ -57,7 +60,12 @@ class TorrentPauseResumeTest {
                     }
                 }
                 metadataSeen.await()
-                first.cancelAndJoin()
+                val pauseTime = measureTime { first.cancelAndJoin() }
+                assertTrue(
+                    pauseTime.inWholeMilliseconds < PAUSE_BUDGET_MS,
+                    "pause teardown held the scheduler hostage for $pauseTime; it must force the " +
+                        "bt teardown instead of waiting out its slow natural path",
+                )
 
                 assertTrue(
                     Files.isRegularFile(TorrentPortableFile.markerPath(destination)),
@@ -84,6 +92,11 @@ class TorrentPauseResumeTest {
                 temp.toFile().deleteRecursively()
             }
         }
+
+    private companion object {
+        /** Teardown is ~250 ms of grace + a synchronous forced event; 1.2 s is generous slack. */
+        const val PAUSE_BUDGET_MS = 1_200L
+    }
 
     // ---- minimal bencoder; the fixture is a real, parseable single-file torrent. ----
 

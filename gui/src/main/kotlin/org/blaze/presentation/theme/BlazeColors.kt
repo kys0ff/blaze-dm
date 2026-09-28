@@ -10,7 +10,7 @@ import org.jetbrains.jewel.foundation.theme.JewelTheme
 /**
  * Converts a packed ARGB [Long] (as carried by the UI-agnostic [ThemePalette]) into a
  * Compose [Color]. Compose's `Color(Long)` constructor reads the low 32 bits as 0xAARRGGBB,
- * which matches how the theming module stores colours.
+ * which matches how the theming module stores colors.
  */
 internal fun Long.toColor(): Color = Color(this)
 
@@ -22,7 +22,7 @@ internal fun Long.toColor(): Color = Color(this)
 internal val LocalThemePalette = staticCompositionLocalOf { ThemePalette.Empty }
 
 /**
- * App-level semantic colours, sourced from the active [ThemePalette] with graceful fallbacks
+ * App-level semantic colors, sourced from the active [ThemePalette] with graceful fallbacks
  * to the stock Int UI values. Every accessor is `@Composable`, so a component simply reads
  * `BlazeColors.accent` and automatically re-composes when the theme changes.
  */
@@ -49,7 +49,7 @@ internal object BlazeColors {
         @Composable @ReadOnlyComposable
         get() = palette.errorArgb?.toColor() ?: JewelTheme.globalColors.text.error
 
-    /** Subtle row hover: a translucent overlay of the text colour works in both themes. */
+    /** Subtle row hover: a translucent overlay of the text color works in both themes. */
     val hover: Color
         @Composable @ReadOnlyComposable
         get() = palette.hoverArgb?.toColor()
