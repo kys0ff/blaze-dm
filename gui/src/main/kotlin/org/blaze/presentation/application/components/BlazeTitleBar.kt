@@ -2,6 +2,7 @@ package org.blaze.presentation.application.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import org.blaze.presentation.theme.ambientTitleBarGradientColor
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.window.DecoratedWindowScope
 import org.jetbrains.jewel.window.TitleBar
@@ -12,6 +13,7 @@ import org.jetbrains.jewel.window.newFullscreenControls
 fun DecoratedWindowScope.BlazeTitleBar() {
     TitleBar(
         modifier = Modifier.newFullscreenControls(),
+        gradientStartColor = ambientTitleBarGradientColor(state.isActive),
     ) {
         BlazeTitleBarIdentity()
     }
