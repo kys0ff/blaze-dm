@@ -55,7 +55,13 @@ sealed interface PortableManifest {
         val files: List<PortableTorrentFile>,
         /** Completed *verified* pieces; treated as a progress hint, always re-checked on resume. */
         val completedPieces: BitSet,
-        val multiFile: Boolean
+        val multiFile: Boolean,
+        /**
+         * The files the user selected when the download was created (indices into [files]); null
+         * means "everything". Carried so an import on another machine does not silently start
+         * downloading files that were deliberately skipped.
+         */
+        val selectedFileIndices: List<Int>? = null
     ) : PortableManifest {
         override val kind get() = PortableKind.TORRENT
         override val downloadedBytes: Long
@@ -68,7 +74,8 @@ sealed interface PortableManifest {
             return name == other.name && torrentFile.contentEquals(other.torrentFile) &&
                 contentLength == other.contentLength && pieceLength == other.pieceLength &&
                 pieceCount == other.pieceCount && trackers == other.trackers && files == other.files &&
-                completedPieces == other.completedPieces && multiFile == other.multiFile
+                completedPieces == other.completedPieces && multiFile == other.multiFile &&
+                selectedFileIndices == other.selectedFileIndices
         }
 
         override fun hashCode(): Int {
@@ -81,6 +88,7 @@ sealed interface PortableManifest {
             r = 31 * r + files.hashCode()
             r = 31 * r + completedPieces.hashCode()
             r = 31 * r + multiFile.hashCode()
+            r = 31 * r + selectedFileIndices.hashCode()
             return r
         }
     }
@@ -89,7 +97,8 @@ sealed interface PortableManifest {
 /** One file inside a torrent. [relativePath] is always forward-slash separated and validated. */
 data class PortableTorrentFile(val relativePath: String, val size: Long)
 
-private const val MANIFEST_VERSION = 1
+private const val MANIFEST_VERSION = 2 // v2 adds the torrent's selected-file indices; v1 still decodes
+private const val MIN_MANIFEST_VERSION = 1
 
 internal object ManifestCodec {
     fun encode(manifest: PortableManifest): ByteArray {
@@ -130,6 +139,13 @@ internal object ManifestCodec {
         sink.i32(m.files.size)
         m.files.forEach { sink.string(it.relativePath); sink.i64(it.size) }
         sink.blob(m.completedPieces.toByteArray())
+        val selected = m.selectedFileIndices
+        if (selected == null) {
+            sink.i32(-1)
+        } else {
+            sink.i32(selected.size)
+            selected.forEach { sink.i32(it) }
+        }
     }
 
     fun decode(bytes: ByteArray): PortableManifest {
@@ -137,10 +153,12 @@ internal object ManifestCodec {
         val src = ByteSource(bytes)
         val kind = PortableKind.fromId(src.byte())
         val version = src.i32()
-        if (version != MANIFEST_VERSION) throw PortableFormatException("unsupported manifest version $version")
+        if (version < MIN_MANIFEST_VERSION || version > MANIFEST_VERSION) {
+            throw PortableFormatException("unsupported manifest version $version")
+        }
         return when (kind) {
             PortableKind.HTTP -> decodeHttp(src)
-            PortableKind.TORRENT -> decodeTorrent(src)
+            PortableKind.TORRENT -> decodeTorrent(src, version)
         }
     }
 
@@ -162,7 +180,7 @@ internal object ManifestCodec {
         return PortableManifest.Http(url, resolved, total, chunkSize, chunkCount, ranges, validator, bits)
     }
 
-    private fun decodeTorrent(src: ByteSource): PortableManifest.Torrent {
+    private fun decodeTorrent(src: ByteSource, version: Int): PortableManifest.Torrent {
         val name = src.string() ?: throw PortableFormatException("torrent manifest missing name")
         val torrentFile = src.blob()
         if (torrentFile.isEmpty()) throw PortableFormatException("torrent manifest missing metainfo")
@@ -185,9 +203,27 @@ internal object ManifestCodec {
             PortableTorrentFile(safeRelativePath(rel), src.i64())
         }
         val pieces = BitSet.valueOf(readBoundedBitmap(src))
+        // v1 markers predate the selection field; treat their absence as "no restriction".
+        val selected = if (version >= 2) {
+            val count = src.i32()
+            when {
+                count == -1 -> null
+                count < 0 || count > PortableFormat.MAX_FILES ->
+                    throw PortableFormatException("selected-index count $count out of range")
+                else -> List(count) {
+                    val idx = src.i32()
+                    if (idx < 0 || idx >= fileCount) {
+                        throw PortableFormatException("selected file index $idx outside 0..$fileCount")
+                    }
+                    idx
+                }
+            }
+        } else null
         if (total <= 0) throw PortableFormatException("non-positive torrent length $total")
         if (pieceCount < 0) throw PortableFormatException("negative piece count")
-        return PortableManifest.Torrent(name, torrentFile, total, pieceLength, pieceCount, trackers, files, pieces, multiFile)
+        return PortableManifest.Torrent(
+            name, torrentFile, total, pieceLength, pieceCount, trackers, files, pieces, multiFile, selected
+        )
     }
 
     private fun readBoundedBitmap(src: ByteSource): ByteArray {

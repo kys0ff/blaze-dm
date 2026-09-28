@@ -228,6 +228,14 @@ interface BlazeStrings {
             fun notEnoughSpace(needed: String, free: String): String
             /** The probe already proved a pause would cost the whole transfer. */
             val sourceCannotResume: String
+
+            /**
+             * Review-step notice when a torrent/magnet's metadata could not be resolved before
+             * adding: the download is still queueable, the swarm fills in the details later.
+             */
+            val metadataUnresolvedTorrent: String
+            /** Shown inline when a link probe failed because the server could not be reached. */
+            fun httpProbeFailed(url: String): String
         }
 
         val status: Status

@@ -152,7 +152,11 @@ class ApplicationDownloadService(
             is org.blaze.download.api.DownloadSource.Magnet ->
                 org.blaze.download.api.SourceInfo(org.blaze.download.api.SourceKind.MAGNET, source.uri)
             is org.blaze.download.api.DownloadSource.TorrentFile ->
-                org.blaze.download.api.SourceInfo(org.blaze.download.api.SourceKind.TORRENT_FILE, source.path)
+                if (source.path.startsWith("http://", true) || source.path.startsWith("https://", true)) {
+                    org.blaze.download.api.SourceInfo(org.blaze.download.api.SourceKind.TORRENT_URL, source.path)
+                } else {
+                    org.blaze.download.api.SourceInfo(org.blaze.download.api.SourceKind.TORRENT_FILE, source.path)
+                }
         }
 
     private fun findActiveDuplicate(engineRequest: org.blaze.engine.api.DownloadRequest): DownloadTask? {
@@ -169,6 +173,7 @@ class ApplicationDownloadService(
             val src = when (val s = request.torrentSource) {
                 is org.blaze.engine.api.TorrentSource.Magnet -> s.uri
                 is org.blaze.engine.api.TorrentSource.File -> s.path.toString()
+                is org.blaze.engine.api.TorrentSource.Url -> s.url
             }
             "torrent|$src|${request.destination}"
         }

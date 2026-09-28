@@ -2,6 +2,7 @@ package org.blaze.engine.network
 
 import bt.Bt
 import bt.bencoding.model.BEObject
+import bt.event.EventSink
 import bt.bencoding.serializers.BEEncoder
 import bt.bencoding.serializers.BEParser
 import bt.bencoding.types.BEList
@@ -10,9 +11,13 @@ import bt.bencoding.types.BEString
 import bt.data.file.FileSystemStorage
 import bt.metainfo.MetadataConstants
 import bt.metainfo.Torrent
+import bt.metainfo.TorrentId
+import bt.runtime.BtRuntime
+import bt.torrent.TorrentRegistry
 import bt.torrent.fileselector.FilePriority
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +27,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadRequest
@@ -39,6 +45,7 @@ import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.util.BitSet
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration
@@ -93,6 +100,20 @@ class TorrentNetworkClient(
                     return@channelFlow
                 }
             }
+            // A remote metainfo URL is parsed up front too, so a malformed one fails with
+            // InvalidTorrent instead of surfacing as an opaque network error later.
+            val torrentUrl = if (source is TorrentSource.Url) {
+                val parsed = runCatching { java.net.URI(source.url.trim()).toURL() }
+                    .getOrNull()
+                if (parsed == null || parsed.protocol !in setOf("http", "https")) {
+                    logger.error("Invalid torrent metainfo URL: {}", source.url)
+                    send(TorrentNetworkEvent.Error(DownloadError.InvalidTorrent))
+                    return@channelFlow
+                }
+                parsed
+            } else {
+                null
+            }
 
             val destination = request.destination.toAbsolutePath().normalize()
             Files.createDirectories(destination)
@@ -104,10 +125,18 @@ class TorrentNetworkClient(
                 applyPerformanceConfig(config, maxPeerConnections, resolveBindAddress())
             }
             try {
-                val monitor = Monitor(metadataPending = source is TorrentSource.Magnet)
+                // URL sources wait on bt's metainfo fetch the same way magnets wait on BEP 9.
+                val monitor = Monitor(metadataPending = source is TorrentSource.Magnet || source is TorrentSource.Url)
                 val totalSize = AtomicLong(-1L)
                 val stopReason = AtomicReference<StopReason?>(null)
                 val torrentRef = AtomicReference<Torrent?>(null)
+                // Portable-marker bookkeeping: the metainfo arrives once with the metadata, the
+                // completed-piece hint is refreshed as pieces verify, and every write bumps the
+                // generation so a torn overwrite can never masquerade as the latest state.
+                val portableBytes = AtomicReference<ByteArray?>(null)
+                val markerGeneration = AtomicInteger(1)
+                val lastHintedPieces = AtomicInteger(0)
+                val lastObservedPieces = AtomicInteger(0)
 
                 val clientBuilder = Bt.client(runtime)
                     .storage(storage)
@@ -140,6 +169,7 @@ class TorrentNetworkClient(
                                 null
                             }
                         }
+                        portableBytes.set(bytes)
                         trySend(
                             TorrentNetworkEvent.MetadataResolved(
                                 torrent.name,
@@ -157,7 +187,7 @@ class TorrentNetworkClient(
                             runCatching {
                                 TorrentPortableFile.write(
                                     TorrentPortableFile.markerPath(destination),
-                                    torrentManifest(torrent, bytes),
+                                    torrentManifest(torrent, bytes, request.fileIndices),
                                     generation = 1
                                 )
                             }.onFailure { logger.warn("Could not write the portable torrent marker: {}", it.message) }
@@ -188,12 +218,33 @@ class TorrentNetworkClient(
                         logger.info("Using magnet link source: {}", source.uri)
                         clientBuilder.magnet(source.uri)
                     }
+                    is TorrentSource.Url -> {
+                        logger.info("Using remote torrent metainfo: {}", source.url)
+                        clientBuilder.torrent(torrentUrl)
+                    }
                 }
 
                 val btClient = clientBuilder.build()
 
                 fun requestStop(reason: StopReason) {
                     if (stopReason.compareAndSet(null, reason)) btClient.stop()
+                }
+
+                // Keep the portable marker's progress hint current so an imported folder previews
+                // with a truthful "bytes available" on another machine; the metainfo itself never
+                // changes. Writes are monotonic in pieces and rate-limited by the tick cadence.
+                fun refreshPortableMarker(piecesComplete: Int) {
+                    val torrent = torrentRef.get() ?: return
+                    val bytes = portableBytes.get() ?: return
+                    if (piecesComplete <= 0 || piecesComplete <= lastHintedPieces.get()) return
+                    runCatching {
+                        TorrentPortableFile.write(
+                            TorrentPortableFile.markerPath(destination),
+                            torrentManifest(torrent, bytes, request.fileIndices, piecesComplete),
+                            generation = markerGeneration.incrementAndGet().toLong()
+                        )
+                        lastHintedPieces.set(piecesComplete)
+                    }.onFailure { logger.warn("Could not refresh the portable torrent marker: {}", it.message) }
                 }
 
                 val downloadMeter = RateMeter()
@@ -226,6 +277,11 @@ class TorrentNetworkClient(
                             "Torrent status: peers={}, down={} B/s, pieces={}/{}",
                             peers, downloadSpeed, state.piecesComplete, state.piecesTotal
                         )
+                    }
+
+                    lastObservedPieces.set(state.piecesComplete)
+                    if (state.piecesComplete > 0 && ticks.get() % MARKER_REFRESH_TICKS == 0) {
+                        refreshPortableMarker(state.piecesComplete)
                     }
 
                     if (state.piecesTotal > 0 && state.piecesRemaining == 0) {
@@ -299,6 +355,24 @@ class TorrentNetworkClient(
                 } finally {
                     watchdog.cancel()
                     runCatching { btClient.stop() }
+                    // `bt` only forgets a registered torrent when its processing chain finalizes,
+                    // which happens asynchronously *after* stop() - and a chain still parked waiting
+                    // for a first peer never finalizes at all until the runtime shuts down. Until
+                    // the teardown lands, the next session for the same torrent - a resume right
+                    // after a pause, an automatic retry, or the add-download metadata probe giving
+                    // way to the real transfer - dies with "Torrent already registered and data
+                    // descriptor created". The scheduler joins this job before it will start the
+                    // next one, so waiting the teardown out here (non-cancellably: when pausing,
+                    // the job is already cancelled) turns pause -> resume from a race into a
+                    // deterministic sequence.
+                    withContext(NonCancellable + Dispatchers.IO) {
+                        refreshPortableMarker(lastObservedPieces.get())
+                        if (!awaitTorrentSettled(runtime, torrentRef.get())) {
+                            logger.warn(
+                                "Torrent session still did not finalize after forced cleanup; an immediate resume may need one retry.",
+                            )
+                        }
+                    }
                 }
             } finally {
                 runtimeProvider.release()
@@ -493,6 +567,39 @@ class TorrentNetworkClient(
         }
     }
 
+    /**
+     * True once the runtime's torrent registry no longer holds a data descriptor for [torrent] -
+     * i.e. the stopped session has been fully finalized and the same torrent can be registered
+     * again. bt finalizes a session only when its processing chain runs to completion, and a chain
+     * parked on peer discovery (a paused torrent with no peers, the common case) never gets there.
+     * So after a short grace period for the natural path we fire the library's own teardown signal,
+     * the synchronously-delivered TorrentStoppedEvent, which is what unregisters the torrent and
+     * lets every per-torrent service (registry, block cache, peer sources, connection handlers)
+     * release the session. A false return means even the forced cleanup did not take effect.
+     */
+    private fun awaitTorrentSettled(runtime: BtRuntime, torrent: Torrent?): Boolean {
+        if (torrent == null) return true
+        val registry = runCatching { runtime.service(TorrentRegistry::class.java) }.getOrNull() ?: return true
+        val torrentId = torrent.torrentId
+        if (awaitSettled(registry, torrentId, NATURAL_SETTLE_MS)) return true
+        runCatching { runtime.service(EventSink::class.java).fireTorrentStopped(torrentId) }
+            .onFailure { logger.warn("Could not fire the torrent-stopped cleanup event: {}", it.message) }
+        return awaitSettled(registry, torrentId, SETTLE_TIMEOUT_MS)
+    }
+
+    private fun awaitSettled(registry: TorrentRegistry, torrentId: TorrentId, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val settled = runCatching {
+                val descriptor = registry.getDescriptor(torrentId).orElse(null)
+                descriptor == null || descriptor.dataDescriptor == null
+            }.getOrDefault(true)
+            if (settled) return true
+            if (System.currentTimeMillis() >= deadline) return false
+            Thread.sleep(SETTLE_POLL_MS)
+        }
+    }
+
     private fun reconstructTorrentFile(torrent: Torrent): ByteArray {
         val infoDictBytes = torrent.source.exchangedMetadata
         val infoDict = BEParser(infoDictBytes).readMap()
@@ -520,7 +627,12 @@ class TorrentNetworkClient(
      * and resume on another machine. The remaining fields are cheap, pre-parsed projections of the
      * same information used to size the import preview without re-decoding bencode here.
      */
-    private fun torrentManifest(torrent: Torrent, bytes: ByteArray): PortableManifest.Torrent {
+    private fun torrentManifest(
+        torrent: Torrent,
+        bytes: ByteArray,
+        selectedFileIndices: List<Int>? = null,
+        completedPiecesHint: Int = 0,
+    ): PortableManifest.Torrent {
         val trackers = buildList {
             torrent.announceKey.ifPresent { key ->
                 if (key.isMultiKey) key.trackerUrls.forEach { tier -> addAll(tier) } else add(key.trackerUrl)
@@ -531,6 +643,11 @@ class TorrentNetworkClient(
         }
         val pieceLength = torrent.chunkSize
         val pieceCount = if (pieceLength > 0) ((torrent.size + pieceLength - 1) / pieceLength).toInt() else 0
+        // The hint only needs to be a truthful *count*; which bits are set is irrelevant because
+        // every piece is re-verified against the embedded hashes on import.
+        val hint = BitSet().apply {
+            for (i in 0 until completedPiecesHint.coerceAtMost(pieceCount)) set(i)
+        }
         return PortableManifest.Torrent(
             name = torrent.name,
             torrentFile = bytes,
@@ -539,11 +656,24 @@ class TorrentNetworkClient(
             pieceCount = pieceCount,
             trackers = trackers,
             files = files,
-            completedPieces = java.util.BitSet(), // bt re-derives the truth from hashes on resume
-            multiFile = torrent.files.size > 1
+            completedPieces = hint,
+            multiFile = torrent.files.size > 1,
+            selectedFileIndices = selectedFileIndices
         )
     }
 }
 
 /** Monotonic milliseconds; never wall-clock, so an NTP correction cannot fake a timeout. */
 private fun nowMs(): Long = System.nanoTime() / 1_000_000
+
+/** Grace period for bt to finalize a stopped session on its own before the cleanup is forced. */
+private const val NATURAL_SETTLE_MS = 2_000L
+
+/** Upper bound for confirming the forced teardown actually released the registration. */
+private const val SETTLE_TIMEOUT_MS = 5_000L
+
+/** Poll cadence for the settle wait; teardown normally lands within a few hundred ms. */
+private const val SETTLE_POLL_MS = 50L
+
+/** 1-second progress ticks between portable-marker hint refreshes (~every 30s of download). */
+private const val MARKER_REFRESH_TICKS = 30

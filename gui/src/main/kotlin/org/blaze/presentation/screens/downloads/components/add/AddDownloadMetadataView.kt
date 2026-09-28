@@ -40,7 +40,50 @@ fun AddDownloadMetadataView(
 ) {
     val strings = blazeStrings
     val dStrings = strings.downloads.dialogs
-    val metadata = state.metadata ?: return
+    val metadata = state.metadata
+
+    // What is certainly wrong with the destination - checked here rather than in the callers so
+    // both the resolved and the pending-metadata review show the same verdict.
+    val destinationProblem = when {
+        state.destinationStatus.isError -> dStrings.destinationNotWritable
+        else -> state.destinationStatus.notEnoughSpaceText(state.announcedBytes, strings)
+    }
+
+    // A torrent whose metainfo hasn't arrived yet still deserves a review step: the user chose
+    // to download it, so show what *is* known (source, folder, priority), say plainly what is
+    // pending, and let Add queue it - the name and size fill themselves in on the row.
+    if (metadata == null) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            destinationProblem?.let { problem ->
+                AdvisoryCallout(problem, AdvisoryTone.ERROR)
+            }
+            AdvisoryCallout(dStrings.metadataUnresolvedTorrent, AdvisoryTone.WARNING)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(JewelTheme.globalColors.panelBackground.copy(alpha = 0.5f))
+                    .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(strings.common.name, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
+                    Text(state.source, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(dStrings.saveTo, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
+                    Text(state.destination.text, maxLines = 1, overflow = TextOverflow.Ellipsis, color = JewelTheme.globalColors.text.info)
+                }
+                PriorityPicker(state)
+            }
+
+            OutlinedButton(onClick = { state.step = 1 }) {
+                Text(dStrings.backToEdit)
+            }
+        }
+        return
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -70,43 +113,10 @@ fun AddDownloadMetadataView(
             }
             // Priority is picked here, next to the resolved name/size, so it's set alongside the
             // other per-download choices rather than buried in a separate step.
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    strings.downloads.priority.label,
-                    color = JewelTheme.globalColors.text.info,
-                    modifier = Modifier.width(60.dp)
-                )
-                val p = strings.downloads.priority
-                DownloadPriority.entries.forEach { level ->
-                    val selected = state.priority == level
-                    Text(
-                        text = level.label(p),
-                        color = if (selected) BlazeColors.accent else JewelTheme.globalColors.text.info,
-                        style = JewelTheme.defaultTextStyle.copy(
-                            fontSize = 12.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        ),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                if (selected) BlazeColors.accent.copy(alpha = 0.15f)
-                                else Color.Transparent
-                            )
-                            .clickable { state.priority = level }
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                    )
-                }
-            }
+            PriorityPicker(state)
         }
 
         // ── Pre-flight: what is already known to be wrong, said before the transfer rather than after ──
-        val destinationProblem = when {
-            state.destinationStatus.isError -> dStrings.destinationNotWritable
-            else -> state.destinationStatus.notEnoughSpaceText(state.announcedBytes, strings)
-        }
         destinationProblem?.let { problem ->
             AdvisoryCallout(problem, AdvisoryTone.ERROR)
         }
@@ -195,6 +205,42 @@ fun AddDownloadMetadataView(
 
         OutlinedButton(onClick = { state.step = 1 }) {
             Text(dStrings.backToEdit)
+        }
+    }
+}
+
+/** The four priority levels as inline chips, shared by the resolved and the pending-metadata review. */
+@Composable
+private fun PriorityPicker(state: AddDownloadState) {
+    val strings = blazeStrings
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            strings.downloads.priority.label,
+            color = JewelTheme.globalColors.text.info,
+            modifier = Modifier.width(60.dp)
+        )
+        val p = strings.downloads.priority
+        DownloadPriority.entries.forEach { level ->
+            val selected = state.priority == level
+            Text(
+                text = level.label(p),
+                color = if (selected) BlazeColors.accent else JewelTheme.globalColors.text.info,
+                style = JewelTheme.defaultTextStyle.copy(
+                    fontSize = 12.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                ),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        if (selected) BlazeColors.accent.copy(alpha = 0.15f)
+                        else Color.Transparent
+                    )
+                    .clickable { state.priority = level }
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            )
         }
     }
 }

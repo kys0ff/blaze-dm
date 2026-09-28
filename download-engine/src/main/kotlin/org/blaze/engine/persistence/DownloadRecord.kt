@@ -11,6 +11,8 @@ data class DownloadRecord(
     val url: String? = null,
     val torrentPath: String? = null,
     val magnetUri: String? = null,
+    /** http(s) URL serving a .torrent metainfo; only present for torrent-URL records. */
+    val torrentUrl: String? = null,
     val destination: String,
     val state: String,
     val totalBytes: Long? = null,

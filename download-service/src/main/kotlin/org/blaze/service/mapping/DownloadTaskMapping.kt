@@ -84,6 +84,7 @@ private fun DownloadRequest.toSourceInfo(): SourceInfo = when (this) {
     is DownloadRequest.Torrent -> when (val s = torrentSource) {
         is TorrentSource.Magnet -> SourceInfo(SourceKind.MAGNET, s.uri)
         is TorrentSource.File -> SourceInfo(SourceKind.TORRENT_FILE, s.path.fileName?.toString() ?: s.path.toString())
+        is TorrentSource.Url -> SourceInfo(SourceKind.TORRENT_URL, s.url)
     }
 }
 

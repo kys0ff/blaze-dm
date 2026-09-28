@@ -6,9 +6,11 @@ import java.util.BitSet
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 /**
  * Pure-format coverage for the torrent portable marker: the metainfo must round-trip exactly, every
@@ -114,5 +116,53 @@ class TorrentPortableFileTest {
         TorrentPortableFile.delete(marker)
         assertNull(TorrentPortableFile.read(marker))
         assertTrue(!Files.exists(marker))
+    }
+
+    @Test
+    fun `a marker round-trips the selected file indices so a move keeps a partial selection`() {
+        val dir = tempDir()
+        val marker = TorrentPortableFile.markerPath(dir)
+        val twoFiles = torrentManifest().let {
+            it.copy(files = it.files + PortableTorrentFile("album/track 02.flac", 2_000_000))
+        }
+        val manifest = twoFiles.copy(selectedFileIndices = listOf(0))
+        TorrentPortableFile.write(marker, manifest, generation = 1)
+
+        val record = assertNotNull(TorrentPortableFile.read(marker))
+        assertEquals(listOf(0), record.manifest.selectedFileIndices)
+        assertEquals(manifest, record.manifest)
+    }
+
+    @Test
+    fun `an absent selection stays absent through the round trip`() {
+        val dir = tempDir()
+        val marker = TorrentPortableFile.markerPath(dir)
+        TorrentPortableFile.write(marker, torrentManifest(), generation = 1)
+        assertNull(assertNotNull(TorrentPortableFile.read(marker)).manifest.selectedFileIndices)
+    }
+
+    @Test
+    fun `markers written by the v1 codec still decode`() {
+        // v2 appended one optional field at the end of the torrent payload and bumped the version.
+        // Reconstruct the pre-v2 stream: same bytes, version back to 1, trailing "no selection" int
+        // removed - exactly what older markers on users' disks contain.
+        val v2 = ManifestCodec.encode(torrentManifest()) // selectedFileIndices = null -> i32(-1) tail
+        val v1 = v2.copyOf(v2.size - 4)
+        v1[1] = 0; v1[2] = 0; v1[3] = 0; v1[4] = 1 // big-endian version int at payload offset 1
+
+        val decoded = assertIs<PortableManifest.Torrent>(ManifestCodec.decode(v1))
+        assertEquals(torrentManifest(), decoded)
+        assertNull(decoded.selectedFileIndices)
+    }
+
+    @Test
+    fun `a selection pointing outside the file list is rejected`() {
+        val payload = ManifestCodec.encode(torrentManifest().copy(selectedFileIndices = listOf(0)))
+        // The last four bytes are the single index; push it past the manifest's file count.
+        payload[payload.size - 4] = 0
+        payload[payload.size - 3] = 0
+        payload[payload.size - 2] = 3
+        payload[payload.size - 1] = 0xE7.toByte() // 999, while the manifest lists one file
+        assertFailsWith<PortableFormatException> { ManifestCodec.decode(payload) }
     }
 }

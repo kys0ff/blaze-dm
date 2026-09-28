@@ -192,6 +192,10 @@ object ArStrings : BlazeStrings {
                 "لا توجد مساحة كافية على هذا القرص: مطلوب $needed ومتاح $free."
             override val sourceCannotResume =
                 "هذا الخادم لا يستطيع متابعة تنزيل متقطع؛ إذا أوقفته فسيبدأ من الصفر."
+            override val metadataUnresolvedTorrent =
+                "لم تُحل تفاصيل الـ torrent بعد — ستظهر في القائمة بمجرد استجابة الأقران."
+            override fun httpProbeFailed(url: String) =
+                "تعذّر الوصول إلى هذا الرابط: $url. قد يكون غير متصل أو مكتوبًا بشكل خاطئ."
         }
 
         override val status = object : BlazeStrings.Downloads.Status {

@@ -160,8 +160,13 @@ internal fun applyPerformanceConfig(
     // even when a piece is large.
     config.maxSimultaneouslyAssignedPieces = (maxPeerConnections / 8).coerceIn(4, 20)
 
-    // Request pipelining and block size: bigger blocks mean fewer round trips per megabyte.
-    config.transferBlockSize = 32 * 1024
+    // Request pipelining and block size. BEP-3 caps a block request at 2^14 bytes, and strict
+    // clients (libtorrent, µTorrent) treat anything larger as a protocol violation: they choke or
+    // disconnect instead of answering, so bigger "fewer round trips" blocks silently zero out
+    // throughput. Stay on the spec side and let pipelining carry the speed.
+    config.transferBlockSize = 16 * 1024
+    // Only bounds what WE accept from others; generous so lenient peers' large blocks are never
+    // mistaken for a protocol error on the inbound path.
     config.maxTransferBlockSize = 128 * 1024
     config.maxOutstandingRequests = 250
 

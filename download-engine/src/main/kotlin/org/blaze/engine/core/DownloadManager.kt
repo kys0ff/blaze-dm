@@ -224,7 +224,8 @@ class DownloadManager(
                 val source = when {
                     record.torrentPath != null -> TorrentSource.File(Path.of(record.torrentPath))
                     record.magnetUri != null -> TorrentSource.Magnet(record.magnetUri)
-                    else -> error("Torrent record ${record.id} missing both torrentPath and magnetUri")
+                    record.torrentUrl != null -> TorrentSource.Url(record.torrentUrl)
+                    else -> error("Torrent record ${record.id} missing every torrent source field")
                 }
                 DownloadRequest.Torrent(record.name, source, Path.of(record.destination), record.fileIndices)
             }
@@ -270,6 +271,7 @@ class DownloadManager(
                 url = (task.request as? DownloadRequest.Http)?.url,
                 torrentPath = ((task.request as? DownloadRequest.Torrent)?.torrentSource as? TorrentSource.File)?.path?.toString(),
                 magnetUri = ((task.request as? DownloadRequest.Torrent)?.torrentSource as? TorrentSource.Magnet)?.uri,
+                torrentUrl = ((task.request as? DownloadRequest.Torrent)?.torrentSource as? TorrentSource.Url)?.url,
                 destination = task.request.destination.toString(),
                 state = serializeState(task.state),
                 totalBytes = task.totalBytes,
@@ -320,6 +322,7 @@ class DownloadManager(
             is DownloadRequest.Torrent -> when (val s = request.torrentSource) {
                 is TorrentSource.Magnet -> s.uri
                 is TorrentSource.File -> s.path.toAbsolutePath().toString()
+                is TorrentSource.Url -> s.url
             }
         }
         val digest = MessageDigest.getInstance("SHA-256")
@@ -436,7 +439,10 @@ class DownloadManager(
                 DownloadRequest.Torrent(
                     name = record.manifest.name,
                     torrentSource = TorrentSource.File(torrentFile),
-                    destination = dir
+                    destination = dir,
+                    // Honor the original partial selection: without this, files the user skipped
+                    // on machine A would all be downloaded again after moving the folder.
+                    fileIndices = record.manifest.selectedFileIndices,
                 ),
                 totalBytes = record.manifest.contentLength,
                 files = files
@@ -458,7 +464,11 @@ class DownloadManager(
         // A null priority means "no explicit choice": fall back to the engine-wide default the user
         // configured, so an omitted value is not silently pinned to NORMAL.
         val resolvedPriority = priority ?: settingsRepository.settings.value.defaultDownloadPriority
-        val finalRequest = if (request is DownloadRequest.Torrent && request.torrentSource is TorrentSource.Magnet) {
+        val finalRequest = if (request is DownloadRequest.Torrent &&
+            (request.torrentSource is TorrentSource.Magnet || request.torrentSource is TorrentSource.Url)
+        ) {
+            // Metainfo resolved by an earlier run rides along in the cache: skip re-fetching it
+            // (magnet via DHT, torrent URL via HTTP) and start straight from the stored file.
             val key = getCacheKey(request)
             val cachedTorrentFile = repository.storageDir.resolve("cache").resolve("$key.torrent")
             if (Files.isRegularFile(cachedTorrentFile)) {

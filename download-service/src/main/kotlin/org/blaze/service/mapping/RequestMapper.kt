@@ -62,12 +62,42 @@ object RequestMapper {
         if (path.isBlank()) {
             throw org.blaze.download.api.DownloadApiException(ApiErrorCode.INVALID_REQUEST, "torrent path is blank")
         }
-        val source = Path.of(path)
+        // A web URL that serves a .torrent is a *torrent* download whose metainfo arrives over
+        // HTTP, not a plain file to save: routing it to the file branch would hand bt a garbage
+        // path and the user would watch a "download" that can never start.
+        if (isHttpUrl(path)) return torrentFromUrl(path, request, dir)
+        val source = runCatching { Path.of(path) }.getOrElse {
+            throw org.blaze.download.api.DownloadApiException(ApiErrorCode.INVALID_REQUEST, "not a valid torrent path: $path")
+        }
         val baseName = request.filename?.takeIf { it.isNotBlank() }
-            ?: source.fileName?.toString()?.removeSuffix(".torrent")
-            ?: "download"
+            ?: (source.fileName?.toString() ?: "").removeTorrentSuffix()
+                .ifBlank { "download" }
         return DownloadRequest.Torrent(baseName, TorrentSource.File(source), dir.resolve(baseName), request.selectedFileIndices)
     }
+
+    private fun torrentFromUrl(url: String, request: NewDownloadRequest, dir: Path): DownloadRequest.Torrent {
+        val trimmed = url.trim()
+        val baseName = request.filename?.takeIf { it.isNotBlank() }
+            ?: deriveTorrentUrlName(trimmed)
+        return DownloadRequest.Torrent(baseName, TorrentSource.Url(trimmed), dir.resolve(baseName), request.selectedFileIndices)
+    }
+
+    private fun isHttpUrl(value: String): Boolean =
+        value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)
+
+    /** Last path segment of a torrent URL, minus the `.torrent` suffix: "…/Big.Buck.torrent" → "Big.Buck". */
+    private fun deriveTorrentUrlName(url: String): String {
+        val segment = url.substringBefore('?').substringAfterLast('/')
+        val decoded = runCatching { URLDecoder.decode(segment, StandardCharsets.UTF_8).ifBlank { segment } }
+            .getOrDefault(segment)
+        return decoded.removeTorrentSuffix()
+            .takeIf { it.isNotBlank() }
+            ?: "torrent-download"
+    }
+
+    /** `.torrent` is a source marker, not part of the display name; the ending is stripped case-insensitively. */
+    private fun String.removeTorrentSuffix(): String =
+        if (endsWith(".torrent", ignoreCase = true)) dropLast(".torrent".length) else this
 
     private fun deriveHttpName(url: String): String {
         val decoded = runCatching { URLDecoder.decode(url, StandardCharsets.UTF_8).ifBlank { url } }

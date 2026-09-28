@@ -13,13 +13,13 @@ import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.components.CrashSafeContextMenuRepresentation
 import org.blaze.presentation.components.notifications.LocalNotifications
 import org.blaze.presentation.components.notifications.NotificationType
 import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.screens.downloads.components.DownloadsScreenContent
 import org.blaze.presentation.util.toFriendlyMessage
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
-import org.jetbrains.jewel.ui.component.ContextMenuRepresentation
 
 class DownloadsScreen : Screen {
     @OptIn(ExperimentalJewelApi::class)
@@ -62,9 +62,11 @@ class DownloadsScreen : Screen {
         val settings by screenModel.settingsRepository.settings.collectAsState()
         val externalRequests by screenModel.externalRequests.collectAsState()
 
-        // Route every row's right-click menu through Jewel's themed popup instead of the
-        // default lightweight Compose representation.
-        CompositionLocalProvider(LocalContextMenuRepresentation provides ContextMenuRepresentation) {
+        // Route every row's right-click menu through Jewel's themed popup instead of the default
+        // lightweight Compose representation. The wrapper defers the popup's teardown out of the
+        // click dispatch - closing it inside that dispatch crashes with "RootNodeOwner is already
+        // disposed" (see ContextMenuDismissGuard).
+        CompositionLocalProvider(LocalContextMenuRepresentation provides CrashSafeContextMenuRepresentation) {
             Box(Modifier.fillMaxSize()) {
                 DownloadsScreenContent(
                     state = state,

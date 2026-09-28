@@ -13,4 +13,13 @@ class BatchDownloadItem(
     var isFetching by mutableStateOf(false)
     var isSelected by mutableStateOf(true)
     var error by mutableStateOf<String?>(null)
+
+    /**
+     * Which of a multi-file torrent's files this entry should download. Seeded with everything so
+     * plain links behave as before; the queue step sends exactly this set, so a deselection made
+     * while reviewing a batch entry actually survives into the download.
+     */
+    var selectedFileIndices by mutableStateOf(
+        initialMetadata?.files?.map { it.index }?.toSet() ?: emptySet()
+    )
 }

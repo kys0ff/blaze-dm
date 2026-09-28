@@ -135,7 +135,9 @@ class PortableImportTest {
             trackers = listOf("http://tracker/announce"),
             files = listOf(PortableTorrentFile("movie.mkv", 4L * 1024 * 1024 * 1024)),
             completedPieces = BitSet().apply { set(0); set(1) },
-            multiFile = false
+            multiFile = false,
+            // A partial selection made on machine A must survive the move, or skipped files come back.
+            selectedFileIndices = listOf(0),
         )
         TorrentPortableFile.write(TorrentPortableFile.markerPath(folder), manifest, generation = 1)
 
@@ -151,6 +153,7 @@ class PortableImportTest {
             val task = assertNotNull(manager.getTask(id))
             val request = assertIs<DownloadRequest.Torrent>(task.request)
             assertEquals(folder, request.destination)
+            assertEquals(listOf(0), request.fileIndices, "import must keep the embedded file selection")
             val source = assertIs<TorrentSource.File>(request.torrentSource)
             assertTrue(Files.isRegularFile(source.path), "import must materialise a torrent from the embedded metainfo")
             assertContentEquals(metainfo, Files.readAllBytes(source.path), "the exact original metainfo must be restored")

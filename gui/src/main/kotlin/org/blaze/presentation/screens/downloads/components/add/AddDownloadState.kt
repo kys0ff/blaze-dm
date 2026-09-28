@@ -27,6 +27,12 @@ class AddDownloadState(
     var priority by mutableStateOf(DownloadPriority.NORMAL)
 
     var metadata by mutableStateOf<DownloadMetadata?>(null)
+
+    /**
+     * True while step 2 renders a torrent whose metadata the swarm hasn't supplied yet - the
+     * review step shows a "details pending" notice instead of a name/size/file list.
+     */
+    var metadataUnresolved by mutableStateOf(false)
     var selectedFileIndices by mutableStateOf(emptySet<Int>())
     var isFetching by mutableStateOf(false)
     var step by mutableStateOf(1) // 1: Input, 2: Metadata/Batch
@@ -79,6 +85,7 @@ class AddDownloadState(
 
     fun resetMetadata() {
         metadata = null
+        metadataUnresolved = false
         selectedFileIndices = emptySet()
         batchItems.clear()
         resolvedDirectUrl = null
@@ -91,8 +98,7 @@ class AddDownloadState(
         val s = trim().lowercase()
         return s.startsWith("http://") ||
                 s.startsWith("https://") ||
-                s.startsWith("magnet:") ||
-                s.endsWith(".torrent")
+                isTorrentFamilySource(this)
     }
 }
 

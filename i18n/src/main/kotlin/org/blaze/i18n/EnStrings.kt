@@ -186,6 +186,10 @@ object EnStrings : BlazeStrings {
                 "Not enough space on this drive: $needed needed, $free free."
             override val sourceCannotResume =
                 "This server can't continue an interrupted download. If you pause it, it starts over from zero."
+            override val metadataUnresolvedTorrent =
+                "The torrent's details couldn't be resolved yet — they'll appear in the list once peers answer."
+            override fun httpProbeFailed(url: String) =
+                "Couldn't reach this link: $url. It may be offline or misspelled."
         }
 
         override val status = object : BlazeStrings.Downloads.Status {

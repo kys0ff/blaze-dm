@@ -6,4 +6,7 @@ enum class SourceKind {
     HTTPS,
     MAGNET,
     TORRENT_FILE,
+
+    /** An http(s) URL that serves a `.torrent` metainfo; the transfer itself is a torrent. */
+    TORRENT_URL,
 }

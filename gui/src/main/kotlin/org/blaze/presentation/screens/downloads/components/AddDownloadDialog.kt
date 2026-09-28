@@ -29,6 +29,7 @@ import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputV
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadListView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
+import org.blaze.presentation.screens.downloads.components.add.AddDownloadFetchOutcome
 import org.blaze.presentation.screens.downloads.components.add.loadSourceFile
 import org.blaze.presentation.screens.downloads.components.add.resolveDestinationStatus
 import org.blaze.resolver.core.LinkResolverRegistry
@@ -154,6 +155,10 @@ fun AddDownloadDialog(
                         item.isFetching = true
                         try {
                             item.metadata = onFetchMetadata(item.url)
+                            // A freshly resolved multi-file torrent starts fully selected; the
+                            // submit step sends this set as the download's file indices.
+                            item.selectedFileIndices =
+                                item.metadata?.files?.map { it.index }?.toSet() ?: emptySet()
                         } catch (e: Exception) {
                             item.error = e.message
                         } finally {
@@ -171,14 +176,36 @@ fun AddDownloadDialog(
                 source.startsWith("https://", ignoreCase = true)
         val handlers = if (isHttp) registry.enabledHandlers(source) else emptyList()
 
+        // A probe answers in one of three ways, and each has its own contract with the user:
+        // resolved -> normal review; unresolved torrent -> review degraded but queueable (a cold
+        // magnet is normal, not an error); rejected HTTP -> stay on the input step, because a
+        // link that refused to answer only queues a download that is born failing.
+        fun applyOutcome(metadata: DownloadMetadata?, probeError: String?) {
+            when (val outcome = AddDownloadFetchOutcome.of(source, metadata, probeError)) {
+                is AddDownloadFetchOutcome.Resolved -> {
+                    state.metadata = outcome.metadata
+                    state.metadataUnresolved = false
+                    state.step = 2
+                }
+                is AddDownloadFetchOutcome.Unresolved -> {
+                    state.metadata = null
+                    state.metadataUnresolved = true
+                    state.step = 2
+                }
+                is AddDownloadFetchOutcome.Rejected ->
+                    // [reason] carries the offending source (or the probe's exception message).
+                    state.fetchError = dStrings.httpProbeFailed(outcome.reason)
+            }
+        }
+
         when {
             // No handler claims this link: resolve it the normal way (direct HTTP / torrent).
             handlers.isEmpty() -> {
                 state.isFetching = true
                 scope.launch {
-                    state.metadata = onFetchMetadata(source)
-                    state.step = 2
+                    val metadata = runCatching { onFetchMetadata(source) }
                     state.isFetching = false
+                    applyOutcome(metadata.getOrNull(), metadata.exceptionOrNull()?.message)
                 }
             }
             // A single match is never worth interrupting the user for: use it directly.
@@ -217,11 +244,17 @@ fun AddDownloadDialog(
 
         if (state.isBatch) {
             state.batchItems.filter { it.isSelected }.forEach { item ->
+                // Carry the per-item selection, not the whole file list: a magnet reviewed in a
+                // batch with two of its ten files deselected must queue exactly those two.
+                val selectedIndices = item.metadata?.files
+                    ?.filter { it.index in item.selectedFileIndices }
+                    ?.map { it.index }
+                    ?.sorted()
                 onAdd(
                     item.url,
                     state.destination.text,
                     item.metadata?.name,
-                    item.metadata?.files?.map { it.index },
+                    selectedIndices?.takeIf { it.isNotEmpty() },
                     item.metadata?.totalSize,
                     item.metadata?.files,
                     scheduledAt,

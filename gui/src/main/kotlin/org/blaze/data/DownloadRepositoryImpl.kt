@@ -193,12 +193,21 @@ class DownloadRepositoryImpl(
     }
 }
 
-/** Picks the right [DownloadSource] from a raw GUI url/magnet entry, mirroring the prior repository. */
-private fun sourceOf(rawUrl: String): DownloadSource {
+/**
+ * Picks the right [DownloadSource] from a raw GUI url/magnet entry.
+ *
+ * A `.torrent` ending only names a *torrent source* when the value is a local path or a web URL
+ * serving metainfo; the service's mapper tells those two apart by scheme, so an http(s) URL that
+ * happens to end in `.torrent` joins the torrent family here instead of being saved as an
+ * ordinary file (which is how a pasted "…/linux.torrent" link used to land).
+ */
+internal fun sourceOf(rawUrl: String): DownloadSource {
     val url = rawUrl.trim()
+    // The query never names the file: "…/My.torrent?token=1" is still a torrent source.
+    val pathPart = url.substringBefore('?')
     return when {
-        url.startsWith("magnet:") -> DownloadSource.Magnet(url)
-        url.endsWith(".torrent") -> DownloadSource.TorrentFile(url)
+        url.startsWith("magnet:", ignoreCase = true) -> DownloadSource.Magnet(url)
+        pathPart.endsWith(".torrent", ignoreCase = true) -> DownloadSource.TorrentFile(url)
         else -> DownloadSource.Url(url)
     }
 }
@@ -208,18 +217,29 @@ private fun sourceOf(rawUrl: String): DownloadSource {
  * when it builds the engine request. It never creates anything; it exists so the "Save as" dialog can
  * echo the resulting path before the user commits.
  */
-private fun resolvePreview(url: String, savePath: String, name: String?): Path {
+internal fun resolvePreview(url: String, savePath: String, name: String?): Path {
     val dir = Path.of(savePath)
     val explicit = name?.takeIf { it.isNotBlank() }
     return when (val source = sourceOf(url)) {
-        is DownloadSource.TorrentFile ->
-            dir.resolve(explicit ?: source.path.substringAfterLast('/').removeSuffix(".torrent").ifBlank { "download" })
+        is DownloadSource.TorrentFile -> {
+            // A web URL's torrent folder is named by its decoded last segment, not by a filesystem
+            // path parsed out of the whole URL; the fallback matches RequestMapper's, so the
+            // preview never promises a name the service won't deliver.
+            val filePart = source.path.substringBefore('?').substringAfterLast('/')
+            val decoded = runCatching { URLDecoder.decode(filePart, StandardCharsets.UTF_8).ifBlank { filePart } }
+                .getOrDefault(filePart)
+            dir.resolve(explicit ?: removeTorrentSuffix(decoded).ifBlank { "torrent-download" })
+        }
         is DownloadSource.Magnet ->
             dir.resolve(explicit ?: deriveMagnetName(source.uri))
         is DownloadSource.Url ->
             dir.resolve(explicit ?: deriveHttpName(source.url))
     }
 }
+
+/** `.torrent` is a source marker, not part of the display name; the ending is stripped case-insensitively. */
+private fun removeTorrentSuffix(name: String): String =
+    if (name.endsWith(".torrent", ignoreCase = true)) name.dropLast(".torrent".length) else name
 
 private fun deriveHttpName(url: String): String {
     val decoded = runCatching { URLDecoder.decode(url, StandardCharsets.UTF_8).ifBlank { url } }.getOrDefault(url)

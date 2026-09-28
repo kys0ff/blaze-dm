@@ -37,11 +37,17 @@ class TorrentPerformanceConfigTest {
     }
 
     @Test
-    fun `requests are pipelined with larger blocks`() {
+    fun `block requests stay within the BEP-3 limit`() {
+        // BEP-3: a request length must be a power of two and at most 2^14. Strict clients
+        // (libtorrent, uTorrent) choke or disconnect on larger blocks instead of answering, so a
+        // "bigger blocks, fewer round trips" tuning zeroes out throughput in real swarms.
         val config = configured(peers = 100)
+        val block = config.transferBlockSize
 
-        assertEquals(32 * 1024, config.transferBlockSize)
-        assertEquals(128 * 1024, config.maxTransferBlockSize)
+        assertTrue(block in 1..(1 shl 14), "requests exceed the spec limit: $block bytes")
+        assertTrue(block and (block - 1) == 0, "block size must be a power of two: $block")
+        // We still accept generous blocks from others.
+        assertTrue(config.maxTransferBlockSize >= block)
         assertTrue(config.maxOutstandingRequests >= 200, "block requests are not pipelined")
     }
 
