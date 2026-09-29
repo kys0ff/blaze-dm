@@ -15,6 +15,29 @@ import androidx.compose.ui.unit.dp
  */
 object BlazeLayout {
 
+    /**
+     * The one switch for the JetBrains New UI "Islands" shell: when true the window paints a
+     * neutral frame and every region floats as a rounded island separated by gaps (no hairline
+     * dividers between major regions). Flip to false to restore the classic flat, divider-lined
+     * look — no other call site changes are needed.
+     */
+    const val useIslands: Boolean = true
+
+    /** Island corner radius, measured off the reference IDE corner (~10-12dp). */
+    val IslandRadius = 11.dp
+
+    /** Gap between islands, and between an island and the frame (measured ~2-4dp). */
+    val IslandGap = 3.dp
+
+    /** Optional hairline that rims an island (only when the reference shows one). */
+    val IslandBorderWidth = 1.dp
+
+    /** Rounded hit target a tool-window stripe button fills inside the 40dp stripe (~28-32dp). */
+    val StripeButtonHitTarget = 30.dp
+
+    /** Corner radius of a stripe button's selected/hover background (~6dp). */
+    val StripeButtonRadius = 6.dp
+
     /** Left tool-window stripe: the narrow icon-only strip of view toggles, like IDE tool windows. */
     val ToolWindowStripeWidth = 40.dp
 
@@ -43,7 +66,7 @@ object BlazeLayout {
     val RowLeadingIconSize = 16.dp
 
     /** Height of a toolbar/action separator's 1dp hairline. */
-    val ToolbarSeparatorHeight = 16.dp
+    val ToolbarSeparatorHeight = 16.dp // TODO: make use of this
 
     /** Standard content padding inside a panel (IDE grid: 8dp). */
     val ContentPadding = 8.dp
@@ -52,14 +75,14 @@ object BlazeLayout {
     val ContentPaddingLarge = 12.dp
 
     /** Dialog content padding (DialogWrapper body). */
-    val DialogPaddingHorizontal = 20.dp
-    val DialogPaddingVertical = 16.dp
+    val DialogPaddingHorizontal = 20.dp // TODO: make use of this
+    val DialogPaddingVertical = 16.dp // TODO: make use of this
 
     /** Settings/panel max measure width so long forms stay readable, like the IDE editor gutter cap. */
-    val FormMaxWidth = 640.dp
+    val FormMaxWidth = 640.dp // TODO: make use of this
 
     /** In-list search field width in the toolbar. */
-    val SearchFieldWidth = 220.dp
+    val SearchFieldWidth = 220.dp // TODO: make use of this
 
     /** Invisible drag hit-area around a split divider (Jewel default is 8dp; IDE chrome is thinner). */
     val SplitDragWidth = 8.dp
@@ -75,14 +98,20 @@ object BlazeLayout {
  * The download table's columns, left to right. [defaultWidth]/[minWidth] mirror the IDE's resizable
  * table: a column can be dragged narrower than its default but never below [minWidth], and the
  * header and every data row read the same width so cells stay aligned. [id] is the stable key used
- * to persist a user's chosen widths across launches.
+ * to persist a user's chosen widths across launches. [endAligned] marks the numeric columns whose
+ * header *and* cell right-align together (the IDE aligns a column header to its cell content).
  */
-enum class DownloadsColumn(val id: String, val defaultWidth: Dp, val minWidth: Dp) {
+enum class DownloadsColumn(
+    val id: String,
+    val defaultWidth: Dp,
+    val minWidth: Dp,
+    val endAligned: Boolean = false,
+) {
     Name("name", 280.dp, 140.dp),
     Progress("progress", 150.dp, 90.dp),
-    Size("size", 120.dp, 80.dp),
-    Speed("speed", 110.dp, 70.dp),
-    Eta("eta", 90.dp, 60.dp),
+    Size("size", 120.dp, 80.dp, endAligned = true),
+    Speed("speed", 110.dp, 70.dp, endAligned = true),
+    Eta("eta", 90.dp, 60.dp, endAligned = true),
     State("state", 170.dp, 110.dp),
 }
 

@@ -1,7 +1,5 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,10 +18,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -40,6 +40,7 @@ import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.osintegration.displaySource
 import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.notifications.NotificationType
 import org.blaze.presentation.screens.downloads.DetailsMoveTo
 import org.blaze.presentation.screens.downloads.DownloadsEvent
@@ -59,6 +60,8 @@ import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.HorizontalSplitLayout
 import org.jetbrains.jewel.ui.component.SplitLayoutState
 import org.jetbrains.jewel.ui.component.VerticalSplitLayout
+import org.jetbrains.jewel.ui.component.styling.DividerMetrics
+import org.jetbrains.jewel.ui.component.styling.DividerStyle
 import org.koin.compose.koinInject
 import java.io.File
 import java.nio.file.Files
@@ -92,13 +95,32 @@ fun DownloadsScreenContent(
     // The Details pane is driven by the single-row selection, so there is no separate "which row's
     // details" state to track — selecting exactly one download is what shows its details.
     var conflictData by remember { mutableStateOf<ConflictData?>(null) }
-    // A set (not a single id) so the leading checkboxes can build a multi-selection for bulk actions.
-    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // Bulk "remove" is confirmed with the count it covers and a "do not ask again" opt-out (in-memory).
+    var bulkRemovePrompt by remember { mutableStateOf<Int?>(null) }
+    var bulkRemoveAskAgain by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
     var defaultDeleteBehavior by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
     val searchFocusRequester = remember { FocusRequester() }
     val clipboard = koinInject<SystemClipboard>()
+
+    // Commands the title-bar menu raises that this screen owns directly: open the add-download dialog,
+    // or move focus into the in-list search field. (Transport / selection / layout ones are folded into
+    // the model's own events, and navigation / exit live one level up.)
+    val commandBus = koinInject<org.blaze.presentation.application.AppCommandBus>()
+    LaunchedEffect(Unit) {
+        commandBus.commands.collect { command ->
+            when (command) {
+                org.blaze.presentation.application.AppCommand.NewDownload -> {
+                    addDialogSource = null
+                    showAddDialog = true
+                }
+                org.blaze.presentation.application.AppCommand.FocusSearch ->
+                    if (state.downloads.isNotEmpty()) runCatching { searchFocusRequester.requestFocus() }
+                else -> Unit
+            }
+        }
+    }
 
     // ── Portable-import flow: pick the moved artifact, preview it, choose a destination, resume. ──
     var showArtifactPicker by remember { mutableStateOf(false) }
@@ -184,65 +206,56 @@ fun DownloadsScreenContent(
         onEvent(event)
     }
 
-    // ── Selection helpers ────────────────────────────────────────────────────
-    // Drop ids whose download left the list (removed / cleared / filtered out by the engine) so the
-    // selection can never point at a row that no longer exists.
-    val visibleIds = state.filteredDownloads.map { it.id }.toSet()
-    LaunchedEffect(state.filteredDownloads) {
-        if (selectedIds.isNotEmpty()) {
-            val pruned = selectedIds.filter { it in state.downloads.map { d -> d.id }.toSet() }.toSet()
-            if (pruned != selectedIds) selectedIds = pruned
-        }
-    }
-
-    val toggleSelect: (String, Boolean) -> Unit = { id, toggle ->
-        selectedIds = when {
-            toggle -> if (id in selectedIds) selectedIds - id else selectedIds + id
-            selectedIds == setOf(id) -> emptySet()
-            else -> setOf(id)
-        }
-    }
-    val clearSelection: () -> Unit = { selectedIds = emptySet() }
-    val selectAllVisible: () -> Unit = {
-        selectedIds = if (visibleIds.isNotEmpty() && selectedIds.containsAll(visibleIds)) emptySet() else visibleIds
-    }
-    // Bulk transport controls reuse the single-id commands the model already handles, applied to each
-    // selected row *that can obey them*: a button is only offered when some selected row would act on
-    // it, and pressing it leaves the rows that cannot (a finished download, say) alone rather than
-    // restarting or cancelling them. Bulk removal is list-only (never deletes files) so it stays
-    // reversible and needs no per-row confirmation dialog.
+    // ── Selection (owned by the screen model) ──────────────────────────────────
+    // The selected ids, the anchor and the multi-select rules live in DownloadsScreenModel (folded
+    // into [DownloadsState.selectedIds]) so the status bar can read the count and every entry point —
+    // row pointer, keyboard, header/context menus — reduces through the same tested rules.
+    val selectedIds = state.selectedIds
     val selectedDownloads = state.downloads.filter { it.id in selectedIds }
-    // Exactly one selected row feeds the Details pane; anything else (none or multi) shows the empty hint.
+    // Exactly one selected row feeds the Details pane; none or multi shows the empty hint.
     val detailsDownload: Download? =
         if (selectedIds.size == 1) state.downloads.find { it.id == selectedIds.first() } else null
     val selectionActions = SelectionActions.of(selectedDownloads, queuedResumeBlocked = hideResumeForQueued)
-    val bulkRemove: () -> Unit = {
-        selectedDownloads.filter { it.canRemove() }.forEach { onEvent(DownloadsEvent.Remove(it.id, deleteFile = false)) }
-        clearSelection()
+
+    val selectRow: (String, Boolean, Boolean) -> Unit = { id, additive, range ->
+        onEvent(DownloadsEvent.SelectRow(id, additive, range))
     }
+    val clearSelection: () -> Unit = { onEvent(DownloadsEvent.ClearRowSelection) }
+    val selectAllVisible: () -> Unit = { onEvent(DownloadsEvent.SelectAllRows) }
+
+    // Bulk transport controls reuse the single-id commands the model already handles, applied to each
+    // selected row *that can obey them*: a button is only offered when some selected row would act on
+    // it, and pressing it leaves the rows that cannot (a finished download, say) alone.
     val bulkPause: () -> Unit = {
-        selectedDownloads.filter { it.canPause() }.forEach { id -> onEvent(DownloadsEvent.Pause(id.id)) }
+        selectedDownloads.filter { it.canPause() }.forEach { onEvent(DownloadsEvent.Pause(it.id)) }
         clearSelection()
     }
     val bulkResume: () -> Unit = {
-        selectedDownloads
-            .filter { it.canResume(hideResumeForQueued) }
-            .forEach { id -> onEvent(DownloadsEvent.Resume(id.id)) }
+        selectedDownloads.filter { it.canResume(hideResumeForQueued) }.forEach { onEvent(DownloadsEvent.Resume(it.id)) }
         clearSelection()
     }
     val bulkCancel: () -> Unit = {
-        selectedDownloads.filter { it.canCancel() }.forEach { id -> onEvent(DownloadsEvent.Cancel(id.id)) }
+        selectedDownloads.filter { it.canCancel() }.forEach { onEvent(DownloadsEvent.Cancel(it.id)) }
         clearSelection()
     }
+    // Bulk removal only leaves the list (never touches files), but it is still confirmed with the count
+    // it covers — unless the user opted out of the prompt.
+    val performBulkRemove: () -> Unit = {
+        selectedDownloads.filter { it.canRemove() }.forEach { onEvent(DownloadsEvent.Remove(it.id, deleteFile = false)) }
+        clearSelection()
+    }
+    val bulkRemove: () -> Unit = {
+        val count = selectedDownloads.count { it.canRemove() }
+        if (count > 0) {
+            if (bulkRemoveAskAgain) bulkRemovePrompt = count else performBulkRemove()
+        }
+    }
     val toggleSelectedPauseResume: () -> Unit = {
-        if (selectedIds.size == 1) {
-            val id = selectedIds.first()
-            state.downloads.find { it.id == id }?.let { download ->
-                when {
-                    download.canPause() -> handlePauseRequest(download)
-                    download.canResume(hideResumeForQueued) -> handleResumeRequest(download)
-                    else -> {}
-                }
+        detailsDownload?.let { download ->
+            when {
+                download.canPause() -> handlePauseRequest(download)
+                download.canResume(hideResumeForQueued) -> handleResumeRequest(download)
+                else -> {}
             }
         }
     }
@@ -393,6 +406,20 @@ fun DownloadsScreenContent(
 
     // Details moved from a modal dialog to the collapsible tool-window pane, driven by the selection.
 
+    // Bulk removal is list-only but still touches many rows at once, so it is confirmed with the count
+    // it covers and offers a "do not ask again" opt-out (mirrors the single-row remove dialog).
+    bulkRemovePrompt?.let { count ->
+        BulkRemoveDialog(
+            count = count,
+            onDismiss = { bulkRemovePrompt = null },
+            onConfirm = { doNotAskAgain ->
+                if (doNotAskAgain) bulkRemoveAskAgain = false
+                performBulkRemove()
+                bulkRemovePrompt = null
+            },
+        )
+    }
+
     // ── Portable import: select a moved artifact, then detect it by content (never by name, §23). ──
     if (showArtifactPicker) {
         FilePickerDialog(
@@ -467,44 +494,48 @@ fun DownloadsScreenContent(
                     event.key == Key.Escape && selectedIds.isNotEmpty() -> { clearSelection(); true }
                     event.key == Key.Spacebar && selectedIds.isNotEmpty() -> { toggleSelectedPauseResume(); true }
                     event.key == Key.Enter && selectedIds.size == 1 -> { handleEnterOpen(); true }
+                    // Arrow keys drive the selection (the list holds focus); Shift extends the span.
+                    event.key == Key.DirectionDown -> { onEvent(DownloadsEvent.MoveSelection(1, extend = event.isShiftPressed)); true }
+                    event.key == Key.DirectionUp -> { onEvent(DownloadsEvent.MoveSelection(-1, extend = event.isShiftPressed)); true }
                     else -> false
                 }
             }
     ) {
-        DownloadsToolbar(
-            hasActiveDownloads = hasActive,
-            hasPausedDownloads = hasPaused,
-            hasCompletedDownloads = hasCompleted,
-            hasSelection = selectedIds.isNotEmpty(),
-            selectedCount = selectedIds.size,
-            selectionActions = selectionActions,
-            searchQuery = state.searchQuery,
-            snailModeEnabled = state.snailModeEnabled,
-            searchFocusRequester = searchFocusRequester,
-            onEvent = handleEvent,
-            onAddDownload = openAddDialog,
-            onImportPortable = { showArtifactPicker = true },
-            onClearCompleted = { clearCompletedPrompt = ClearCompletedScope(state.counts.completed, state.counts.seeding) },
-            onSelectAll = selectAllVisible,
-            onClearSelection = clearSelection,
-            onBulkPause = bulkPause,
-            onBulkResume = bulkResume,
-            onBulkCancel = bulkCancel,
-            onBulkRemove = bulkRemove,
-            detailsVisible = state.detailsVisible,
-            onToggleDetails = { visible -> onEvent(DownloadsEvent.ToggleDetails(visible)) },
-        )
+        // The downloads tool window: its toolbar/header, then the filter bar over the table (or the
+        // empty state). In Islands this whole content floats as one rounded island; in classic mode
+        // it fills its box edge to edge.
+        val listContent: @Composable () -> Unit = {
+            Column(Modifier.fillMaxSize()) {
+                DownloadsToolbar(
+                    hasActiveDownloads = hasActive,
+                    hasPausedDownloads = hasPaused,
+                    hasCompletedDownloads = hasCompleted,
+                    hasSelection = selectedIds.isNotEmpty(),
+                    selectedCount = selectedIds.size,
+                    selectionActions = selectionActions,
+                    searchQuery = state.searchQuery,
+                    snailModeEnabled = state.snailModeEnabled,
+                    searchFocusRequester = searchFocusRequester,
+                    onEvent = handleEvent,
+                    onAddDownload = openAddDialog,
+                    onImportPortable = { showArtifactPicker = true },
+                    onClearCompleted = { clearCompletedPrompt = ClearCompletedScope(state.counts.completed, state.counts.seeding) },
+                    onSelectAll = selectAllVisible,
+                    onClearSelection = clearSelection,
+                    onBulkPause = bulkPause,
+                    onBulkResume = bulkResume,
+                    onBulkCancel = bulkCancel,
+                    onBulkRemove = bulkRemove,
+                    detailsVisible = state.detailsVisible,
+                    onToggleDetails = { visible -> onEvent(DownloadsEvent.ToggleDetails(visible)) },
+                )
 
-        if (state.downloads.isEmpty()) {
-            DownloadsEmptyState(
-                onAddDownload = openAddDialog,
-                onPaste = if (state.capabilities.canCopy) pasteFromClipboard else null,
-            )
-        } else {
-            // Left pane: the filter chips above the resizable/sortable table. It is reused both as the
-            // sole content (Details hidden) and as the first side of the split (Details shown).
-            val listPane: @Composable () -> Unit = {
-                Column(Modifier.fillMaxSize()) {
+                if (state.downloads.isEmpty()) {
+                    DownloadsEmptyState(
+                        onAddDownload = openAddDialog,
+                        onPaste = if (state.capabilities.canCopy) pasteFromClipboard else null,
+                    )
+                } else {
                     DownloadsFilterSortBar(
                         filter = state.filter,
                         counts = state.counts,
@@ -522,22 +553,34 @@ fun DownloadsScreenContent(
                         onPauseRequested = handlePauseRequest,
                         onResumeRequested = handleResumeRequest,
                         // Selecting the row is what surfaces its details now - no modal dialog.
-                        onShowDetailsRequested = { id -> selectedIds = setOf(id) },
-                        onSelect = toggleSelect,
+                        onShowDetailsRequested = { id -> onEvent(DownloadsEvent.SelectRow(id)) },
+                        onSelect = selectRow,
                         onSelectAll = selectAllVisible,
                         hideResumeForQueued = hideResumeForQueued,
                         capabilities = state.capabilities,
                     )
                 }
             }
+        }
 
+        val listPane: @Composable () -> Unit = {
+            if (BlazeLayout.useIslands) {
+                Island(modifier = Modifier.fillMaxSize()) { listContent() }
+            } else {
+                Box(modifier = Modifier.fillMaxSize()) { listContent() }
+            }
+        }
+
+        if (state.downloads.isEmpty()) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) { listPane() }
+        } else {
             // The Details tool window: docked beside the list (with the split's orientation, order
             // and size driven by the pane's View Mode / Move To / Resize), or floated over the list.
             // An unpinned pane folds away on its own when nothing is selected to show.
             val viewMode = state.viewMode
             val moveTo = state.moveTo
             val detailsShown = state.detailsVisible && (!viewMode.autoHidesWhenEmpty || detailsDownload != null)
-            val detailsPane: @Composable () -> Unit = {
+            val detailsContent: @Composable () -> Unit = {
                 DownloadDetailsPanel(
                     download = detailsDownload,
                     onHide = { onEvent(DownloadsEvent.ToggleDetails(false)) },
@@ -548,6 +591,17 @@ fun DownloadsScreenContent(
                     onEvent = onEvent,
                 )
             }
+            val detailsPane: @Composable () -> Unit = {
+                if (BlazeLayout.useIslands) {
+                    Island(modifier = Modifier.fillMaxSize()) { detailsContent() }
+                } else {
+                    Box(modifier = Modifier.fillMaxSize()) { detailsContent() }
+                }
+            }
+
+            // Islands: the split's divider is a transparent gap (the frame shows through) with the
+            // drag handle riding in it; classic keeps the visible hairline divider.
+            val islandGap = BlazeLayout.IslandGap
 
             when {
                 !detailsShown -> Box(modifier = Modifier.fillMaxWidth().weight(1f)) { listPane() }
@@ -569,11 +623,16 @@ fun DownloadsScreenContent(
                     }
                     val first: @Composable () -> Unit = if (moveTo.detailsFirst) detailsPane else listPane
                     val second: @Composable () -> Unit = if (moveTo.detailsFirst) listPane else detailsPane
+                    val gapDivider = DividerStyle(
+                        color = if (BlazeLayout.useIslands) Color.Transparent else JewelTheme.globalColors.borders.normal,
+                        metrics = DividerMetrics(thickness = islandGap, startIndent = 0.dp),
+                    )
                     if (moveTo.isHorizontal) {
                         HorizontalSplitLayout(
                             first = first,
                             second = second,
                             modifier = Modifier.fillMaxWidth().weight(1f),
+                            dividerStyle = gapDivider,
                             firstPaneMinWidth = if (moveTo.detailsFirst) 240.dp else 320.dp,
                             secondPaneMinWidth = if (moveTo.detailsFirst) 320.dp else 240.dp,
                             draggableWidth = BlazeLayout.SplitDragWidth,
@@ -584,6 +643,7 @@ fun DownloadsScreenContent(
                             first = first,
                             second = second,
                             modifier = Modifier.fillMaxWidth().weight(1f),
+                            dividerStyle = gapDivider,
                             firstPaneMinWidth = 260.dp,
                             secondPaneMinWidth = 160.dp,
                             draggableWidth = BlazeLayout.SplitDragWidth,
@@ -611,9 +671,7 @@ fun DownloadsScreenContent(
                                 .align(overlayAlignment)
                                 .padding(12.dp)
                                 .fillMaxWidth(widthFraction)
-                                .fillMaxHeight(heightFraction)
-                                .background(JewelTheme.globalColors.panelBackground)
-                                .border(1.dp, JewelTheme.globalColors.borders.normal),
+                                .fillMaxHeight(heightFraction),
                         ) { detailsPane() }
                     }
                 }

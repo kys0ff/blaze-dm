@@ -84,8 +84,6 @@ fun BlazeWindow(
             }
         }
 
-        BlazeTitleBar()
-
         // Whole-window drag-and-drop: Compose's own drop plumbing (a frame-level AWT DropTarget
         // never fires on Linux because drops are delivered to the Compose surface itself). The
         // modifier on the content root catches URLs / magnets / .torrent files / link lists /
@@ -107,6 +105,10 @@ fun BlazeWindow(
             LocalWindowActive provides state.isActive,
             LocalShortcutLabels provides shortcutLabels,
         ) {
+            // The title bar lives inside the providers so its menu tooltips and the hamburger's own
+            // shortcut labels read the same OS-formatted accelerators as the rest of the chrome.
+            BlazeTitleBar()
+
             Box(modifier = Modifier.fillMaxSize().then(drop.modifier)) {
                 BlazeContent()
                 WindowDropOverlay(drop)

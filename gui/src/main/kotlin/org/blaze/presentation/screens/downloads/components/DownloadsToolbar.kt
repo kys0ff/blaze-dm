@@ -143,11 +143,32 @@ private fun BulkActions(
     onBulkRemove: () -> Unit,
 ) {
     val s = strings.downloads.selection
-    // A command lights up only when some selected row would obey it, so selecting a finished
-    // download cannot offer a "resume" that would restart it.
-    ToolbarIconButton(key = AllIconsKeys.Actions.Pause, tooltip = s.pause, enabled = actions.canPause, onClick = onBulkPause)
-    ToolbarIconButton(key = AllIconsKeys.Actions.Resume, tooltip = s.resume, enabled = actions.canResume, onClick = onBulkResume)
-    ToolbarIconButton(key = AllIconsKeys.Actions.Cancel, tooltip = s.cancel, enabled = actions.canCancel, onClick = onBulkCancel)
-    ToolbarIconButton(key = AllIconsKeys.Actions.GC, tooltip = s.remove, enabled = actions.canRemove, onClick = onBulkRemove)
+    // A command lights up only when some selected row would obey it, and its tooltip names that many
+    // rows ("Pause 3 downloads"), so the button's enabled state, tooltip and effect always agree. A
+    // finished download in the selection cannot light up "resume", and the count simply omits it.
+    ToolbarIconButton(
+        key = AllIconsKeys.Actions.Pause,
+        tooltip = if (actions.canPause) s.pauseSelected(actions.pauseCount) else s.pause,
+        enabled = actions.canPause,
+        onClick = onBulkPause,
+    )
+    ToolbarIconButton(
+        key = AllIconsKeys.Actions.Resume,
+        tooltip = if (actions.canResume) s.resumeSelected(actions.resumeCount) else s.resume,
+        enabled = actions.canResume,
+        onClick = onBulkResume,
+    )
+    ToolbarIconButton(
+        key = AllIconsKeys.Actions.Cancel,
+        tooltip = if (actions.canCancel) s.cancelSelected(actions.cancelCount) else s.cancel,
+        enabled = actions.canCancel,
+        onClick = onBulkCancel,
+    )
+    ToolbarIconButton(
+        key = AllIconsKeys.Actions.GC,
+        tooltip = if (actions.canRemove) s.removeSelected(actions.removeCount) else s.remove,
+        enabled = actions.canRemove,
+        onClick = onBulkRemove,
+    )
     ToolbarIconButton(key = AllIconsKeys.General.Close, tooltip = s.clearSelection, onClick = onClearSelection)
 }

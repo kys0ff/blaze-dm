@@ -20,12 +20,19 @@ import org.jetbrains.jewel.intui.standalone.theme.light
  */
 internal fun buildJewelGlobalColors(isDark: Boolean, palette: ThemePalette): GlobalColors {
     val accent: Color? = palette.accentArgb?.toColor()
-    val panel: Color? = palette.panelBackgroundArgb?.toColor()
+    // The Islands design layer makes the content surface (panelBackground) the *island* color, so
+    // every panel Jewel paints with it floats on the frame. A theme that supplies its own panel
+    // background still wins.
+    val panel: Color = palette.panelBackgroundArgb?.toColor() ?: BlazeIslandColors.islandFor(isDark)
     val border: Color? = palette.borderArgb?.toColor()
     val info: Color? = palette.infoTextArgb?.toColor()
 
-    if (accent == null && panel == null && border == null && info == null) {
-        return if (isDark) GlobalColors.dark() else GlobalColors.light()
+    if (accent == null && border == null && info == null) {
+        return if (isDark) {
+            GlobalColors.dark(panelBackground = panel)
+        } else {
+            GlobalColors.light(panelBackground = panel)
+        }
     }
 
     return if (isDark) {
@@ -45,7 +52,7 @@ internal fun buildJewelGlobalColors(isDark: Boolean, palette: ThemePalette): Glo
                 error = defaultOutlines.error,
             ),
             text = if (info != null) TextColors.dark(info = info) else TextColors.dark(),
-            panelBackground = panel ?: GlobalColors.dark().panelBackground,
+            panelBackground = panel,
         )
     } else {
         val defaultBorders = BorderColors.light()
@@ -64,7 +71,7 @@ internal fun buildJewelGlobalColors(isDark: Boolean, palette: ThemePalette): Glo
                 error = defaultOutlines.error,
             ),
             text = if (info != null) TextColors.light(info = info) else TextColors.light(),
-            panelBackground = panel ?: GlobalColors.light().panelBackground,
+            panelBackground = panel,
         )
     }
 }

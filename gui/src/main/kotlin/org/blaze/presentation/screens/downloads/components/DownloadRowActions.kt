@@ -24,6 +24,8 @@ class DownloadRowActions(
     val copyLink: () -> Unit,
     val copyFileLocation: () -> Unit,
     val showDetails: () -> Unit,
+    /** Selects every visible row, offered from the row's context menu (no checkboxes remain). */
+    val selectAll: () -> Unit,
     /** Re-ranks a live download; bound to [org.blaze.presentation.screens.downloads.DownloadsEvent.SetPriority]. */
     val setPriority: (DownloadPriority) -> Unit,
 )

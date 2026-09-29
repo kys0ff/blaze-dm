@@ -32,31 +32,37 @@ fun Download.canCancel(): Boolean =
 fun Download.canRemove(): Boolean = true
 
 /**
- * What the bulk-action cluster may offer for the current selection: a command is enabled only when at
- * least one selected row would obey it, and it is then applied to exactly those rows. Selecting a
- * finished download therefore cannot light up "Resume", let alone restart it.
+ * What the bulk-action cluster may offer for the current selection: how many selected rows would obey
+ * each command (the `*Count` fields). A command is enabled only when its count is non-zero, and it is
+ * then applied to exactly those rows, so the tooltip can honestly read "Pause 3 downloads" and a
+ * finished download never lights up "Resume". Selecting rows that cannot act leaves the button inert.
  */
 data class SelectionActions(
-    val canPause: Boolean,
-    val canResume: Boolean,
-    val canCancel: Boolean,
-    val canRemove: Boolean,
+    val pauseCount: Int,
+    val resumeCount: Int,
+    val cancelCount: Int,
+    val removeCount: Int,
 ) {
+    val canPause: Boolean get() = pauseCount > 0
+    val canResume: Boolean get() = resumeCount > 0
+    val canCancel: Boolean get() = cancelCount > 0
+    val canRemove: Boolean get() = removeCount > 0
+
     companion object {
         /** Nothing selected - every bulk button is inert. */
         val EMPTY = SelectionActions(
-            canPause = false,
-            canResume = false,
-            canCancel = false,
-            canRemove = false,
+            pauseCount = 0,
+            resumeCount = 0,
+            cancelCount = 0,
+            removeCount = 0,
         )
 
         fun of(selection: List<Download>, queuedResumeBlocked: Boolean = false): SelectionActions =
             if (selection.isEmpty()) EMPTY else SelectionActions(
-                canPause = selection.any { it.canPause() },
-                canResume = selection.any { it.canResume(queuedResumeBlocked) },
-                canCancel = selection.any { it.canCancel() },
-                canRemove = selection.any { it.canRemove() },
+                pauseCount = selection.count { it.canPause() },
+                resumeCount = selection.count { it.canResume(queuedResumeBlocked) },
+                cancelCount = selection.count { it.canCancel() },
+                removeCount = selection.count { it.canRemove() },
             )
     }
 }

@@ -61,7 +61,8 @@ class DownloadsScreenModel(
     private val importPortableDownload: ImportPortableDownloadUseCase,
     private val systemFileService: SystemFileService,
     private val clipboard: SystemClipboard,
-    private val externalOpenInbox: ExternalOpenInbox
+    private val externalOpenInbox: ExternalOpenInbox,
+    private val commandBus: org.blaze.presentation.application.AppCommandBus,
 ) : ScreenModel {
 
     /**
@@ -99,6 +100,12 @@ class DownloadsScreenModel(
             appSettingsRepository.settings.value.downloadsSortAscending
     )
     private val _filter = MutableStateFlow(DownloadFilter.ALL)
+    /**
+     * The row selection, held as pure [Selection] data and reduced through [reduceSelection] so the
+     * click / Ctrl / Shift / arrow rules live in one testable place. Its ids are pruned against the
+     * live list when folded into [state], so a removed row can never stay selected.
+     */
+    private val _selection = MutableStateFlow(Selection())
     private val _layout = MutableStateFlow(
         appSettingsRepository.settings.value.let { saved ->
             LayoutPrefs(
@@ -185,8 +192,11 @@ class DownloadsScreenModel(
     val state: StateFlow<DownloadsState> = combine(
         baseState,
         _layout,
-    ) { base, layout ->
+        _selection,
+    ) { base, layout, selection ->
+        val liveIds = base.downloads.mapTo(HashSet()) { it.id }
         base.copy(
+            selectedIds = selection.ids.filterTo(LinkedHashSet()) { it in liveIds },
             columnWidths = layout.columnWidths,
             detailsVisible = layout.detailsVisible,
             detailsSplitFraction = layout.splitFraction,
@@ -202,6 +212,21 @@ class DownloadsScreenModel(
 
     init {
         screenModelScope.launch { watchTransitions() }
+        // The title-bar menu raises app-wide commands; the ones that are inherently about *this view*
+        // (its details pane and its row selection) are folded back into the model's own events here. The
+        // global queue commands (pause/resume all) and exit are handled up in the application shell, and
+        // navigation / new-download / focus-search are handled by the UI layers, so they are ignored here.
+        screenModelScope.launch {
+            commandBus.commands.collect { command ->
+                when (command) {
+                    org.blaze.presentation.application.AppCommand.ToggleDetails ->
+                        onEvent(DownloadsEvent.ToggleDetails(!state.value.detailsVisible))
+                    org.blaze.presentation.application.AppCommand.SelectAll ->
+                        onEvent(DownloadsEvent.SelectAllRows)
+                    else -> Unit
+                }
+            }
+        }
     }
 
     /**
@@ -264,6 +289,15 @@ class DownloadsScreenModel(
             }
 
             is DownloadsEvent.FilterBy -> _filter.value = event.filter
+
+            is DownloadsEvent.SelectRow -> reduceSelectionNow(
+                SelectionAction.Click(event.id, event.additive, event.range)
+            )
+            DownloadsEvent.SelectAllRows -> reduceSelectionNow(SelectionAction.SelectAll)
+            DownloadsEvent.ClearRowSelection -> reduceSelectionNow(SelectionAction.Clear)
+            is DownloadsEvent.MoveSelection -> reduceSelectionNow(
+                SelectionAction.Move(event.delta, event.extend)
+            )
 
             is DownloadsEvent.ResizeColumn -> {
                 _layout.update { it.copy(columnWidths = it.columnWidths + (event.columnId to event.widthDp)) }
@@ -392,6 +426,16 @@ class DownloadsScreenModel(
                 clipboard.copy(download.destinationPath().toAbsolutePath().normalize().toString())
             }
         }
+    }
+
+    /**
+     * Folds a selection [action] into [_selection], reducing against the current visible row order.
+     * Reading the visible list off [state] (rather than the raw downloads) keeps range/arrow maths
+     * aligned with what the user actually sees after search, filter and sort.
+     */
+    private fun reduceSelectionNow(action: SelectionAction) {
+        val visible = state.value.filteredDownloads.map { it.id }
+        _selection.update { reduceSelection(it, visible, action) }
     }
 
     /** Runs a single command, reporting any failure as an error effect with the given [context] prefix. */

@@ -1,6 +1,5 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.BlazeStrings
@@ -36,7 +34,6 @@ import org.blaze.presentation.screens.downloads.DetailsResize
 import org.blaze.presentation.screens.downloads.DetailsViewMode
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.ResumeSupport
-import org.blaze.presentation.screens.downloads.isUnresumableInProgress
 import org.blaze.presentation.screens.downloads.isWaitingForPeers
 import org.blaze.presentation.screens.downloads.pauseLosesProgress
 import org.blaze.presentation.screens.downloads.percentDone

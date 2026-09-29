@@ -35,21 +35,18 @@ fun DownloadsList(
     onPauseRequested: (Download) -> Unit,
     onResumeRequested: (Download) -> Unit,
     onShowDetailsRequested: (String) -> Unit,
-    onSelect: (id: String, toggle: Boolean) -> Unit,
+    onSelect: (id: String, additive: Boolean, range: Boolean) -> Unit,
     onSelectAll: () -> Unit,
     hideResumeForQueued: Boolean,
     capabilities: DownloadCapabilities = DownloadCapabilities(),
     modifier: Modifier = Modifier
 ) {
-    val inSelectionMode = selectedIds.isNotEmpty()
-    val allSelected = downloads.isNotEmpty() && selectedIds.containsAll(downloads.map { it.id })
     Column(modifier = modifier.fillMaxSize()) {
         DownloadsTableHeader(
             columnWidths = columnWidths,
             sortField = sortField,
             sortAscending = sortAscending,
-            allSelected = allSelected,
-            onToggleSelectAll = onSelectAll,
+            onSelectAll = onSelectAll,
             onSort = { field -> onEvent(DownloadsEvent.SortBy(field)) },
             onResize = { columnId, widthDp -> onEvent(DownloadsEvent.ResizeColumn(columnId, widthDp)) },
             modifier = Modifier.fillMaxWidth(),
@@ -80,6 +77,7 @@ fun DownloadsList(
                         copyLink = { onEvent(DownloadsEvent.CopyDownloadLink(id)) },
                         copyFileLocation = { onEvent(DownloadsEvent.CopyFileLocation(id)) },
                         showDetails = { onShowDetailsRequested(id) },
+                        selectAll = onSelectAll,
                         setPriority = { priority -> onEvent(DownloadsEvent.SetPriority(id, priority)) },
                     )
                     DownloadRow(
@@ -87,8 +85,7 @@ fun DownloadsList(
                         actions = actions,
                         columnWidths = columnWidths,
                         isSelected = download.id in selectedIds,
-                        inSelectionMode = inSelectionMode,
-                        onSelect = { toggle -> onSelect(id, toggle) },
+                        onSelect = { additive, range -> onSelect(id, additive, range) },
                         hideResume = hideResumeForQueued && (download.state == DownloadState.QUEUED),
                         capabilities = capabilities,
                     )

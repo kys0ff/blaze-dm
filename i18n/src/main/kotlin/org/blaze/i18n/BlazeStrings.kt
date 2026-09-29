@@ -8,6 +8,7 @@ interface BlazeStrings {
     val filePicker: FilePicker
     val statusSummary: StatusSummary
     val tray: Tray
+    val menu: Menu
 
     interface Common {
         val ok: String
@@ -117,6 +118,15 @@ interface BlazeStrings {
             val cancel: String
             /** Bulk action that removes every selected row. */
             val remove: String
+            /** Count-aware bulk tooltips so a toolbar button reads "Pause 3 downloads" (requirement). */
+            fun pauseSelected(n: Int): String
+            fun resumeSelected(n: Int): String
+            fun cancelSelected(n: Int): String
+            fun removeSelected(n: Int): String
+            /** Title of the bulk-remove confirmation dialog. */
+            val bulkRemoveTitle: String
+            /** Body of the bulk-remove confirmation, naming how many rows leave the list. */
+            fun bulkRemoveMessage(n: Int): String
         }
         
         /** Labels for the collapsible Details tool window shown beside the list. */
@@ -493,6 +503,32 @@ interface BlazeStrings {
         /** Snail Mode menu entry, worded for the action it performs from the current state. */
         val enableSnailMode: String
         val disableSnailMode: String
+    }
+
+    /**
+     * Labels for the title-bar hamburger main menu and the IDE-style "Speed limit" widget it houses,
+     * plus the About dialog. The menu is window chrome (not a screen), so its strings live at the app
+     * root rather than under any one screen's group.
+     */
+    interface Menu {
+        /** Tooltip for the hamburger affordance that opens this menu (no accelerator). */
+        val mainMenu: String
+        /** Tooltip for the title-bar search button, which focuses the list's search field. */
+        val search: String
+        val newDownload: String
+        val settings: String
+        val pauseAll: String
+        val resumeAll: String
+        val toggleDetails: String
+        val about: String
+        val exit: String
+        /** The speed-limit widget's label / tooltip and its two dropdown options. */
+        val speedLimit: String
+        val fullSpeed: String
+        val snailMode: String
+        /** About dialog copy. */
+        val aboutTitle: String
+        val aboutBody: String
     }
     
     interface Settings {

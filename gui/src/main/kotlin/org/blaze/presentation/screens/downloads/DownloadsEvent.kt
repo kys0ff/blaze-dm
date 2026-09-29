@@ -55,6 +55,16 @@ sealed interface DownloadsEvent {
     data object ResumeAll : DownloadsEvent
     data object ClearCompleted : DownloadsEvent
 
+    // ── Row selection (multi-select) ──────────────────────────────────────────────
+    /** Pointer click on a row: [additive] = Ctrl/Cmd toggle, [range] = Shift contiguous span. */
+    data class SelectRow(val id: String, val additive: Boolean = false, val range: Boolean = false) : DownloadsEvent
+    /** Select every visible row (Ctrl/Cmd+A, header or context-menu "Select All"). */
+    data object SelectAllRows : DownloadsEvent
+    /** Drop the whole selection (Escape, or clicking empty list space). */
+    data object ClearRowSelection : DownloadsEvent
+    /** Keyboard navigation: move by [delta] rows, extending the span when [extend] (Shift held). */
+    data class MoveSelection(val delta: Int, val extend: Boolean = false) : DownloadsEvent
+
     /** Engine-wide "Snail Mode" crawl toggle; [enabled] is the new desired state. */
     data class ToggleSnailMode(val enabled: Boolean) : DownloadsEvent
 

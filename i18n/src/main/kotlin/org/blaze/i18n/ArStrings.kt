@@ -90,6 +90,13 @@ object ArStrings : BlazeStrings {
             override val resume = "استئناف"
             override val cancel = "إلغاء"
             override val remove = "إزالة"
+            override fun pauseSelected(n: Int) = "إيقاف $n تنزيلات مؤقتًا"
+            override fun resumeSelected(n: Int) = "استئناف $n تنزيلات"
+            override fun cancelSelected(n: Int) = "إلغاء $n تنزيلات"
+            override fun removeSelected(n: Int) = "إزالة $n تنزيلات"
+            override val bulkRemoveTitle = "إزالة التنزيلات"
+            override fun bulkRemoveMessage(n: Int) =
+                "إزالة $n تنزيلات من القائمة؟ تبقى الملفات المنزَّلة على القرص."
         }
 
         override val toolbar = object : BlazeStrings.Downloads.Toolbar {
@@ -411,6 +418,23 @@ object ArStrings : BlazeStrings {
         override val quit = "إنهاء Blaze"
         override val enableSnailMode = "تفعيل وضع الحلزون"
         override val disableSnailMode = "تعطيل وضع الحلزون"
+    }
+
+    override val menu = object : BlazeStrings.Menu {
+        override val mainMenu = "القائمة الرئيسية"
+        override val search = "بحث"
+        override val newDownload = "تنزيل جديد…"
+        override val settings = "الإعدادات…"
+        override val pauseAll = "إيقاف الكل"
+        override val resumeAll = "استئناف الكل"
+        override val toggleDetails = "إظهار/إخفاء التفاصيل"
+        override val about = "حول Blaze"
+        override val exit = "خروج"
+        override val speedLimit = "حد السرعة"
+        override val fullSpeed = "السرعة الكاملة"
+        override val snailMode = "وضع الحلزون"
+        override val aboutTitle = "حول Blaze"
+        override val aboutBody = "مدير تنزيلات سريع وعصري."
     }
 
     override val settings = object : BlazeStrings.Settings {

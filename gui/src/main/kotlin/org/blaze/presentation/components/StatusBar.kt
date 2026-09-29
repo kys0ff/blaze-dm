@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeIslandColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -41,14 +42,19 @@ fun StatusBar(
 ) {
     val strings = blazeStrings
     val small = JewelTheme.typography.small
+    val frameBackground =
+        if (BlazeLayout.useIslands) BlazeIslandColors.frame else JewelTheme.globalColors.panelBackground
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Divider(Orientation.Horizontal)
+        // Islands: the frame background and the gap above do the separation, so no hairline.
+        if (!BlazeLayout.useIslands) {
+            Divider(Orientation.Horizontal)
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(BlazeLayout.StatusBarHeight)
-                .background(JewelTheme.globalColors.panelBackground)
+                .background(frameBackground)
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)

@@ -1,32 +1,50 @@
 package org.blaze.tools
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.renderComposeScene
 import androidx.compose.ui.unit.Density
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.models.SelectedFile
 import org.blaze.presentation.components.BackgroundTasksPopup
+import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.DownloadsColumn
+import org.blaze.presentation.components.Island
+import org.blaze.presentation.components.SidebarItem
+import org.blaze.presentation.components.StatusBar
+import org.blaze.presentation.components.ToolWindowStripe
+import org.blaze.presentation.screens.downloads.DownloadFilter
 import org.blaze.presentation.screens.downloads.DownloadSortField
+import org.blaze.presentation.screens.downloads.SelectionActions
 import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
+import org.blaze.presentation.screens.downloads.components.DownloadsFilterSortBar
 import org.blaze.presentation.screens.downloads.components.DownloadsList
+import org.blaze.presentation.screens.downloads.components.DownloadsToolbar
 import org.blaze.presentation.screens.downloads.components.PauseRiskDialog
+import org.blaze.presentation.screens.downloads.toCounts
+import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.presentation.theme.BlazeTheme
 import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
 
 /**
  * A headless screenshot harness. Renders the redesigned presentational composables offscreen with
- * Compose's [renderComposeScene] (skia software raster — no window, no display) into PNGs under
+ * Compose's [renderComposeScene] (Skia software raster — no window, no display) into PNGs under
  * `build/ui-screenshots/`, in both the light and dark Blaze themes.
  *
  * It targets the pure view composables (table, details pane, pause confirmation, background-tasks
@@ -75,7 +93,7 @@ fun main() {
                 onPauseRequested = {},
                 onResumeRequested = {},
                 onShowDetailsRequested = {},
-                onSelect = { _, _ -> },
+                onSelect = { _, _, _ -> },
                 onSelectAll = {},
                 hideResumeForQueued = false,
                 modifier = Modifier.fillMaxSize(),
@@ -123,6 +141,100 @@ fun main() {
                 onCancel = {},
                 onDismiss = {},
             )
+        }
+
+        // Section 4: the tool-window toolbar (search field + action cluster) over the IDE-style
+        // filter chips. Rendered in the no-selection state so the search field and per-command
+        // buttons show; the bulk cluster swaps in when a selection exists.
+        shot("07-toolbar-filter-$suffix", 940, 96, dark) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                DownloadsToolbar(
+                    hasActiveDownloads = true,
+                    hasPausedDownloads = true,
+                    hasCompletedDownloads = true,
+                    hasSelection = false,
+                    selectedCount = 0,
+                    selectionActions = SelectionActions.of(samples),
+                    searchQuery = "",
+                    snailModeEnabled = false,
+                    searchFocusRequester = remember { FocusRequester() },
+                    onEvent = {},
+                    onAddDownload = {},
+                    onImportPortable = {},
+                    onClearCompleted = {},
+                    onSelectAll = {},
+                    onClearSelection = {},
+                    onBulkPause = {},
+                    onBulkResume = {},
+                    onBulkCancel = {},
+                    onBulkRemove = {},
+                    detailsVisible = true,
+                    onToggleDetails = {},
+                )
+                DownloadsFilterSortBar(
+                    filter = DownloadFilter.ALL,
+                    counts = samples.toCounts(),
+                    onEvent = {},
+                )
+            }
+        }
+
+        // Full Islands shell: frame background, left stripe (with a selected gray button), the
+        // downloads + details islands separated by a gap, and the status bar below on the frame.
+        // This is the landmark source for the delta-check script (frame/island/gap/radius/stripe).
+        shot("10-shell-$suffix", 1100, 720, dark) {
+            Column(modifier = Modifier.fillMaxSize().background(BlazeIslandColors.frame)) {
+                Row(modifier = Modifier.weight(1f)) {
+                    ToolWindowStripe(
+                        items = listOf(
+                            SidebarItem("Downloads", AllIconsKeys.Actions.Download, "downloads"),
+                            SidebarItem("Settings", AllIconsKeys.General.Settings, "settings", pinned = true),
+                        ),
+                        selectedId = "downloads",
+                        onItemSelected = {},
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(BlazeLayout.IslandGap),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(BlazeLayout.IslandGap),
+                        ) {
+                            Island(modifier = Modifier.weight(1f)) {
+                                val listState = remember { LazyListState() }
+                                DownloadsList(
+                                    downloads = samples,
+                                    selectedIds = setOf("2"),
+                                    listState = listState,
+                                    columnWidths = columnWidths,
+                                    sortField = DownloadSortField.NAME,
+                                    sortAscending = true,
+                                    onEvent = {},
+                                    onRemoveRequested = {},
+                                    onPauseRequested = {},
+                                    onResumeRequested = {},
+                                    onShowDetailsRequested = {},
+                                    onSelect = { _, _, _ -> },
+                                    onSelectAll = {},
+                                    hideResumeForQueued = false,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            Island(modifier = Modifier.weight(0.45f)) {
+                                DownloadDetailsPanel(
+                                    download = samples.first { it.id == "5" },
+                                    onHide = {},
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                }
+                StatusBar(info = "1 downloading", throughput = "2.7 MB/s", isConnected = true)
+            }
         }
     }
 

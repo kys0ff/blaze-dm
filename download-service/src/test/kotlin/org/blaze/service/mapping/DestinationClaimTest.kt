@@ -20,6 +20,7 @@ class DestinationClaimTest {
 
     private val dir = Path.of("/tmp/blaze-claim")
 
+    // TODO: Warning: Value of parameter 'name' is always '"Big.Buck"'
     private fun torrent(name: String, destination: Path) = DownloadRequest.Torrent(
         name = name,
         torrentSource = TorrentSource.File(Path.of("/tmp/sources/$name.torrent")),

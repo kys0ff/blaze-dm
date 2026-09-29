@@ -5,8 +5,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -30,11 +29,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
@@ -70,8 +71,15 @@ private val RowShape = RoundedCornerShape(4.dp)
 internal val CellStartPadding = 8.dp
 internal val CellEndPadding = 10.dp
 
-/** Fixed slot for the leading selection checkbox, so the header's select-all and every row align. */
-val SelectionCellWidth = 24.dp
+/**
+ * Trailing gutter sized to hold the header's options (gear) button. Now the leading selection
+ * checkbox is gone, every row reserves this same width so its weighted columns line up with the
+ * header exactly.
+ */
+val OptionsGutterWidth = 28.dp
+
+/** OpenType feature that gives fixed-width digits, so numbers line up down a numeric column. */
+internal const val TabularFigures = "tnum"
 
 /**
  * Resolves a column's share of the table width. Every cell in the header and in a row reads this,
@@ -113,31 +121,42 @@ private fun fileTypeIcon(fileName: String): IconKey {
 }
 
 /**
- * The row's selection toggle: a small rounded box (rather than Jewel's `Checkbox`, bound to list-item
- * styling) so it sits cleanly in the compact leading slot. The border only appears when [emphasized].
+ * Turns a row into a selectable surface without a checkbox: a primary-button tap selects, honoring
+ * the keyboard modifiers the multi-select rules need — Ctrl/Cmd toggles the row in/out (additive),
+ * Shift extends the span from the anchor (range) — and a double-tap opens a finished file. A
+ * non-primary press is left for the surrounding [ContextMenuArea].
  */
-@Composable
-private fun SelectionCheckbox(checked: Boolean, emphasized: Boolean, onToggle: () -> Unit) {
-    val strings = blazeStrings
-    val shape = RoundedCornerShape(3.dp)
-    val borderColor =
-        if (checked || emphasized) BlazeColors.accent else JewelTheme.globalColors.borders.normal
-    Box(
-        modifier = Modifier
-            .size(15.dp)
-            .clip(shape)
-            .background(if (checked) BlazeColors.accent else Color.Transparent)
-            .border(1.dp, borderColor, shape)
-            .semantics { contentDescription = strings.downloads.selection.select }
-            .clickable(onClick = onToggle),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (checked) {
-            Text(
-                text = "\u2713",
-                color = Color.White,
-                style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
-            )
+private fun Modifier.rowTapHandler(
+    onSelect: (additive: Boolean, range: Boolean) -> Unit,
+    onOpen: () -> Unit,
+): Modifier = pointerInput(Unit) {
+    var lastTap = 0L
+    awaitEachGesture {
+        // The button and the held Ctrl/Cmd/Shift live on the *PointerEvent*, not on the per-pointer
+        // change, so read the down event itself. A non-primary press is left for the surrounding
+        // ContextMenuArea to handle.
+        val downEvent = awaitPointerEvent()
+        if (downEvent.changes.none { it.pressed && !it.previousPressed }) return@awaitEachGesture
+        if (!downEvent.buttons.isPrimaryPressed) return@awaitEachGesture
+        val modifiers = downEvent.keyboardModifiers
+        val additive = modifiers.isCtrlPressed || modifiers.isMetaPressed
+        val range = modifiers.isShiftPressed
+        // Wait for the release that completes the tap; a consumed change means something else claimed it.
+        var released = false
+        var cancelled = false
+        while (!released && !cancelled) {
+            val event = awaitPointerEvent()
+            released = event.changes.any { !it.pressed && it.previousPressed }
+            cancelled = event.changes.any { it.isConsumed }
+        }
+        if (cancelled) return@awaitEachGesture
+        val now = System.currentTimeMillis()
+        if (now - lastTap < viewConfiguration.doubleTapTimeoutMillis) {
+            lastTap = 0L
+            onOpen()
+        } else {
+            lastTap = now
+            onSelect(additive, range)
         }
     }
 }
@@ -171,8 +190,7 @@ fun DownloadRow(
     columnWidths: Map<String, Float>,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
-    inSelectionMode: Boolean = false,
-    onSelect: (toggle: Boolean) -> Unit = {},
+    onSelect: (additive: Boolean, range: Boolean) -> Unit = { _, _ -> },
     hideResume: Boolean = false,
     capabilities: DownloadCapabilities = DownloadCapabilities(),
 ) {
@@ -255,26 +273,12 @@ fun DownloadRow(
                 .clip(RowShape)
                 .background(background)
                 .hoverable(interaction)
-                .combinedClickable(
-                    interactionSource = interaction,
-                    indication = null,
-                    onClick = { onSelect(false) },
-                    onDoubleClick = { if (isCompleted && !fileMissing) actions.openFile() },
+                .rowTapHandler(
+                    onSelect = onSelect,
+                    onOpen = { if (isCompleted && !fileMissing) actions.openFile() },
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // ── Leading selection slot (mirrors the header's select-all) ──
-            Box(
-                modifier = Modifier.width(SelectionCellWidth).fillMaxHeight(),
-                contentAlignment = Alignment.Center,
-            ) {
-                SelectionCheckbox(
-                    checked = isSelected,
-                    emphasized = isSelected || inSelectionMode || hovered,
-                    onToggle = { onSelect(true) },
-                )
-            }
-
             // ── Columns, in order, weighted to match the header ──
             DownloadsColumn.entries.forEach { column ->
                 val cellModifier = Modifier
@@ -308,7 +312,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = sizeText(download, strings),
-                            style = JewelTheme.typography.small,
+                            style = JewelTheme.typography.small.copy(fontFeatureSettings = TabularFigures),
                             color = primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -321,7 +325,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = speedText(download, strings),
-                            style = JewelTheme.typography.small,
+                            style = JewelTheme.typography.small.copy(fontFeatureSettings = TabularFigures),
                             color = secondary,
                             maxLines = 1,
                         )
@@ -333,7 +337,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = etaText(download, strings),
-                            style = JewelTheme.typography.small,
+                            style = JewelTheme.typography.small.copy(fontFeatureSettings = TabularFigures),
                             color = secondary,
                             maxLines = 1,
                         )
@@ -361,6 +365,9 @@ fun DownloadRow(
                     }
                 }
             }
+
+            // ── Trailing gutter that mirrors the header's options (gear) slot ──
+            Box(modifier = Modifier.width(OptionsGutterWidth).fillMaxHeight())
         }
     }
 }
@@ -441,7 +448,7 @@ private fun ProgressCell(
         }
         Text(
             text = if (isIndeterminate) "\u2014" else "${(progress * 100).toInt()}%",
-            style = JewelTheme.typography.small,
+            style = JewelTheme.typography.small.copy(fontFeatureSettings = TabularFigures),
             color = secondary,
             maxLines = 1,
         )

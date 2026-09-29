@@ -1,12 +1,16 @@
 package org.blaze.presentation.screens.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,12 +29,17 @@ import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BackgroundTasksStatusItem
+import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.ToolWindowStripe
 import org.blaze.presentation.components.StatusBar
+import org.blaze.presentation.application.AppCommand
+import org.blaze.presentation.application.AppCommandBus
+import org.blaze.presentation.application.components.AboutDialog
 import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.presentation.util.formatSpeed
 import org.blaze.presentation.screens.downloads.attention
 import org.blaze.presentation.screens.downloads.DownloadsEvent
@@ -42,6 +51,7 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.typography
+import org.koin.compose.koinInject
 
 class MainScreen : Screen {
     @Composable
@@ -51,6 +61,8 @@ class MainScreen : Screen {
         val downloads = state.downloads
         val strings = blazeStrings
         val shortcuts = LocalShortcutLabels.current
+        val commandBus = koinInject<AppCommandBus>()
+        var showAbout by remember { mutableStateOf(false) }
 
         // Live transfers surfaced in the status bar; QUEUED counts too so the popup shows the whole
         // pending set, while a row's own pause button is only offered while it is actually moving.
@@ -60,7 +72,27 @@ class MainScreen : Screen {
         var showTasks by remember { mutableStateOf(false) }
 
         Navigator(DownloadsScreen()) { navigator ->
-            Box(modifier = Modifier.fillMaxSize()) {
+            // The title-bar chrome raises navigation / dialog commands it cannot serve itself: the
+            // gear opens Settings and About shows the dialog, both of which live on this screen where
+            // the navigator and dialog state exist. The view-scoped commands (new download, focus
+            // search, toggle details) are handled lower down by the downloads screen itself.
+            LaunchedEffect(navigator, commandBus) {
+                commandBus.commands.collect { command ->
+                    when (command) {
+                        AppCommand.OpenSettings ->
+                            if (navigator.lastItem !is SettingsScreen) navigator.replaceAll(SettingsScreen())
+                        AppCommand.ShowAbout -> showAbout = true
+                        else -> Unit
+                    }
+                }
+            }
+            val frameBackground =
+                if (BlazeLayout.useIslands) BlazeIslandColors.frame else JewelTheme.globalColors.panelBackground
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(frameBackground),
+            ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.weight(1f)) {
                     val sidebarItems = listOf(
@@ -75,6 +107,7 @@ class MainScreen : Screen {
                             icon = AllIconsKeys.General.Settings,
                             id = "settings",
                             shortcut = shortcuts.settings,
+                            pinned = true,
                         )
                     )
 
@@ -101,15 +134,29 @@ class MainScreen : Screen {
                         }
                     )
 
-                    Box(modifier = Modifier.weight(1f)) {
+                    // Islands: the content floats on the frame with a gap on every side; the frame
+                    // shows through. Classic: the content fills edge to edge with no gap.
+                    val contentPadding = if (BlazeLayout.useIslands) BlazeLayout.IslandGap else 0.dp
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(contentPadding),
+                    ) {
                         navigator.lastItem.Content()
                     }
                 }
 
                 StatusBar(
-                    info = downloads.toStatusSummary(strings),
+                    // When more than one row is selected the left message reports the selection, so the
+                    // bulk actions always have a visible count to explain what they will act on.
+                    info = if (state.selectedIds.size > 1) {
+                        strings.downloads.selection.count(state.selectedIds.size)
+                    } else {
+                        downloads.toStatusSummary(strings)
+                    },
                     throughput = downloads.aggregateSpeed().takeIf { it > 0 }
-                        ?.let { strings.downloads.speed(formatSpeed(it, strings)) },
+                        ?.let { formatSpeed(it, strings) },
                     alert = downloads.toStatusAlert(strings),
                     trailing = {
                         BackgroundTasksStatusItem(
@@ -149,6 +196,9 @@ class MainScreen : Screen {
                     onCancel = { id -> screenModel.onEvent(DownloadsEvent.Cancel(id)) },
                     onDismiss = { showTasks = false },
                 )
+            }
+            if (showAbout) {
+                AboutDialog(onDismiss = { showAbout = false })
             }
             }
         }

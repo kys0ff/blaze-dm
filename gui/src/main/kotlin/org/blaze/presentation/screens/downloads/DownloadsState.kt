@@ -58,6 +58,12 @@ data class DownloadsState(
     val filter: DownloadFilter = DownloadFilter.ALL,
     /** Live per-state counts, used to label the filter chips and the status-bar throughput. */
     val counts: DownloadCounts = DownloadCounts(),
+    /**
+     * The rows currently selected (multi-select). Owned by the screen model's [Selection] so the
+     * status bar can show "N selected" and the toolbar bulk actions can act on it; already pruned to
+     * rows that still exist in the list.
+     */
+    val selectedIds: Set<String> = emptySet(),
     val maxConcurrentDownloads: Int = 0,
     /** Engine-wide "Snail Mode" crawl state, mirrored from the download settings for the toolbar/status bar. */
     val snailModeEnabled: Boolean = false,

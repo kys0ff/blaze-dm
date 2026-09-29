@@ -15,9 +15,14 @@ internal fun formatSize(bytes: Long?, strings: BlazeStrings): String {
     return String.format("%.1f %sB", bytes / 1024.0.pow(exp.toDouble()), pre)
 }
 
-internal fun formatSpeed(bytesPerSec: Long, strings: BlazeStrings): String {
-    return formatSize(bytesPerSec, strings) + "/s"
-}
+/**
+ * A transfer rate: the humanized size with a localized per-second suffix. The suffix comes from
+ * [BlazeStrings.downloads] `speed` (which appends "/s" / "ث"), so this is the *only* place a rate gets
+ * its unit — callers must pass the result straight through, never wrap it in `speed()` again
+ * (that double-appended the suffix and produced the "MB/s/s" status-bar bug).
+ */
+internal fun formatSpeed(bytesPerSec: Long, strings: BlazeStrings): String =
+    strings.downloads.speed(formatSize(bytesPerSec, strings))
 
 internal fun formatDuration(seconds: Long): String {
     if (seconds <= 0) return "00:00"

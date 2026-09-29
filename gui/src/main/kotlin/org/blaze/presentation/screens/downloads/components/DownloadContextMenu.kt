@@ -111,6 +111,9 @@ fun buildDownloadContextMenu(
 
         // ── Details (always available) ────────────────────────────────────────
         add(option(labels.showDetails, AllIconsKeys.General.ShowInfos, actions.showDetails))
+        // With the per-row checkboxes gone, the context menu (and the header gear) is where "Select
+        // All" lives, so a multi-row bulk action stays reachable without the keyboard.
+        add(option(strings.downloads.selection.selectAll, AllIconsKeys.Actions.Selectall, actions.selectAll))
         divider()
 
         // ── Removal ───────────────────────────────────────────────────────────

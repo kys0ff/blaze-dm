@@ -17,6 +17,7 @@ import org.jetbrains.jewel.intui.window.decoratedWindow
 import org.jetbrains.jewel.intui.window.styling.dark
 import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
 import org.jetbrains.jewel.ui.ComponentStyling
+import org.jetbrains.jewel.window.styling.TitleBarColors
 import org.jetbrains.jewel.window.styling.TitleBarStyle
 
 /**
@@ -59,10 +60,26 @@ fun BlazeTheme(
         IntUiTheme(
             theme = themeDefinition,
             styling = baseStyling.decoratedWindow(
+                // Islands: a flat frame-colored title bar with no bottom hairline (border == bg),
+                // so the bar reads as one continuous frame rather than a banded, gradient header.
                 titleBarStyle = if (isDark) {
-                    TitleBarStyle.dark()
+                    val frame = BlazeIslandColors.frameFor(isDark = true)
+                    TitleBarStyle.dark(
+                        colors = TitleBarColors.dark(
+                            backgroundColor = frame,
+                            inactiveBackground = frame,
+                            borderColor = frame,
+                        ),
+                    )
                 } else {
-                    TitleBarStyle.lightWithLightHeader()
+                    val frame = BlazeIslandColors.frameFor(isDark = false)
+                    TitleBarStyle.lightWithLightHeader(
+                        colors = TitleBarColors.lightWithLightHeader(
+                            backgroundColor = frame,
+                            inactiveBackground = frame,
+                            borderColor = frame,
+                        ),
+                    )
                 },
             ),
             content = content,

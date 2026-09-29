@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.window.ApplicationScope
 import org.blaze.data.AppSettingsRepository
+import org.blaze.domain.repository.DownloadRepository
 import org.blaze.i18n.BlazeLocale
 import org.blaze.i18n.LocalBlazeStrings
 import org.blaze.i18n.LocaleManager
@@ -34,6 +35,23 @@ import org.koin.compose.koinInject
 fun ApplicationScope.BlazeApplication() {
     val strings = rememberBlazeStrings()
     val shell = rememberAppShell()
+
+    // The title-bar hamburger menu raises app-wide commands on a shared bus. The global ones the shell
+    // can serve without any screen being up (exit, and the same pause/resume-all the tray already does
+    // through the repository) are handled here; the view-scoped ones are picked up by the model and the
+    // screens. This keeps every menu item working no matter which screen is currently visible.
+    val commandBus = koinInject<AppCommandBus>()
+    val downloadRepository = koinInject<DownloadRepository>()
+    LaunchedEffect(commandBus, shell) {
+        commandBus.commands.collect { command ->
+            when (command) {
+                AppCommand.Exit -> shell.quit()
+                AppCommand.PauseAll -> downloadRepository.pauseAll()
+                AppCommand.ResumeAll -> downloadRepository.resumeAll()
+                else -> Unit
+            }
+        }
+    }
 
     // An external open (or a macOS Dock reopen) must always surface the window - including while it
     // is hidden to the tray. The requests themselves stay queued in the inbox for the downloads

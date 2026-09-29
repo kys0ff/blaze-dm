@@ -1,6 +1,5 @@
-import org.gradle.jvm.toolchain.JavaLanguageVersion
-import org.gradle.jvm.toolchain.JavaToolchainService
-import org.gradle.jvm.toolchain.JvmVendorSpec
+@file:Suppress("UnstableApiUsage")
+
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -210,8 +209,10 @@ val uiScreenshots = tasks.register<JavaExec>("uiScreenshots") {
 
     // Jewel 0.41.0 is built for Java 25 (class file version 69); run the harness on a 25 launcher so
     // the offscreen scene can load it, independent of the jvmToolchain(21) the app itself targets.
-    javaLauncher.set(project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
-        languageVersion.set(JavaLanguageVersion.of(25))
-        vendor.set(JvmVendorSpec.JETBRAINS)
-    })
+    javaLauncher.set(
+        project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(25))
+            vendor.set(JvmVendorSpec.JETBRAINS)
+        }
+    )
 }

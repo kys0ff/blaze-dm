@@ -84,6 +84,13 @@ object EnStrings : BlazeStrings {
             override val resume = "Resume"
             override val cancel = "Cancel"
             override val remove = "Remove"
+            override fun pauseSelected(n: Int) = "Pause $n ${if (n == 1) "download" else "downloads"}"
+            override fun resumeSelected(n: Int) = "Resume $n ${if (n == 1) "download" else "downloads"}"
+            override fun cancelSelected(n: Int) = "Cancel $n ${if (n == 1) "download" else "downloads"}"
+            override fun removeSelected(n: Int) = "Remove $n ${if (n == 1) "download" else "downloads"}"
+            override val bulkRemoveTitle = "Remove downloads"
+            override fun bulkRemoveMessage(n: Int) =
+                "Remove $n downloads from the list? The downloaded files stay on disk."
         }
         
         override val toolbar = object : BlazeStrings.Downloads.Toolbar {
@@ -405,6 +412,23 @@ object EnStrings : BlazeStrings {
         override val quit = "Quit Blaze"
         override val enableSnailMode = "Enable Snail Mode"
         override val disableSnailMode = "Disable Snail Mode"
+    }
+
+    override val menu = object : BlazeStrings.Menu {
+        override val mainMenu = "Main Menu"
+        override val search = "Search"
+        override val newDownload = "New Download…"
+        override val settings = "Settings…"
+        override val pauseAll = "Pause All"
+        override val resumeAll = "Resume All"
+        override val toggleDetails = "Toggle Details"
+        override val about = "About Blaze"
+        override val exit = "Exit"
+        override val speedLimit = "Speed limit"
+        override val fullSpeed = "Full speed"
+        override val snailMode = "Snail mode"
+        override val aboutTitle = "About Blaze"
+        override val aboutBody = "A fast, modern download manager."
     }
     
     override val settings = object : BlazeStrings.Settings {
