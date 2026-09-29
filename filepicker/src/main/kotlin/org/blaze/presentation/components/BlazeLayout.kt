@@ -139,6 +139,15 @@ object BlazeLayout {
 
     /** Hairline weight under the column header and between chrome bands (IDE grid line). */
     val HeaderBorderWidth = 1.dp
+
+    /**
+     * The 1dp hairline row Jewel's `TitleBar` always places under the bar. In Islands the bar's own
+     * border color is transparent, so this row is the *window's* background showing through: unless
+     * something paints it, whatever lies under the Compose surface leaks into it (the Swing default
+     * panel color, `#eeeeee`, was exactly that line across the dark theme's glow). The body's frame
+     * layer bleeds up by this much to keep the glow continuous.
+     */
+    val TitleBarBorderHeight = 1.dp
 }
 
 /**
@@ -161,6 +170,15 @@ enum class DownloadsColumn(
     Eta("eta", 90.dp, 60.dp, endAligned = true),
     State("state", 170.dp, 110.dp),
 }
+
+/**
+ * The columns the table actually renders, in table order, after the ones hidden from the header's
+ * Table options menu. Both the header and every row read this, so a hidden column disappears from the
+ * whole table at once and the remaining cells stay aligned. [DownloadsColumn.Name] can never be
+ * hidden: it is how a row is identified and clicked.
+ */
+fun downloadsColumnsFor(hidden: Set<String>): List<DownloadsColumn> =
+    DownloadsColumn.entries.filter { it == DownloadsColumn.Name || it.id !in hidden }
 
 /**
  * Whether the app window is the active (focused) window, plumbed down from the
@@ -194,13 +212,17 @@ val LocalShortcutLabels: ProvidableCompositionLocal<ShortcutLabels> = staticComp
 data class ShortcutLabels(
     val newDownload: String,
     val search: String,
+    /** Opens the Search Everywhere popup (the title-bar search icon), distinct from [search]. */
+    val quickSearch: String,
     val selectAll: String,
     val settings: String,
     val togglePause: String,
     val remove: String,
+    /** Opens or collapses the Details tool window (the IDE's "show properties" accelerator). */
+    val toggleDetails: String,
 ) {
     companion object {
         /** Blank placeholder used before the shell installs the real, OS-formatted labels. */
-        val None = ShortcutLabels("", "", "", "", "", "")
+        val None = ShortcutLabels("", "", "", "", "", "", "", "")
     }
 }

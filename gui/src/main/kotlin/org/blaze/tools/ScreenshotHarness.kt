@@ -15,9 +15,12 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.renderComposeScene
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
@@ -26,15 +29,21 @@ import org.blaze.domain.models.SelectedFile
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.BlazeMenu
+import org.blaze.presentation.components.MenuEntry
+import org.blaze.presentation.components.rememberMenuAnchorAt
 import org.blaze.presentation.components.DownloadsColumn
 import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
 import org.blaze.presentation.components.ToolWindowStripe
+import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.screens.downloads.DownloadFilter
 import org.blaze.presentation.screens.downloads.DownloadSortField
 import org.blaze.presentation.screens.downloads.SelectionActions
 import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
+import org.blaze.presentation.screens.downloads.components.DownloadRowActions
+import org.blaze.presentation.screens.downloads.components.buildDownloadContextMenu
 import org.blaze.presentation.screens.downloads.components.DownloadsFilterSortBar
 import org.blaze.presentation.screens.downloads.components.DownloadsList
 import org.blaze.presentation.screens.downloads.components.DownloadsToolbar
@@ -46,6 +55,7 @@ import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.presentation.theme.BlazeTheme
 import org.blaze.presentation.theme.BlazeTypography
+import org.blaze.presentation.theme.blazeAmbientBodyFrame
 import org.blaze.presentation.theme.blazeAmbientFrame
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -66,13 +76,31 @@ import java.io.File
  * be checked — row height, selection colors, header, dividers, toolbar icon sizes, paddings — with
  * fake data and no engine. Run via `./gradlew :gui:uiScreenshots`.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     val outDir = File("build/ui-screenshots").apply { mkdirs() }
     val density = Density(1f)
     val samples = sampleDownloads()
+    val fidelityIssues = mutableListOf<PngFidelityScan.Issue>()
 
-    fun shot(name: String, width: Int, height: Int, dark: Boolean, content: @Composable () -> Unit) {
-        val image = renderComposeScene(width, height, density) {
+    /**
+     * Renders [content] into `$name.png`, over [frames] frames 100 ms apart.
+     *
+     * A single frame is enough for anything that lays itself out from its own parameters. Surfaces
+     * that place themselves against measurements taken in an *earlier* frame need more: a menu's
+     * second level hangs off the first level's rows, and those bounds only arrive after the first
+     * layout pass, so with one frame every level would stack on the anchor. Rendering on an advancing
+     * timestamp also lets a frame-driven `delay` (a hover timer, a collapse grace period) elapse.
+     */
+    fun shot(
+        name: String,
+        width: Int,
+        height: Int,
+        dark: Boolean,
+        frames: Int = 1,
+        content: @Composable () -> Unit,
+    ) {
+        val scene = ImageComposeScene(width, height, density) {
             BlazeTheme(isDark = dark) {
                 // The offscreen scene has no window to paint a background, so supply the same surface
                 // token the real window uses; otherwise dark shots render light-on-transparent.
@@ -81,10 +109,26 @@ fun main() {
                 }
             }
         }
+        val image = try {
+            var last = scene.render()
+            repeat(frames - 1) { index ->
+                last.close()
+                // 100 ms per frame: enough to cross the 300 ms hover timer in a few frames if a
+                // fixture relies on one, and too little for any of them to spin forever.
+                last = scene.render(nanoTime = (index + 1) * 100L * 1_000_000L)
+            }
+            last
+        } finally {
+            scene.close()
+        }
         val data = image.encodeToData(EncodedImageFormat.PNG)
             ?: error("PNG encode failed for $name")
-        File(outDir, "$name.png").writeBytes(data.bytes)
+        val file = File(outDir, "$name.png")
+        file.writeBytes(data.bytes)
         image.close()
+        // Every rendered shot is checked before the next one is drawn, so a hairline or a leaked
+        // surface introduced by a change fails the same build that introduced it.
+        fidelityIssues += PngFidelityScan.scan(file)
         println("[uiScreenshots] wrote $name.png ($width x $height, ${if (dark) "dark" else "light"})")
     }
 
@@ -100,6 +144,7 @@ fun main() {
                 selectedIds = setOf("2"),
                 listState = listState,
                 columnWidths = columnWidths,
+                hiddenColumns = emptySet(),
                 sortField = DownloadSortField.NAME,
                 sortAscending = true,
                 onEvent = {},
@@ -183,6 +228,7 @@ fun main() {
                     onBulkCancel = {},
                     onBulkRemove = {},
                     detailsVisible = true,
+                    hasVisibleRows = true,
                     onToggleDetails = {},
                 )
                 DownloadsFilterSortBar(
@@ -217,7 +263,34 @@ fun main() {
                 onBulkCancel = {},
                 onBulkRemove = {},
                 detailsVisible = false,
+                hasVisibleRows = true,
                 onToggleDetails = {},
+            )
+        }
+
+        // A menu with its submenu open, in the surface Blaze draws for every popup in the app. Four
+        // frames because the second level is placed against the first level's measured rows, and the
+        // entries are the real `buildDownloadContextMenu` output for a downloading row — accelerators,
+        // the check on the active priority, the separator and the disabled rows all come from the app's
+        // own rules rather than from a fixture, so this picture is what the row context menu looks like.
+        shot("09-menu-submenu-$suffix", 460, 340, dark, frames = 4) {
+            val menuEntries = buildDownloadContextMenu(
+                download = samples.first { it.id == "1" },
+                capabilities = DownloadCapabilities(
+                    canOpenFiles = true,
+                    canRevealInFolder = true,
+                    canBrowseLinks = true,
+                    canCopy = true,
+                ),
+                strings = blazeStrings,
+                actions = noOpRowActions(),
+            )
+            BlazeMenu(
+                entries = menuEntries,
+                anchor = rememberMenuAnchorAt(Offset(20f, 20f)),
+                onDismissRequest = {},
+                inScene = true,
+                initialOpenSubmenu = menuEntries.indexOfFirst { it is MenuEntry.Submenu }.takeIf { it >= 0 },
             )
         }
 
@@ -226,71 +299,14 @@ fun main() {
         // bar below on the frame. This is the landmark source for the delta-check script
         // (frame/island/gap/radius/stripe + the gradient tint landmarks).
         shot("10-shell-$suffix", 1100, 720, dark) {
-            // The chrome's text styles are resolved here and their real FontWeight printed, so the
-            // "regular weight everywhere" rule is measured on every run instead of being asserted.
-            val fontReport = BlazeTypography.auditReport()
-            remember(fontReport) { fontReport.trimEnd().lines().forEach { println(it) } }
-            Column(modifier = Modifier.fillMaxSize().blazeAmbientFrame(anchorY = 0.dp)) {
-                // The real window paints the glow behind a transparent Islands title bar, so an
-                // empty strip of that exact height reproduces the reference's title band: the
-                // gradient's horizontal peak lives inside it, and the stripe/gap below shows the
-                // vertical decay. The headless scene has no decorations of its own.
-                Spacer(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(JewelTheme.defaultTitleBarStyle.metrics.height)
-                )
-                Row(modifier = Modifier.weight(1f)) {
-                    ToolWindowStripe(
-                        items = listOf(
-                            SidebarItem("Downloads", AllIconsKeys.Actions.Download, "downloads"),
-                            SidebarItem("Settings", AllIconsKeys.General.Settings, "settings", pinned = true),
-                        ),
-                        selectedId = "downloads",
-                        onItemSelected = {},
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .padding(BlazeLayout.IslandGap),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.spacedBy(BlazeLayout.IslandGap),
-                        ) {
-                            Island(modifier = Modifier.weight(1f)) {
-                                val listState = remember { LazyListState() }
-                                DownloadsList(
-                                    downloads = samples,
-                                    selectedIds = setOf("2"),
-                                    listState = listState,
-                                    columnWidths = columnWidths,
-                                    sortField = DownloadSortField.NAME,
-                                    sortAscending = true,
-                                    onEvent = {},
-                                    onRemoveRequested = {},
-                                    onPauseRequested = {},
-                                    onResumeRequested = {},
-                                    onShowDetailsRequested = {},
-                                    onSelect = { _, _, _ -> },
-                                    onSelectAll = {},
-                                    hideResumeForQueued = false,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                            Island(modifier = Modifier.weight(0.45f)) {
-                                DownloadDetailsPanel(
-                                    download = samples.first { it.id == "5" },
-                                    onHide = {},
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                        }
-                    }
-                }
-                StatusBar(info = "1 downloading", throughput = "2.7 MB/s", isConnected = true)
-            }
+            DownloadsShellFixture(samples, columnWidths, detailsOpen = true)
+        }
+
+        // The same shell with the Details tool window collapsed — the state a launch with no selection
+        // now produces, and the proof that the list island owns the whole frame when nothing earned the
+        // pane its space.
+        shot("13-shell-collapsed-$suffix", 1100, 720, dark) {
+            DownloadsShellFixture(samples, columnWidths, detailsOpen = false)
         }
 
         // The Settings window's content, rendered from the screen's own scaffolding pieces. It is the
@@ -337,13 +353,167 @@ fun main() {
                 )
             }
         }
+        // The title-bar seam — the exact structure that put a `#eeeeee` line across the dark theme.
+        // Jewel's `TitleBar` always emits a 1dp `Spacer` under the bar as its border, and in Islands
+        // that border color is deliberately transparent, so the row is painted by *nothing* in the
+        // scene: under a real window the Skia layer leaves it transparent and the AWT panel behind the
+        // window shows through — Swing's Metal/Ocean default is #eeeeee, a hard light line over the
+        // glow. This fixture stacks the three real layers (that AWT default as backdrop, the bar's
+        // glow band, the gap, then the body's frame layer via the same blazeAmbientBodyFrame() the
+        // window uses), so the stray-line scan fails if the seam ever stops being painted.
+        shot("12-titlebar-seam-$suffix", 1100, 140, dark) {
+            Box(modifier = Modifier.fillMaxSize().background(SwingPanelDefault)) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(JewelTheme.defaultTitleBarStyle.metrics.height)
+                            .blazeAmbientFrame(anchorY = 0.dp),
+                    )
+                    // Jewel's border Spacer: 1dp tall, background Color.Transparent.
+                    Spacer(modifier = Modifier.fillMaxWidth().height(BlazeLayout.TitleBarBorderHeight))
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .blazeAmbientBodyFrame(),
+                    ) {
+                        Row(modifier = Modifier.fillMaxSize().padding(BlazeLayout.IslandGap)) {
+                            ToolWindowStripe(
+                                items = listOf(
+                                    SidebarItem("Downloads", AllIconsKeys.Actions.Download, "downloads"),
+                                    SidebarItem("Settings", AllIconsKeys.General.Settings, "settings", pinned = true),
+                                ),
+                                selectedId = "downloads",
+                                onItemSelected = {},
+                            )
+                            Island(modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.fillMaxSize().padding(BlazeLayout.ContentPadding)) {
+                                    Text("ubuntu-24.04-desktop.iso")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
+    reportFidelityIssues(fidelityIssues)
     println("[uiScreenshots] done -> ${outDir.absolutePath}")
 }
 
+/**
+ * The Islands shell around the downloads table: frame glow, the tool-window stripe, the list island
+ * and — when [detailsOpen] — the Details island beside it, closed off by the status bar on the frame.
+ *
+ * Rendered both ways: open is what a selected row earns, closed is what a launch with no selection
+ * now shows, so the "details island collapsed until selected" rule has a picture in every run.
+ */
+@Composable
+private fun DownloadsShellFixture(
+    samples: List<Download>,
+    columnWidths: Map<String, Float>,
+    detailsOpen: Boolean,
+) {
+    // The chrome's text styles are resolved here and their real FontWeight printed, so the
+    // "regular weight everywhere" rule is measured on every run instead of being asserted.
+    val fontReport = BlazeTypography.auditReport()
+    remember(fontReport) { fontReport.trimEnd().lines().forEach { println(it) } }
+    Column(modifier = Modifier.fillMaxSize().blazeAmbientFrame(anchorY = 0.dp)) {
+        // The real window paints the glow behind a transparent Islands title bar, so an
+        // empty strip of that exact height reproduces the reference's title band: the
+        // gradient's horizontal peak lives inside it, and the stripe/gap below shows the
+        // vertical decay. The headless scene has no decorations of its own.
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(JewelTheme.defaultTitleBarStyle.metrics.height)
+        )
+        Row(modifier = Modifier.weight(1f)) {
+            ToolWindowStripe(
+                items = listOf(
+                    SidebarItem("Downloads", AllIconsKeys.Actions.Download, "downloads"),
+                    SidebarItem("Settings", AllIconsKeys.General.Settings, "settings", pinned = true),
+                ),
+                selectedId = "downloads",
+                onItemSelected = {},
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(BlazeLayout.IslandGap),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(BlazeLayout.IslandGap),
+                ) {
+                    Island(modifier = Modifier.weight(1f)) {
+                        val listState = remember { LazyListState() }
+                        DownloadsList(
+                            downloads = samples,
+                            selectedIds = if (detailsOpen) setOf("2") else emptySet(),
+                            listState = listState,
+                            columnWidths = columnWidths,
+                            hiddenColumns = emptySet(),
+                            sortField = DownloadSortField.NAME,
+                            sortAscending = true,
+                            onEvent = {},
+                            onRemoveRequested = {},
+                            onPauseRequested = {},
+                            onResumeRequested = {},
+                            onShowDetailsRequested = {},
+                            onSelect = { _, _, _ -> },
+                            onSelectAll = {},
+                            hideResumeForQueued = false,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    if (detailsOpen) {
+                        Island(modifier = Modifier.weight(0.45f)) {
+                            DownloadDetailsPanel(
+                                download = samples.first { it.id == "5" },
+                                onHide = {},
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        StatusBar(info = "1 downloading", throughput = "2.7 MB/s", isConnected = true)
+    }
+}
+
+/**
+ * The color an AWT/Swing window paints where the Compose surface is transparent — Metal's Ocean
+ * look-and-feel default panel background. Nothing in the app should ever show it; it is only here to
+ * make the title-bar seam fixture fail the way a real window does.
+ */
+private val SwingPanelDefault = Color(0xFFEEEEEE)
+
 private const val MB = 1024L * 1024L
 private const val GB = 1024L * MB
+
+/** Every row command as a no-op, so the harness can build a real menu without a screen model. */
+private fun noOpRowActions() = DownloadRowActions(
+    pause = {},
+    resume = {},
+    retry = {},
+    cancel = {},
+    remove = {},
+    reDownload = {},
+    clear = {},
+    openFile = {},
+    showInFolder = {},
+    openSourceLink = {},
+    copyLink = {},
+    copyFileLocation = {},
+    showDetails = {},
+    selectAll = {},
+    setPriority = {},
+)
 
 private fun sampleDownloads(): List<Download> {
     val now = System.currentTimeMillis()

@@ -10,6 +10,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import org.blaze.data.AppSettingsRepository
@@ -17,6 +19,7 @@ import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
 import org.blaze.presentation.application.AppShell
 import org.blaze.platform.tray.AppTrayIcon
+import org.blaze.presentation.components.BlazeKeymap
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.LocalAmbientGlowEnabled
 import org.blaze.presentation.components.LocalShortcutLabels
@@ -25,12 +28,26 @@ import org.blaze.presentation.components.notifications.LocalNotifications
 import org.blaze.presentation.components.notifications.NotificationHost
 import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.components.platformShortcutLabels
+import org.blaze.presentation.theme.BlazeIslandColors
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.koin.compose.koinInject
 import java.awt.Dimension
 import java.awt.Frame
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
+import kotlin.math.roundToInt
+
+/**
+ * The AWT color for a Compose color, for the handful of properties only the Swing side of the window
+ * exposes. Alpha is dropped on purpose: a translucent window background would make the frame see-
+ * through, and every surface token in the app is opaque.
+ */
+private fun Color.toAwtColor(): java.awt.Color =
+    java.awt.Color(
+        (red.coerceIn(0f, 1f) * 255).roundToInt(),
+        (green.coerceIn(0f, 1f) * 255).roundToInt(),
+        (blue.coerceIn(0f, 1f) * 255).roundToInt(),
+    )
 
 @Composable
 fun BlazeWindow(shell: AppShell) {
@@ -42,11 +59,19 @@ fun BlazeWindow(shell: AppShell) {
     ) {
         val visible = shell.windowVisible.value
         val raiseToken = shell.windowRaiseToken.value
-        LaunchedEffect(window) {
+        // Nothing in the scene paints the 1dp row Jewel's title bar reserves for its border, and the
+        // Skia surface leaves unpainted pixels transparent — so they show the AWT side of the window.
+        // JFrame's default is the Swing look-and-feel's panel color (#eeeeee under Metal/Ocean), a hard
+        // light line across the dark chrome. Pin the window's own background to the frame color so any
+        // gap in the composition reads as chrome instead of a leaked light-theme token.
+        val frameColor = BlazeIslandColors.frame
+        LaunchedEffect(window, frameColor) {
             window.minimumSize = Dimension(760, 480)
             // No `.desktop` entry matches an IDE launch, so the taskbar reads the icon
             // from the frame's `_NET_WM_ICON`; AWT only sets that from `iconImage`.
             window.iconImage = AppTrayIcon.windowIcon()
+            window.background = frameColor.toAwtColor()
+            window.contentPane.background = frameColor.toAwtColor()
         }
 
         // The title-bar minimize button (Linux) sets `window.extendedState = ICONIFIED`,
@@ -115,7 +140,26 @@ fun BlazeWindow(shell: AppShell) {
             // shortcut labels read the same OS-formatted accelerators as the rest of the chrome.
             BlazeTitleBar()
 
-            Box(modifier = Modifier.fillMaxSize().then(drop.modifier)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(drop.modifier)
+                    // The shell-level half of the keymap bridge. Everything the downloads screen owns
+                    // (new download, search, selection keys, details) is handled there, closer to the
+                    // focus; what is left here is the one chord that belongs to the frame itself, and it
+                    // is recognised by the very [BlazeKeymap.Binding] the menus print - so a shortcut can
+                    // no longer be displayed without being handled, which is what Settings used to be.
+                    .onPreviewKeyEvent { event ->
+                        when (BlazeKeymap.matchAction(event)) {
+                            BlazeKeymap.Action.OpenSettings -> {
+                                shell.openSettings()
+                                true
+                            }
+
+                            else -> false
+                        }
+                    },
+            ) {
                 BlazeContent()
                 WindowDropOverlay(drop)
                 NotificationHost(

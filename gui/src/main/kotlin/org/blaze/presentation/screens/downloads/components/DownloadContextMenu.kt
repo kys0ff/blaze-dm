@@ -1,18 +1,16 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.ContextMenuItem
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.components.BlazeIcons
+import org.blaze.presentation.components.BlazeKeymap
+import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.screens.downloads.canCancel
 import org.blaze.presentation.screens.downloads.canPause
 import org.blaze.presentation.screens.downloads.canResume
-import org.jetbrains.jewel.ui.component.ContextMenuDivider
-import org.jetbrains.jewel.ui.component.ContextMenuItemOption
-import org.jetbrains.jewel.ui.component.ContextSubmenu
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
@@ -22,8 +20,14 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
  * offered. [hideResumeForQueued] mirrors the toolbar's rule that a queued download can't be
  * individually resumed once the concurrency slots are full.
  *
- * Groups are separated with [ContextMenuDivider]: file operations, then transport controls,
+ * Groups are separated with [MenuEntry.Separator]: file operations, then transport controls,
  * then source/clipboard helpers, then removal.
+ *
+ * The result is plain data rather than Jewel's `ContextMenuItem` list, because Blaze draws its own
+ * menus ([org.blaze.presentation.components.BlazeMenu]) — Jewel's submenu state machine hangs the
+ * pointer once a nested level is open. Being data is also what lets one row's menu, the header's
+ * Table options and the tool-window "more" menus share a single renderer, and lets each row carry the
+ * accelerator from the one [BlazeKeymap] that actually listens for it.
  */
 fun buildDownloadContextMenu(
     download: Download,
@@ -32,7 +36,7 @@ fun buildDownloadContextMenu(
     actions: DownloadRowActions,
     hideResumeForQueued: Boolean = false,
     fileMissing: Boolean = false,
-): List<ContextMenuItem> {
+): List<MenuEntry> {
     val labels = strings.downloads.actions
     val state = download.state
     val isCompleted = state == DownloadState.COMPLETED || state == DownloadState.SEEDING
@@ -53,14 +57,21 @@ fun buildDownloadContextMenu(
     return buildList {
         // ── Finished file: open it or find it on disk ─────────────────────────
         if (isGone) {
-            add(option(labels.reDownload, AllIconsKeys.Actions.Download, actions.reDownload))
+            add(action(labels.reDownload, AllIconsKeys.Actions.Download, on = actions.reDownload))
             divider()
         } else if (isCompleted) {
             if (capabilities.canOpenFiles) {
-                add(option(labels.openFile, AllIconsKeys.General.OpenDisk, actions.openFile))
+                add(
+                    action(
+                        labels.openFile,
+                        AllIconsKeys.General.OpenDisk,
+                        on = actions.openFile,
+                        key = BlazeKeymap.Action.OpenSelected,
+                    ),
+                )
             }
             if (capabilities.canRevealInFolder) {
-                add(option(labels.showInFolder, AllIconsKeys.Nodes.Folder, actions.showInFolder))
+                add(action(labels.showInFolder, AllIconsKeys.Nodes.Folder, on = actions.showInFolder))
             }
             divider()
         }
@@ -68,76 +79,126 @@ fun buildDownloadContextMenu(
         // ── Transport controls ────────────────────────────────────────────────
         when {
             download.canPause() ->
-                add(option(labels.pause, AllIconsKeys.Actions.Pause, actions.pause))
+                add(
+                    action(
+                        labels.pause,
+                        AllIconsKeys.Actions.Pause,
+                        on = actions.pause,
+                        key = BlazeKeymap.Action.TogglePause,
+                    ),
+                )
 
             isResumable ->
-                add(option(labels.resume, AllIconsKeys.Actions.Resume, actions.resume))
+                add(
+                    action(
+                        labels.resume,
+                        AllIconsKeys.Actions.Resume,
+                        on = actions.resume,
+                        key = BlazeKeymap.Action.TogglePause,
+                    ),
+                )
 
             isFailed ->
-                add(option(labels.retry, AllIconsKeys.Actions.Restart, actions.retry))
+                add(action(labels.retry, AllIconsKeys.Actions.Restart, on = actions.retry))
         }
         if (isCancellable) {
-            add(option(labels.cancel, BlazeIcons.Stop, actions.cancel))
+            add(action(labels.cancel, BlazeIcons.Stop, on = actions.cancel))
         }
 
         // ── Priority (only while the transfer still has queue time ahead of it) ──
         if (canSetPriority) {
             val p = strings.downloads.priority
             add(
-                ContextSubmenu(p.label) {
-                    DownloadPriority.entries.map { level ->
-                        ContextMenuItemOption(
-                            icon = null,
-                            enabled = download.priority != level,
+                MenuEntry.Submenu(
+                    label = p.label,
+                    children = DownloadPriority.entries.map { level ->
+                        MenuEntry.Action(
                             label = level.label(p),
-                            action = { actions.setPriority(level) },
+                            // The IDE marks the current choice in the icon column instead of greying
+                            // it out, so the group reads as a radio set rather than as dead rows.
+                            checked = download.priority == level,
+                            onClick = { actions.setPriority(level) },
                         )
-                    }
-                }
+                    },
+                )
             )
         }
         divider()
 
         // ── Source & clipboard helpers ────────────────────────────────────────
         if (isWebLink && capabilities.canBrowseLinks) {
-            add(option(labels.openSourceLink, AllIconsKeys.General.Web, actions.openSourceLink))
+            add(action(labels.openSourceLink, AllIconsKeys.General.Web, on = actions.openSourceLink))
         }
         if (capabilities.canCopy && download.url.isNotBlank()) {
-            add(option(labels.copyLink, AllIconsKeys.General.Copy, actions.copyLink))
+            add(action(labels.copyLink, AllIconsKeys.General.Copy, on = actions.copyLink))
         }
         if (capabilities.canCopy) {
-            add(option(labels.copyFilePath, AllIconsKeys.General.InlineCopy, actions.copyFileLocation))
+            add(action(labels.copyFilePath, AllIconsKeys.General.InlineCopy, on = actions.copyFileLocation))
         }
         divider()
 
         // ── Details (always available) ────────────────────────────────────────
-        add(option(labels.showDetails, AllIconsKeys.General.ShowInfos, actions.showDetails))
+        add(
+            action(
+                labels.showDetails,
+                AllIconsKeys.General.ShowInfos,
+                on = actions.showDetails,
+                key = BlazeKeymap.Action.ToggleDetails,
+            ),
+        )
         // With the per-row checkboxes gone, the context menu (and the header gear) is where "Select
         // All" lives, so a multi-row bulk action stays reachable without the keyboard.
-        add(option(strings.downloads.selection.selectAll, AllIconsKeys.Actions.Selectall, actions.selectAll))
+        add(
+            action(
+                strings.downloads.selection.selectAll,
+                AllIconsKeys.Actions.Selectall,
+                on = actions.selectAll,
+                key = BlazeKeymap.Action.SelectAll,
+            ),
+        )
         divider()
 
         // ── Removal ───────────────────────────────────────────────────────────
         // Nothing is left on disk for a gone file, so this is a plain clear rather than the
         // remove-or-delete choice a still-present file gets.
         if (isGone) {
-            add(option(labels.clear, AllIconsKeys.Actions.GC, actions.clear))
+            add(action(labels.clear, AllIconsKeys.Actions.GC, on = actions.clear))
         } else {
-            add(option(labels.remove, AllIconsKeys.Actions.GC, actions.remove))
+            add(
+                action(
+                    labels.remove,
+                    AllIconsKeys.Actions.GC,
+                    on = actions.remove,
+                    key = BlazeKeymap.Action.Remove,
+                ),
+            )
         }
     }
 }
 
 /** Appends a section separator only when it would sit between two real items. */
-private fun MutableList<ContextMenuItem>.divider() {
-    if (isNotEmpty() && last() != ContextMenuDivider) add(ContextMenuDivider)
+private fun MutableList<MenuEntry>.divider() {
+    if (isNotEmpty() && last() != MenuEntry.Separator) add(MenuEntry.Separator)
 }
 
-private fun option(
+/**
+ * One leaf row. [key] is the keymap action whose accelerator this row performs — print it only if some
+ * handler really listens for it, which is the whole point of taking it from [BlazeKeymap] rather than
+ * typing a string.
+ */
+private fun action(
     label: String,
     icon: IconKey,
-    action: () -> Unit,
-) = ContextMenuItemOption(icon = icon, label = label, action = action)
+    enabled: Boolean = true,
+    key: BlazeKeymap.Action = BlazeKeymap.Action.None,
+    on: () -> Unit,
+) = MenuEntry.Action(
+    label = label,
+    icon = icon,
+    accelerator = BlazeKeymap.displayValue(key),
+    enabled = enabled,
+    onClick = on,
+)
 
 /** Localized name for a priority level, shared by the row menu, badge and add dialog. */
 internal fun DownloadPriority.label(strings: BlazeStrings.Downloads.Priority): String = when (this) {

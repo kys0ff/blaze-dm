@@ -79,6 +79,7 @@ object EnStrings : BlazeStrings {
             override val select = "Select"
             override val selectAll = "Select all"
             override val clearSelection = "Clear selection"
+            override val deselect = "Deselect"
             override fun count(n: Int) = "$n selected"
             override val pause = "Pause"
             override val resume = "Resume"
@@ -100,6 +101,12 @@ object EnStrings : BlazeStrings {
             override val clearCompleted = "Clear completed"
             override val importPortable = "Import portable download"
             override val snailMode = "Snail Mode — throttle all downloads to a crawl"
+        }
+
+        override val tableOptions = object : BlazeStrings.Downloads.TableOptions {
+            override val menuTooltip = "Table options"
+            override val columns = "Columns"
+            override val resetColumnWidths = "Reset column widths"
         }
 
         override val detailsPane = object : BlazeStrings.Downloads.DetailsPane {

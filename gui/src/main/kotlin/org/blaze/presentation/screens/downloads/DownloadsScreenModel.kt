@@ -38,6 +38,7 @@ import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.platform.files.SystemFileService
+import org.blaze.presentation.components.DownloadsColumn
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -86,6 +87,7 @@ class DownloadsScreenModel(
      */
     private data class LayoutPrefs(
         val columnWidths: Map<String, Float>,
+        val hiddenColumns: Set<String>,
         val detailsVisible: Boolean,
         val splitFraction: Float,
         val warnBeforeDiscarding: Boolean,
@@ -110,6 +112,7 @@ class DownloadsScreenModel(
         appSettingsRepository.settings.value.let { saved ->
             LayoutPrefs(
                 columnWidths = saved.downloadsColumnWidths,
+                hiddenColumns = saved.downloadsHiddenColumns.toSet(),
                 detailsVisible = saved.detailsPaneVisible,
                 splitFraction = saved.detailsSplitFraction,
                 warnBeforeDiscarding = saved.warnBeforeDiscardingProgress,
@@ -132,6 +135,7 @@ class DownloadsScreenModel(
             appSettingsRepository.updateSettings {
                 it.copy(
                     downloadsColumnWidths = layout.columnWidths,
+                    downloadsHiddenColumns = layout.hiddenColumns.toList(),
                     downloadsSortField = field.name,
                     downloadsSortAscending = ascending,
                     detailsPaneVisible = layout.detailsVisible,
@@ -198,6 +202,7 @@ class DownloadsScreenModel(
         base.copy(
             selectedIds = selection.ids.filterTo(LinkedHashSet()) { it in liveIds },
             columnWidths = layout.columnWidths,
+            hiddenColumns = layout.hiddenColumns,
             detailsVisible = layout.detailsVisible,
             detailsSplitFraction = layout.splitFraction,
             warnBeforeDiscardingProgress = layout.warnBeforeDiscarding,
@@ -301,6 +306,25 @@ class DownloadsScreenModel(
 
             is DownloadsEvent.ResizeColumn -> {
                 _layout.update { it.copy(columnWidths = it.columnWidths + (event.columnId to event.widthDp)) }
+                persistLayout()
+            }
+
+            // Name is the row's identity - a table without it cannot be read or clicked by name, so the
+            // request to hide it is dropped rather than trusted to the menu disabling the item.
+            is DownloadsEvent.ToggleColumn -> {
+                if (event.columnId != DownloadsColumn.Name.id) {
+                    _layout.update { layout ->
+                        val hidden =
+                            if (event.visible) layout.hiddenColumns - event.columnId
+                            else layout.hiddenColumns + event.columnId
+                        layout.copy(hiddenColumns = hidden)
+                    }
+                    persistLayout()
+                }
+            }
+
+            DownloadsEvent.ResetColumnWidths -> {
+                _layout.update { it.copy(columnWidths = emptyMap()) }
                 persistLayout()
             }
 

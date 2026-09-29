@@ -49,6 +49,11 @@ data class AppSettings(
 
     /** Chosen download-table column widths, keyed by column id, in dp. Absent id = default width. */
     val downloadsColumnWidths: Map<String, Float> = emptyMap(),
+    /**
+     * Ids of the download-table columns the user hid from the header's Table options menu. Stored as a
+     * list of ids (not a set type) to keep this file's "primitives only" rule for persisted layout.
+     */
+    val downloadsHiddenColumns: List<String> = emptyList(),
     /** Name of the [org.blaze.presentation.screens.downloads.DownloadSortField] the list is ordered by. */
     val downloadsSortField: String = "DATE_ADDED",
     /** Direction of the persisted sort (see [downloadsSortField]). */

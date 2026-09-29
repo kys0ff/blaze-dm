@@ -1,6 +1,5 @@
 package org.blaze.presentation.screens.main
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,31 +26,28 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.application.AppCommand
+import org.blaze.presentation.application.AppCommandBus
+import org.blaze.presentation.application.components.AboutDialog
 import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BackgroundTasksStatusItem
 import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.SidebarItem
-import org.blaze.presentation.components.ToolWindowStripe
 import org.blaze.presentation.components.StatusBar
-import org.blaze.presentation.application.AppCommand
-import org.blaze.presentation.application.AppCommandBus
-import org.blaze.presentation.application.components.AboutDialog
-import org.blaze.presentation.screens.downloads.aggregateSpeed
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeIslandColors
-import org.blaze.presentation.theme.BlazeTypography
-import org.blaze.presentation.util.formatSpeed
-import org.blaze.presentation.screens.downloads.attention
+import org.blaze.presentation.components.ToolWindowStripe
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
-import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.blaze.presentation.screens.downloads.aggregateSpeed
+import org.blaze.presentation.screens.downloads.attention
+import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeTypography
+import org.blaze.presentation.util.formatSpeed
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import org.jetbrains.jewel.ui.typography
 import org.koin.compose.koinInject
 
 class MainScreen : Screen {

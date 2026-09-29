@@ -1,6 +1,5 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
@@ -12,7 +11,6 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,10 +27,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,8 +45,10 @@ import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.DownloadsColumn
 import org.blaze.presentation.components.LocalWindowActive
+import org.blaze.presentation.components.rememberMenuAnchorAt
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.screens.downloads.isTorrentSource
 import org.blaze.presentation.screens.downloads.isUnresumableInProgress
@@ -62,9 +65,9 @@ import org.jetbrains.jewel.ui.component.HorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.component.styling.HorizontalProgressBarColors
 import org.jetbrains.jewel.ui.component.styling.HorizontalProgressBarStyle
+import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.theme.horizontalProgressBarStyle
 import org.jetbrains.jewel.ui.theme.simpleListItemStyle
@@ -126,10 +129,30 @@ private fun fileTypeIcon(fileName: String): IconKey {
 }
 
 /**
+ * Reports a secondary-button (right-button) click in window-root coordinates, which is the point a
+ * context menu opens at. It fires on the release, like the platform's own menus, so pressing, dragging
+ * away and letting go leaves nothing behind.
+ */
+private fun Modifier.onSecondaryTap(onTap: (Offset) -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        val down = awaitPointerEvent(PointerEventPass.Main)
+        val pressed = down.changes.firstOrNull { it.pressed && !it.previousPressed }
+        if (pressed == null || !down.buttons.isSecondaryPressed) return@awaitEachGesture
+        val position = pressed.position
+        // Hold until every pointer is up again; the gesture is the whole press, not its first frame.
+        var released = false
+        while (!released) {
+            released = awaitPointerEvent(PointerEventPass.Main).changes.none { it.pressed }
+        }
+        onTap(position)
+    }
+}
+
+/**
  * Turns a row into a selectable surface without a checkbox: a primary-button tap selects, honoring
  * the keyboard modifiers the multi-select rules need — Ctrl/Cmd toggles the row in/out (additive),
  * Shift extends the span from the anchor (range) — and a double-tap opens a finished file. A
- * non-primary press is left for the surrounding [ContextMenuArea].
+ * non-primary press is left for the row's own context menu.
  */
 private fun Modifier.rowTapHandler(
     onSelect: (additive: Boolean, range: Boolean) -> Unit,
@@ -138,8 +161,8 @@ private fun Modifier.rowTapHandler(
     var lastTap = 0L
     awaitEachGesture {
         // The button and the held Ctrl/Cmd/Shift live on the *PointerEvent*, not on the per-pointer
-        // change, so read the down event itself. A non-primary press is left for the surrounding
-        // ContextMenuArea to handle.
+        // change, so read the down event itself. A non-primary press is left for the row's own context
+        // menu to handle.
         val downEvent = awaitPointerEvent()
         if (downEvent.changes.none { it.pressed && !it.previousPressed }) return@awaitEachGesture
         if (!downEvent.buttons.isPrimaryPressed) return@awaitEachGesture
@@ -193,6 +216,8 @@ fun DownloadRow(
     download: Download,
     actions: DownloadRowActions,
     columnWidths: Map<String, Float>,
+    /** The columns this row renders, in table order — the same list the header draws. */
+    columns: List<DownloadsColumn>,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onSelect: (additive: Boolean, range: Boolean) -> Unit = { _, _ -> },
@@ -259,20 +284,18 @@ fun DownloadRow(
         }
     }
 
-    ContextMenuArea(
-        items = {
-            buildDownloadContextMenu(
-                download,
-                capabilities,
-                strings,
-                actions,
-                hideResume,
-                fileMissing
-            )
-        }
+    // The row's own context menu. This used to go through Compose's `ContextMenuArea`, whose Jewel
+    // representation hangs the mouse inside any submenu (the reason Blaze draws its own menus — see
+    // BlazeMenu); taking the right-click here is also what hands the menu the cursor point it opens at.
+    var menuPosition by remember { mutableStateOf<Offset?>(null) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .onSecondaryTap { menuPosition = it },
     ) {
         Row(
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .height(BlazeLayout.RowHeight)
                 .clip(RowShape)
@@ -285,7 +308,7 @@ fun DownloadRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // ── Columns, in order, weighted to match the header ──
-            DownloadsColumn.entries.forEach { column ->
+            columns.forEach { column ->
                 val cellModifier = Modifier
                     .weight(column.weightFor(columnWidths))
                     .fillMaxHeight()
@@ -318,7 +341,11 @@ fun DownloadRow(
                         Text(
                             text = sizeText(download, strings),
                             style = BlazeTypography.rowCell,
-                            color = primary,
+                            // The same secondary role as speed and ETA: every numeric readout in the row
+                            // sits one step behind the name. Painting only the size in the row's primary
+                            // color makes it read as a heavier face even though its resolved
+                            // FontWeight is the same 400 the font audit prints.
+                            color = secondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -373,6 +400,22 @@ fun DownloadRow(
 
             // ── Trailing gutter that mirrors the header's options (gear) slot ──
             Box(modifier = Modifier.width(OptionsGutterWidth).fillMaxHeight())
+        }
+
+        val point = menuPosition
+        if (point != null) {
+            BlazeMenu(
+                entries = buildDownloadContextMenu(
+                    download,
+                    capabilities,
+                    strings,
+                    actions,
+                    hideResume,
+                    fileMissing,
+                ),
+                anchor = rememberMenuAnchorAt(point),
+                onDismissRequest = { menuPosition = null },
+            )
         }
     }
 }
@@ -453,7 +496,10 @@ private fun ProgressCell(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         when {
-            isCompleted -> Spacer(Modifier.weight(1f))
+            // A finished row keeps only the readout, and it keeps it at the column's start: the header
+            // label "Progress" is start-aligned too, so pushing "100%" to the far end of an empty
+            // column would leave the two visually unrelated.
+            isCompleted -> {}
             isIndeterminate -> IndeterminateHorizontalProgressBar(
                 modifier = Modifier.weight(1f).height(4.dp)
             )

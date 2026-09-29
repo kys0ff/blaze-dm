@@ -1,7 +1,6 @@
 package org.blaze.presentation.screens.downloads.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.hoverable
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,18 +24,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.components.BlazeKeymap
 import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.DownloadsColumn
+import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.components.ToolbarIconButton
+import org.blaze.presentation.components.rememberMenuAnchor
+import org.blaze.presentation.components.trackingModifier
 import org.blaze.presentation.screens.downloads.DownloadSortField
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeTypography
@@ -47,7 +47,6 @@ import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import org.jetbrains.jewel.ui.typography
 
 /** Which sort field a table column orders by when its header is clicked. */
 private val DownloadsColumn.sortField: DownloadSortField
@@ -75,12 +74,13 @@ private fun DownloadsColumn.headerLabel(): String {
 }
 
 /**
- * The download table's column header: one weighted, resizable, sortable cell per [DownloadsColumn]
- * followed by a trailing options (gear) slot, closed by a 1dp bottom hairline. There is no leading
- * select-all checkbox any more — selection is by row — so the header's fixed-width trailing gutter
- * mirrors the row's [OptionsGutterWidth] and every weighted column lines up with [DownloadRow]. The
- * active sort shows a [AllIconsKeys.General.ArrowUp] / [AllIconsKeys.General.ArrowDown] indicator,
- * and the right edge of each cell is a drag handle that re-weights that column.
+ * The download table's column header: one weighted, resizable, sortable cell per visible column
+ * followed by a trailing "more" slot holding the table options menu, closed by a 1dp bottom hairline.
+ * There is no leading select-all checkbox any more — selection is by row — so the header's fixed-width
+ * trailing gutter mirrors the row's [OptionsGutterWidth] and every weighted column lines up with
+ * [DownloadRow]. The active sort shows a [AllIconsKeys.General.ArrowUp] /
+ * [AllIconsKeys.General.ArrowDown] indicator, and the right edge of each cell is a drag handle that
+ * re-weights that column.
  *
  * Each header cell aligns the *same way* as its column's cells: the numeric ([DownloadsColumn.endAligned])
  * columns right-align their header label to match the tabular, end-aligned row values.
@@ -88,9 +88,16 @@ private fun DownloadsColumn.headerLabel(): String {
 @Composable
 fun DownloadsTableHeader(
     columnWidths: Map<String, Float>,
+    columns: List<DownloadsColumn>,
+    hiddenColumns: Set<String>,
     sortField: DownloadSortField,
     sortAscending: Boolean,
+    /** True when every row of the current filter is selected; flips the menu's first item. */
+    everythingSelected: Boolean,
     onSelectAll: () -> Unit,
+    onDeselectAll: () -> Unit,
+    onToggleColumn: (DownloadsColumn, Boolean) -> Unit,
+    onResetColumnWidths: () -> Unit,
     onSort: (DownloadSortField) -> Unit,
     onResize: (columnId: String, widthDp: Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -100,7 +107,7 @@ fun DownloadsTableHeader(
             modifier = Modifier.fillMaxWidth().height(BlazeLayout.TableHeaderHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            DownloadsColumn.entries.forEach { column ->
+            columns.forEach { column ->
                 HeaderCell(
                     column = column,
                     weight = column.weightFor(columnWidths),
@@ -110,7 +117,14 @@ fun DownloadsTableHeader(
                     onResize = { widthDp -> onResize(column.id, widthDp) },
                 )
             }
-            HeaderOptionsSlot(onSelectAll = onSelectAll)
+            HeaderOptionsSlot(
+                hiddenColumns = hiddenColumns,
+                everythingSelected = everythingSelected,
+                onSelectAll = onSelectAll,
+                onDeselectAll = onDeselectAll,
+                onToggleColumn = onToggleColumn,
+                onResetColumnWidths = onResetColumnWidths,
+            )
         }
         Divider(Orientation.Horizontal, modifier = Modifier.height(BlazeLayout.HeaderBorderWidth))
     }
@@ -195,74 +209,97 @@ private fun RowScope.HeaderCell(
 }
 
 /**
- * The header's fixed trailing gutter that mirrors [OptionsGutterWidth], holding a gear that opens a
- * small options popup. With the select-all checkbox gone, "Select All" lives here (and in the row
- * context menu) so bulk selection stays discoverable.
+ * The header's fixed trailing gutter, mirroring [OptionsGutterWidth], holding the IDE's vertical
+ * "more" glyph — a gear suggested *settings*, and this menu only configures the table.
+ *
+ * The menu itself is the table's option surface: [Select All] (which flips to Deselect once the whole
+ * current filter is selected, so it never looks dead), a Columns submenu that shows or hides each
+ * column, and Reset column widths. A Compact Rows item is deliberately absent — the table already
+ * renders at the IDE's compact row height ([BlazeLayout.RowHeight] = 24dp), and going below that
+ * clips the row's icon.
  */
 @Composable
-private fun RowScope.HeaderOptionsSlot(onSelectAll: () -> Unit) { // TODO: Warning: Receiver parameter is never used
-    val selection = blazeStrings.downloads.selection
+private fun RowScope.HeaderOptionsSlot(
+    hiddenColumns: Set<String>,
+    everythingSelected: Boolean,
+    onSelectAll: () -> Unit,
+    onDeselectAll: () -> Unit,
+    onToggleColumn: (DownloadsColumn, Boolean) -> Unit,
+    onResetColumnWidths: () -> Unit,
+) {
+    val strings = blazeStrings
+    val options = strings.downloads.tableOptions
+    val selection = strings.downloads.selection
     var expanded by remember { mutableStateOf(false) }
+    val anchor = rememberMenuAnchor()
 
     Box(
-        modifier = Modifier.width(OptionsGutterWidth).fillMaxHeight(),
+        modifier = Modifier.width(OptionsGutterWidth).fillMaxHeight().then(anchor.trackingModifier),
         contentAlignment = Alignment.Center,
     ) {
         ToolbarIconButton(
-            key = AllIconsKeys.General.Gear,
-            tooltip = selection.selectAll,
+            key = AllIconsKeys.Actions.More,
+            tooltip = options.menuTooltip,
             onClick = { expanded = true },
         )
         if (expanded) {
-            Popup(
-                alignment = Alignment.TopEnd,
+            // [alignRootToEnd] keeps the menu's right edge on the button that opened it, which is where
+            // the header's options have always appeared; the row itself never hangs off the gutter.
+            BlazeMenu(
+                entries = buildList {
+                    add(
+                        MenuEntry.Action(
+                            label = if (everythingSelected) selection.deselect else selection.selectAll,
+                            icon = if (everythingSelected) {
+                                AllIconsKeys.Actions.Unselectall
+                            } else {
+                                AllIconsKeys.Actions.Selectall
+                            },
+                            // Only the selecting half has an accelerator; "deselect" is not a thing the
+                            // keyboard does, and a row must not print a chord nothing handles.
+                            accelerator =
+                                if (everythingSelected) {
+                                    null
+                                } else {
+                                    BlazeKeymap.displayValue(BlazeKeymap.Action.SelectAll)
+                                },
+                            onClick = {
+                                if (everythingSelected) onDeselectAll() else onSelectAll()
+                            },
+                        ),
+                    )
+                    add(MenuEntry.Separator)
+                    add(
+                        MenuEntry.Submenu(
+                            label = options.columns,
+                            // Every column is listed, hidden ones included — otherwise a hidden column
+                            // could never be brought back. Name stays marked and inert: it is the row's
+                            // identity.
+                            children = DownloadsColumn.entries.map { column ->
+                                val isVisible = column.id !in hiddenColumns
+                                val isName = column == DownloadsColumn.Name
+                                MenuEntry.Action(
+                                    label = column.headerLabel(),
+                                    checked = isName || isVisible,
+                                    enabled = !isName,
+                                    onClick = { onToggleColumn(column, !isVisible) },
+                                )
+                            },
+                        ),
+                    )
+                    add(MenuEntry.Separator)
+                    add(
+                        MenuEntry.Action(
+                            label = options.resetColumnWidths,
+                            icon = AllIconsKeys.General.Refresh,
+                            onClick = onResetColumnWidths,
+                        ),
+                    )
+                },
+                anchor = anchor,
                 onDismissRequest = { expanded = false },
-                properties = PopupProperties(focusable = true, dismissOnClickOutside = true),
-            ) {
-                HeaderOptionsMenu(
-                    onSelectAll = {
-                        onSelectAll()
-                        expanded = false
-                    },
-                )
-            }
+                alignRootToEnd = true,
+            )
         }
-    }
-}
-
-/** A compact, themed menu card rendered inside the header options [Popup]. */
-@Composable
-private fun HeaderOptionsMenu(onSelectAll: () -> Unit) {
-    val selection = blazeStrings.downloads.selection
-    val shape = RoundedCornerShape(6.dp)
-    Column(
-        modifier = Modifier
-            .clip(shape)
-            .background(JewelTheme.globalColors.panelBackground)
-            .border(1.dp, JewelTheme.globalColors.borders.normal, shape)
-            .padding(vertical = 4.dp),
-    ) {
-        MenuEntry(text = selection.selectAll, onClick = onSelectAll)
-    }
-}
-
-@Composable
-private fun MenuEntry(text: String, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (hovered) BlazeColors.hover else Color.Transparent)
-            .hoverable(interaction)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Text(
-            text = text,
-            style = BlazeTypography.chip,
-            color = JewelTheme.globalColors.text.normal,
-            maxLines = 1,
-        )
     }
 }

@@ -21,8 +21,10 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.theme.blazeSearchFieldStyle
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
+import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
@@ -66,7 +68,19 @@ fun ToolWindowSearchField(
         // of one: island-level fill, a 1dp hairline rim that takes the accent only on focus (see
         // [org.blaze.presentation.theme.blazeSearchFieldStyle]).
         style = blazeSearchFieldStyle(),
-        placeholder = { Text(placeholder) },
+        // The placeholder is set explicitly rather than inherited: left to the field's own text style it
+        // comes in at 13sp in the normal text color, which reads as a heavier face next to the table's
+        // 11sp cells. The IDE draws it small and in the hint color — Jewel's `TextColors` has no
+        // `placeholder` token (only normal/selected/disabled/disabledSelected/info/error/warning), and
+        // `text.info` is the one its own fields use for hint-level text.
+        placeholder = {
+            Text(
+                text = placeholder,
+                style = BlazeTypography.fieldPlaceholder,
+                color = JewelTheme.globalColors.text.info,
+                maxLines = 1,
+            )
+        },
         leadingIcon = {
             Icon(
                 key = AllIconsKeys.Actions.Find,

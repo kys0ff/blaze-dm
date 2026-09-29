@@ -15,6 +15,15 @@ sealed interface DownloadsEvent {
     /** Sets a table column's width in dp ([columnId] is a `DownloadsColumn.id`); persisted. */
     data class ResizeColumn(val columnId: String, val widthDp: Float) : DownloadsEvent
 
+    /**
+     * Shows or hides one table column (header Table options > Columns). [columnId] is a
+     * `DownloadsColumn.id`; the Name column is never hidden, so a row always stays identifiable.
+     */
+    data class ToggleColumn(val columnId: String, val visible: Boolean) : DownloadsEvent
+
+    /** Gives every column back its default width (header Table options); persisted. */
+    data object ResetColumnWidths : DownloadsEvent
+
     /** Records the list|details split fraction after a divider drag; persisted. */
     data class SetSplitFraction(val fraction: Float) : DownloadsEvent
 

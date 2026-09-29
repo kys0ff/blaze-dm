@@ -1,19 +1,15 @@
 package org.blaze.presentation.application.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -26,28 +22,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.launch
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.BlazeIcons
+import org.blaze.presentation.components.BlazeKeymap
+import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.CurrentUiPlatform
 import org.blaze.presentation.components.LocalShortcutLabels
+import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.components.UiPlatform
+import org.blaze.presentation.components.rememberMenuAnchor
+import org.blaze.presentation.components.trackingModifier
 import org.blaze.presentation.theme.BlazeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.ui.Orientation
-import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.typography
 import org.koin.compose.koinInject
@@ -62,117 +56,99 @@ import org.koin.compose.koinInject
 fun HamburgerMenuButton(commandBus: AppCommandBus) {
     if (CurrentUiPlatform == UiPlatform.macOS) return
     val menu = blazeStrings.menu
+    val selection = blazeStrings.downloads.selection
     var expanded by remember { mutableStateOf(false) }
+    val anchor = rememberMenuAnchor()
 
-    Box {
+    Box(modifier = anchor.trackingModifier) {
         ToolbarIconButton(
             key = AllIconsKeys.General.Menu,
             tooltip = menu.mainMenu,
-            onClick = { expanded = true },
+            onClick = { expanded = !expanded },
         )
         if (expanded) {
-            Popup(
-                alignment = Alignment.BottomStart,
-                offset = IntOffset(0, 4),
+            // The menu used to be a hand-styled Column of rows with a 6dp shape and literal paddings
+            // painted over the panel color; it is now the same BlazeMenu the row context menu uses, so
+            // it takes its radius, border, shadow, row height, hover and text colors from the theme's
+            // menu tokens like every other popup, and submenus behave the same everywhere.
+            BlazeMenu(
+                entries = buildList {
+                    add(
+                        MenuEntry.Action(
+                            label = menu.newDownload,
+                            icon = AllIconsKeys.General.Add,
+                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.NewDownload),
+                            onClick = { commandBus.send(AppCommand.NewDownload) },
+                        ),
+                    )
+                    add(
+                        MenuEntry.Action(
+                            label = menu.search,
+                            icon = AllIconsKeys.Actions.Find,
+                            // The in-list search field, which is what Ctrl/Cmd+F really does from here;
+                            // the Search Everywhere popup gets its own entry (and its own chord) in step B.
+                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.FocusListSearch),
+                            onClick = { commandBus.send(AppCommand.FocusSearch) },
+                        ),
+                    )
+                    add(
+                        MenuEntry.Action(
+                            label = menu.settings,
+                            icon = AllIconsKeys.General.Settings,
+                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.OpenSettings),
+                            onClick = { commandBus.send(AppCommand.OpenSettings) },
+                        ),
+                    )
+                    add(MenuEntry.Separator)
+                    add(
+                        MenuEntry.Action(
+                            label = menu.pauseAll,
+                            icon = AllIconsKeys.Actions.Pause,
+                            onClick = { commandBus.send(AppCommand.PauseAll) },
+                        ),
+                    )
+                    add(
+                        MenuEntry.Action(
+                            label = menu.resumeAll,
+                            icon = AllIconsKeys.Actions.Resume,
+                            onClick = { commandBus.send(AppCommand.ResumeAll) },
+                        ),
+                    )
+                    add(
+                        MenuEntry.Action(
+                            label = selection.selectAll,
+                            icon = AllIconsKeys.Actions.Selectall,
+                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.SelectAll),
+                            onClick = { commandBus.send(AppCommand.SelectAll) },
+                        ),
+                    )
+                    add(MenuEntry.Separator)
+                    add(
+                        MenuEntry.Action(
+                            label = menu.toggleDetails,
+                            icon = AllIconsKeys.General.ShowInfos,
+                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.ToggleDetails),
+                            onClick = { commandBus.send(AppCommand.ToggleDetails) },
+                        ),
+                    )
+                    add(
+                        MenuEntry.Action(
+                            label = menu.about,
+                            icon = AllIconsKeys.General.ShowInfos,
+                            onClick = { commandBus.send(AppCommand.ShowAbout) },
+                        ),
+                    )
+                    add(MenuEntry.Separator)
+                    add(
+                        MenuEntry.Action(
+                            label = menu.exit,
+                            icon = AllIconsKeys.General.Close,
+                            onClick = { commandBus.send(AppCommand.Exit) },
+                        ),
+                    )
+                },
+                anchor = anchor,
                 onDismissRequest = { expanded = false },
-                properties = PopupProperties(focusable = true, dismissOnClickOutside = true),
-            ) {
-                MainMenuPopup(
-                    onDismiss = { expanded = false },
-                    onCommand = { commandBus.send(it) },
-                )
-            }
-        }
-    }
-}
-
-/**
- * The main-menu card: New Download, Settings, Pause All, Resume All, Toggle Details, About, Exit.
- * Items that have a real, app-wide accelerator (New Download, Settings) show it on the trailing
- * edge; Jewel's plain menu rows expose no built-in accelerator slot, so the shortcut is rendered as
- * secondary text by hand rather than dropped. The rest have no binding, so they omit it.
- */
-@Composable
-private fun MainMenuPopup(
-    onDismiss: () -> Unit,
-    onCommand: (AppCommand) -> Unit,
-) {
-    val menu = blazeStrings.menu
-    val shortcuts = LocalShortcutLabels.current
-    val shape = RoundedCornerShape(6.dp)
-
-    val run: (AppCommand) -> Unit = { cmd ->
-        onCommand(cmd)
-        onDismiss()
-    }
-
-    Column(
-        modifier = Modifier
-            .width(240.dp)
-            .clip(shape)
-            .background(JewelTheme.globalColors.panelBackground)
-            .border(1.dp, JewelTheme.globalColors.borders.normal, shape)
-            .padding(vertical = 4.dp),
-    ) {
-        MenuRow(menu.newDownload, AllIconsKeys.General.Add, shortcuts.newDownload) { run(AppCommand.NewDownload) }
-        MenuRow(menu.settings, AllIconsKeys.General.Settings, shortcuts.settings) { run(AppCommand.OpenSettings) }
-        MenuDivider()
-        MenuRow(menu.pauseAll, AllIconsKeys.Actions.Pause, null) { run(AppCommand.PauseAll) }
-        MenuRow(menu.resumeAll, AllIconsKeys.Actions.Resume, null) { run(AppCommand.ResumeAll) }
-        MenuDivider()
-        MenuRow(menu.toggleDetails, AllIconsKeys.General.ShowInfos, null) { run(AppCommand.ToggleDetails) }
-        MenuRow(menu.about, AllIconsKeys.General.ShowInfos, null) { run(AppCommand.ShowAbout) }
-        MenuDivider()
-        MenuRow(menu.exit, AllIconsKeys.General.Close, null) { run(AppCommand.Exit) }
-    }
-}
-
-@Composable
-private fun MenuDivider() {
-    Divider(
-        orientation = Orientation.Horizontal,
-        modifier = Modifier.padding(vertical = 4.dp),
-    )
-}
-
-@Composable
-private fun MenuRow(
-    text: String,
-    icon: IconKey,
-    shortcut: String?,
-    onClick: () -> Unit,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (hovered) BlazeColors.hover else Color.Transparent)
-            .hoverable(interaction)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(
-            key = icon,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            text = text,
-            style = JewelTheme.defaultTextStyle,
-            color = JewelTheme.globalColors.text.normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        if (shortcut != null) {
-            Text(
-                text = shortcut,
-                style = JewelTheme.typography.small,
-                color = JewelTheme.globalColors.text.info,
-                maxLines = 1,
             )
         }
     }
@@ -192,18 +168,19 @@ fun SpeedLimitWidget() {
     val snail = settings.snailModeEnabled
     val scope = rememberCoroutineScope()
     var expanded by remember { mutableStateOf(false) }
+    val anchor = rememberMenuAnchor()
 
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val shape = RoundedCornerShape(6.dp)
 
-    Box {
+    Box(modifier = anchor.trackingModifier) {
         Row(
             modifier = Modifier
                 .clip(shape)
                 .background(if (hovered) BlazeColors.hover else Color.Transparent)
                 .hoverable(interaction)
-                .clickable { expanded = true }
+                .clickable { expanded = !expanded }
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -228,38 +205,37 @@ fun SpeedLimitWidget() {
             )
         }
         if (expanded) {
-            Popup(
-                alignment = Alignment.BottomStart,
-                offset = IntOffset(0, 4),
+            // The two speed modes are one choice, so the active one is marked rather than merely
+            // listed — and the popup is the shared BlazeMenu, not a second hand-drawn menu surface.
+            BlazeMenu(
+                entries = listOf(
+                    MenuEntry.Action(
+                        label = menu.fullSpeed,
+                        icon = BlazeIcons.FullSpeed,
+                        checked = !snail,
+                        onClick = { scope.launch { repository.updateSettings { it.copy(snailModeEnabled = false) } } },
+                    ),
+                    MenuEntry.Action(
+                        label = menu.snailMode,
+                        icon = BlazeIcons.SnailMode,
+                        checked = snail,
+                        onClick = { scope.launch { repository.updateSettings { it.copy(snailModeEnabled = true) } } },
+                    ),
+                ),
+                anchor = anchor,
                 onDismissRequest = { expanded = false },
-                properties = PopupProperties(focusable = true, dismissOnClickOutside = true),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .width(180.dp)
-                        .clip(shape)
-                        .background(JewelTheme.globalColors.panelBackground)
-                        .border(1.dp, JewelTheme.globalColors.borders.normal, shape)
-                        .padding(vertical = 4.dp),
-                ) {
-                    MenuRow(menu.fullSpeed, BlazeIcons.FullSpeed, null) {
-                        scope.launch { repository.updateSettings { it.copy(snailModeEnabled = false) } }
-                        expanded = false
-                    }
-                    MenuRow(menu.snailMode, BlazeIcons.SnailMode, null) {
-                        scope.launch { repository.updateSettings { it.copy(snailModeEnabled = true) } }
-                        expanded = false
-                    }
-                }
-            }
+            )
         }
     }
 }
 
 /**
- * The trailing icon cluster: a search button (focuses the list's search field via the bus) and a
- * settings gear, both with their real accelerators in the tooltip. They align to the end, so Jewel
- * lays them out to the left of the auto-emitted window controls — search, then gear, then controls.
+ * The trailing icon cluster: the search button. It aligns to the end, so Jewel lays it out to the
+ * left of the auto-emitted window controls.
+ *
+ * There is deliberately no settings gear here: the tool-window stripe already carries one at its
+ * bottom, and the IDE keeps exactly one entry point per view — two gears, one window apart, is the
+ * duplicate the reference never shows.
  */
 @Composable
 fun TitleBarTrailingIcons(commandBus: AppCommandBus) {
@@ -274,12 +250,6 @@ fun TitleBarTrailingIcons(commandBus: AppCommandBus) {
             tooltip = menu.search,
             shortcut = shortcuts.search,
             onClick = { commandBus.send(AppCommand.FocusSearch) },
-        )
-        ToolbarIconButton(
-            key = AllIconsKeys.General.Gear,
-            tooltip = menu.settings,
-            shortcut = shortcuts.settings,
-            onClick = { commandBus.send(AppCommand.OpenSettings) },
         )
     }
 }

@@ -12,9 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.presentation.components.downloadsColumnsFor
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.screens.downloads.DownloadSortField
 import org.blaze.presentation.screens.downloads.DownloadsEvent
+import org.blaze.presentation.screens.downloads.allVisibleSelected
 import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 
 /**
@@ -28,6 +30,8 @@ fun DownloadsList(
     selectedIds: Set<String>,
     listState: LazyListState,
     columnWidths: Map<String, Float>,
+    /** Columns hidden through the header's Table options menu; drives what header and rows draw. */
+    hiddenColumns: Set<String>,
     sortField: DownloadSortField,
     sortAscending: Boolean,
     onEvent: (DownloadsEvent) -> Unit,
@@ -41,12 +45,27 @@ fun DownloadsList(
     capabilities: DownloadCapabilities = DownloadCapabilities(),
     modifier: Modifier = Modifier
 ) {
+    // Both the header and the rows read this one list, so hiding a column removes it from the whole
+    // table at once instead of leaving a header with no cells under it.
+    val columns = downloadsColumnsFor(hiddenColumns)
+    // The menu's first item flips to "Deselect" only when the rows the user can actually see are all
+    // selected — a filtered list must not look "fully selected" while hidden rows stay out.
+    val everythingSelected = allVisibleSelected(visible = downloads.map { it.id }, selected = selectedIds)
+
     Column(modifier = modifier.fillMaxSize()) {
         DownloadsTableHeader(
             columnWidths = columnWidths,
+            columns = columns,
+            hiddenColumns = hiddenColumns,
             sortField = sortField,
             sortAscending = sortAscending,
+            everythingSelected = everythingSelected,
             onSelectAll = onSelectAll,
+            onDeselectAll = { onEvent(DownloadsEvent.ClearRowSelection) },
+            onToggleColumn = { column, visible ->
+                onEvent(DownloadsEvent.ToggleColumn(column.id, visible))
+            },
+            onResetColumnWidths = { onEvent(DownloadsEvent.ResetColumnWidths) },
             onSort = { field -> onEvent(DownloadsEvent.SortBy(field)) },
             onResize = { columnId, widthDp -> onEvent(DownloadsEvent.ResizeColumn(columnId, widthDp)) },
             modifier = Modifier.fillMaxWidth(),
@@ -84,6 +103,7 @@ fun DownloadsList(
                         download = download,
                         actions = actions,
                         columnWidths = columnWidths,
+                        columns = columns,
                         isSelected = download.id in selectedIds,
                         onSelect = { additive, range -> onSelect(id, additive, range) },
                         hideResume = hideResumeForQueued && (download.state == DownloadState.QUEUED),

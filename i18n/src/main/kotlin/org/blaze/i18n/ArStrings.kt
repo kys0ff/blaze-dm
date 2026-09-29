@@ -85,6 +85,7 @@ object ArStrings : BlazeStrings {
             override val select = "تحديد"
             override val selectAll = "تحديد الكل"
             override val clearSelection = "إلغاء التحديد"
+            override val deselect = "إلغاء التحديد"
             override fun count(n: Int) = "تم تحديد $n"
             override val pause = "إيقاف"
             override val resume = "استئناف"
@@ -106,6 +107,12 @@ object ArStrings : BlazeStrings {
             override val clearCompleted = "مسح المكتملة"
             override val importPortable = "استيراد تنزيل محمول"
             override val snailMode = "وضع الحلزون — تقييد جميع التنزيلات إلى أقصى حد"
+        }
+
+        override val tableOptions = object : BlazeStrings.Downloads.TableOptions {
+            override val menuTooltip = "خيارات الجدول"
+            override val columns = "الأعمدة"
+            override val resetColumnWidths = "إعادة ضبط عرض الأعمدة"
         }
 
         override val detailsPane = object : BlazeStrings.Downloads.DetailsPane {

@@ -66,9 +66,21 @@ internal object BlazeTypography {
         get() = JewelTheme.defaultTextStyle
 
     /**
+     * A text field's hint/placeholder label: the small ramp, so a hint inside the tool-window search
+     * field never out-weights the 11sp cells it sits above. Audited like every other chrome style.
+     */
+    @get:Composable
+    val fieldPlaceholder: TextStyle
+        get() = JewelTheme.typography.small
+
+    /**
      * Resolves every chrome style (and the Jewel ramps they are built from) into a report of their
      * actual `FontWeight`, which is how the "regular everywhere" rule gets verified rather than
      * trusted. The screenshot harness prints it on every `:gui:uiScreenshots` run.
+     *
+     * The lines that answer the reported "reads too bold" complaints: the Size column's value is
+     * [rowCell], the "Completed" badge is [badge], the status bar's "Ready" is [statusBar], and the
+     * search field's hint is [fieldPlaceholder].
      */
     @Composable
     fun auditReport(): String {
@@ -88,6 +100,7 @@ internal object BlazeTypography {
             appendLine(line("chip", chip))
             appendLine(line("titleBarLabel", titleBarLabel))
             appendLine(line("groupHeader", groupHeader))
+            appendLine(line("fieldPlaceholder", fieldPlaceholder))
             appendLine(line("emphasizedHeader", emphasizedHeader))
         }
     }

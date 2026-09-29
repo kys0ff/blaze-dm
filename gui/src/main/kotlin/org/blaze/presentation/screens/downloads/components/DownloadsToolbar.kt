@@ -42,7 +42,11 @@ fun DownloadsToolbar(
      * a bulk, one-way list edit is confirmed first, and that decision belongs to the screen.
      */
     onClearCompleted: () -> Unit,
-    onSelectAll: () -> Unit, // TODO: implement it and add to UI
+    /**
+     * Selects every row of the current filter. Explicit toolbar button ([AllIconsKeys.Actions.Selectall])
+     * and the header menu's first item, so bulk selection no longer hides behind a gesture.
+     */
+    onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onBulkPause: () -> Unit,
     onBulkResume: () -> Unit,
@@ -50,6 +54,8 @@ fun DownloadsToolbar(
     onBulkRemove: () -> Unit,
     /** Whether the Details tool window is currently shown; drives the toggle button below. */
     detailsVisible: Boolean,
+    /** Whether the current filter has any row at all — an empty table cannot be selected into. */
+    hasVisibleRows: Boolean,
     onToggleDetails: (visible: Boolean) -> Unit,
 ) {
     val strings = blazeStrings
@@ -113,6 +119,16 @@ fun DownloadsToolbar(
                     Orientation.Vertical,
                     modifier = Modifier.height(16.dp).padding(horizontal = 4.dp)
                 )
+                // The IDE spells "select all" with a button, not a hidden gesture: this takes the
+                // whole current filter, and while a selection is alive the bulk group swaps it for its
+                // mirror image, Deselect (see [BulkActions]).
+                ToolbarIconButton(
+                    key = AllIconsKeys.Actions.Selectall,
+                    tooltip = strings.downloads.selection.selectAll,
+                    shortcut = shortcuts.selectAll,
+                    enabled = hasVisibleRows,
+                    onClick = onSelectAll,
+                )
                 ToolbarIconButton(
                     key = AllIconsKeys.Actions.GC,
                     tooltip = strings.downloads.toolbar.clearCompleted,
@@ -132,6 +148,7 @@ fun DownloadsToolbar(
                 ToolbarIconButton(
                     key = AllIconsKeys.General.ShowInfos,
                     tooltip = if (detailsVisible) strings.downloads.detailsPane.hide else strings.downloads.detailsPane.show,
+                    shortcut = shortcuts.toggleDetails,
                     onClick = { onToggleDetails(!detailsVisible) },
                 )
             }
@@ -150,6 +167,7 @@ private fun BulkActions(
     onBulkRemove: () -> Unit,
 ) {
     val s = strings.downloads.selection
+    val shortcuts = LocalShortcutLabels.current
     // A command lights up only when some selected row would obey it, and its tooltip names that many
     // rows ("Pause 3 downloads"), so the button's enabled state, tooltip and effect always agree. A
     // finished download in the selection cannot light up "resume", and the count simply omits it.
@@ -179,5 +197,12 @@ private fun BulkActions(
         enabled = actions.canRemove,
         onClick = onBulkRemove,
     )
-    ToolbarIconButton(key = AllIconsKeys.General.Close, tooltip = s.clearSelection, onClick = onClearSelection)
+    // The mirror of the toolbar's Select All: same Ctrl/Cmd+A, same glyph family, and it drops the
+    // whole selection instead of clearing a single row.
+    ToolbarIconButton(
+        key = AllIconsKeys.Actions.Unselectall,
+        tooltip = s.deselect,
+        shortcut = shortcuts.selectAll,
+        onClick = onClearSelection,
+    )
 }

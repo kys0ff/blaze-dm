@@ -64,6 +64,10 @@ dependencies {
     implementation(libs.logback.classic)
 
     testImplementation(kotlin("test"))
+    // Compose UI tests deliver real pointer and key events to an offscreen scene, which is the only
+    // way to reproduce (and then pin) the submenu hover trap: it is an interaction bug, invisible to
+    // any test that only calls the state machine directly.
+    testImplementation(compose.desktop.uiTestJUnit4)
 }
 
 repositories {
@@ -72,6 +76,20 @@ repositories {
 
 kotlin {
     jvmToolchain(21)
+}
+
+/**
+ * The UI tests compose Jewel widgets, and Jewel 0.41.0 is built for Java 25 (class file version 69),
+ * which the toolchain above cannot load. Running the tests on the same JetBrains 25 launcher the
+ * screenshot harness uses keeps the whole presentational layer testable.
+ */
+tasks.withType<Test>().configureEach {
+    javaLauncher.set(
+        project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(25))
+            vendor.set(JvmVendorSpec.JETBRAINS)
+        }
+    )
 }
 
 compose.desktop {

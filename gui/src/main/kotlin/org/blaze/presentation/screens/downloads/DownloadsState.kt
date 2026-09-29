@@ -73,6 +73,8 @@ data class DownloadsState(
     // ── Tool-window layout, seeded from and persisted back to [org.blaze.data.AppSettings] ──
     /** Chosen column widths in dp keyed by [org.blaze.presentation.components.DownloadsColumn.id]. */
     val columnWidths: Map<String, Float> = emptyMap(),
+    /** Ids of the columns hidden through the header's Table options menu (see [columnWidths]). */
+    val hiddenColumns: Set<String> = emptySet(),
     /** Whether the Details tool window beside the list is shown. Collapsed until a row is picked. */
     val detailsVisible: Boolean = false,
     /** Fraction of the list|details split given to the list. */

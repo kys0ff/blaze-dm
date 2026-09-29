@@ -21,8 +21,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -39,6 +37,7 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.osintegration.displaySource
 import org.blaze.platform.clipboard.SystemClipboard
+import org.blaze.presentation.components.BlazeKeymap
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.notifications.NotificationType
@@ -216,6 +215,23 @@ fun DownloadsScreenContent(
     val detailsDownload: Download? =
         if (selectedIds.size == 1) state.downloads.find { it.id == selectedIds.first() } else null
     val selectionActions = SelectionActions.of(selectedDownloads, queuedResumeBlocked = hideResumeForQueued)
+
+    // ── Details tool window: collapsed until it earns its space ─────────────────
+    // A restored "detailsPaneVisible = true" used to paint an empty hint beside an idle list on every
+    // launch, holding a third of the frame hostage. The pane now takes space when it has something to
+    // show (a selected row) or when the user explicitly opened it in this session
+    // ([detailsRequestedEmpty]); a view mode that hides when empty loses that request with the
+    // selection, and closing the pane always clears it.
+    var detailsRequestedEmpty by remember { mutableStateOf(false) }
+    val detailsShown = state.detailsVisible &&
+        (detailsDownload != null || (detailsRequestedEmpty && !state.viewMode.autoHidesWhenEmpty))
+    val toggleDetails: (Boolean) -> Unit = { visible ->
+        when {
+            !visible -> detailsRequestedEmpty = false
+            detailsDownload == null -> detailsRequestedEmpty = true
+        }
+        onEvent(DownloadsEvent.ToggleDetails(visible))
+    }
 
     val selectRow: (String, Boolean, Boolean) -> Unit = { id, additive, range ->
         onEvent(DownloadsEvent.SelectRow(id, additive, range))
@@ -485,19 +501,34 @@ fun DownloadsScreenContent(
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                val mod = event.isCtrlPressed || event.isMetaPressed
-                when {
-                    mod && event.key == Key.N -> { openAddDialog(); true }
-                    mod && event.key == Key.F -> { searchFocusRequester.requestFocus(); true }
-                    mod && event.key == Key.A -> { selectAllVisible(); true }
-                    event.key == Key.Delete && selectedIds.isNotEmpty() -> { bulkRemove(); true }
-                    event.key == Key.Escape && selectedIds.isNotEmpty() -> { clearSelection(); true }
-                    event.key == Key.Spacebar && selectedIds.isNotEmpty() -> { toggleSelectedPauseResume(); true }
-                    event.key == Key.Enter && selectedIds.size == 1 -> { handleEnterOpen(); true }
-                    // Arrow keys drive the selection (the list holds focus); Shift extends the span.
-                    event.key == Key.DirectionDown -> { onEvent(DownloadsEvent.MoveSelection(1, extend = event.isShiftPressed)); true }
-                    event.key == Key.DirectionUp -> { onEvent(DownloadsEvent.MoveSelection(-1, extend = event.isShiftPressed)); true }
-                    else -> false
+                // The chords come off [BlazeKeymap] instead of being re-typed here: the accelerator a
+                // menu prints and the key that actually fires are then the same object. A row's own
+                // precondition (that something is selected) stays with the row.
+                when (BlazeKeymap.matchAction(event)) {
+                    BlazeKeymap.Action.NewDownload -> { openAddDialog(); true }
+                    BlazeKeymap.Action.FocusListSearch -> { searchFocusRequester.requestFocus(); true }
+                    BlazeKeymap.Action.SelectAll -> { selectAllVisible(); true }
+                    // The IDE toggles the Details/Properties tool window from the keyboard; here it is
+                    // the same command as the toolbar's toggle button, and its tooltip shows this.
+                    BlazeKeymap.Action.ToggleDetails -> { toggleDetails(!detailsShown); true }
+                    BlazeKeymap.Action.Remove ->
+                        if (selectedIds.isEmpty()) false else { bulkRemove(); true }
+
+                    BlazeKeymap.Action.TogglePause ->
+                        if (selectedIds.isEmpty()) false else { toggleSelectedPauseResume(); true }
+
+                    BlazeKeymap.Action.OpenSelected ->
+                        if (selectedIds.size == 1) { handleEnterOpen(); true } else false
+
+                    else -> when (event.key) {
+                        Key.Escape ->
+                            if (selectedIds.isEmpty()) false else { clearSelection(); true }
+
+                        // Arrow keys drive the selection (the list holds focus); Shift extends the span.
+                        Key.DirectionDown -> { onEvent(DownloadsEvent.MoveSelection(1, extend = event.isShiftPressed)); true }
+                        Key.DirectionUp -> { onEvent(DownloadsEvent.MoveSelection(-1, extend = event.isShiftPressed)); true }
+                        else -> false
+                    }
                 }
             }
     ) {
@@ -526,8 +557,9 @@ fun DownloadsScreenContent(
                     onBulkResume = bulkResume,
                     onBulkCancel = bulkCancel,
                     onBulkRemove = bulkRemove,
-                    detailsVisible = state.detailsVisible,
-                    onToggleDetails = { visible -> onEvent(DownloadsEvent.ToggleDetails(visible)) },
+                    detailsVisible = detailsShown,
+                    hasVisibleRows = state.filteredDownloads.isNotEmpty(),
+                    onToggleDetails = toggleDetails,
                 )
 
                 if (state.downloads.isEmpty()) {
@@ -546,6 +578,7 @@ fun DownloadsScreenContent(
                         selectedIds = selectedIds,
                         listState = listState,
                         columnWidths = state.columnWidths,
+                        hiddenColumns = state.hiddenColumns,
                         sortField = state.sortField,
                         sortAscending = state.sortAscending,
                         onEvent = onEvent,
@@ -579,11 +612,10 @@ fun DownloadsScreenContent(
             // An unpinned pane folds away on its own when nothing is selected to show.
             val viewMode = state.viewMode
             val moveTo = state.moveTo
-            val detailsShown = state.detailsVisible && (!viewMode.autoHidesWhenEmpty || detailsDownload != null)
             val detailsContent: @Composable () -> Unit = {
                 DownloadDetailsPanel(
                     download = detailsDownload,
-                    onHide = { onEvent(DownloadsEvent.ToggleDetails(false)) },
+                    onHide = { toggleDetails(false) },
                     modifier = Modifier.fillMaxSize(),
                     viewMode = viewMode,
                     moveTo = moveTo,

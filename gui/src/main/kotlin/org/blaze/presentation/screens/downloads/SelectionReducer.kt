@@ -20,6 +20,14 @@ data class Selection(
     val single: String? get() = ids.singleOrNull()
 }
 
+/**
+ * Whether every row the table currently shows is selected. This drives the Select All / Deselect label
+ * pair (toolbar button and the header menu's first item): an empty table is never "all selected", and a
+ * filtered view only is when the rows it actually shows are — hidden rows must not hold the label up.
+ */
+fun allVisibleSelected(visible: Collection<String>, selected: Set<String>): Boolean =
+    visible.isNotEmpty() && selected.containsAll(visible)
+
 /** A user gesture that changes the selection, expressed against the list's current visible order. */
 sealed interface SelectionAction {
     /** Pointer click on [id]. [additive] = Ctrl/Cmd (toggle), [range] = Shift (contiguous from anchor). */

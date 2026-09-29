@@ -5,6 +5,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -86,11 +87,16 @@ internal fun ambientTintColor(base: Color, accent: Color, isDark: Boolean): Colo
  * field across the title bar (`anchorY = 0`) and the body below it. Everything opaque drawn on top
  * — the islands — hides it by itself; the gaps, the stripe and the bar are what show it.
  *
+ * [bleedTop] extends the painting *above* the node's own top edge by that much, sampling the same
+ * field. It exists for the 1dp hairline row Jewel puts under the title bar: that row is a sibling of
+ * this layer, and in Islands its own border color is transparent, so an unpainted pixel there shows
+ * whatever the AWT window paints underneath — a light-theme-colored line across the dark glow.
+ *
  * The glow only *draws*; it installs no pointer input, so title-bar hit-testing and dragging are
  * untouched, and the alpha is low enough that bar text keeps its contrast.
  */
 @Composable
-fun Modifier.blazeAmbientFrame(anchorY: Dp = 0.dp): Modifier {
+fun Modifier.blazeAmbientFrame(anchorY: Dp = 0.dp, bleedTop: Dp = 0.dp): Modifier {
     val base = BlazeIslandColors.frame
     val accent = BlazeAmbientGradient.ambientAccent()
     val tint = ambientTintColor(base, accent, JewelTheme.isDark)
@@ -98,7 +104,12 @@ fun Modifier.blazeAmbientFrame(anchorY: Dp = 0.dp): Modifier {
     val verticalRadius = BlazeAmbientGradient.VerticalRadius
 
     return drawBehind {
-        drawRect(base)
+        // One rect covering the node plus any bleed above it: every layer below paints into it, so
+        // the bleed can never show as a band of its own.
+        val bleedPx = bleedTop.toPx()
+        val area = Size(size.width, size.height + bleedPx)
+        val origin = Offset(0f, -bleedPx)
+        drawRect(base, topLeft = origin, size = area)
         if (!enabled || size.width <= 0f) return@drawBehind
 
         val top = -anchorY.toPx()
@@ -119,7 +130,9 @@ fun Modifier.blazeAmbientFrame(anchorY: Dp = 0.dp): Modifier {
                 ),
                 start = Offset.Zero,
                 end = Offset(size.width, 0f),
-            )
+            ),
+            topLeft = origin,
+            size = area,
         )
 
         // Vertical decay: the frame color fades back in over `VerticalRadius`, erasing the glow.
@@ -128,9 +141,22 @@ fun Modifier.blazeAmbientFrame(anchorY: Dp = 0.dp): Modifier {
                 colorStops = arrayOf(0f to baseOff, 1f to base),
                 start = Offset(0f, top),
                 end = Offset(0f, top + verticalPx),
-            )
+            ),
+            topLeft = origin,
+            size = area,
         )
     }
+}
+
+/**
+ * The body's frame layer: the same glow field as the title bar above it, anchored so the two read
+ * as one continuous field, and bleeding up over the title bar's transparent 1dp border row so that
+ * row is painted chrome rather than the window's raw background.
+ */
+@Composable
+fun Modifier.blazeAmbientBodyFrame(): Modifier {
+    val bleed = if (BlazeLayout.useIslands) BlazeLayout.TitleBarBorderHeight else 0.dp
+    return blazeAmbientFrame(anchorY = ambientBodyAnchorY(), bleedTop = bleed)
 }
 
 /**

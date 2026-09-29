@@ -108,6 +108,8 @@ interface BlazeStrings {
             val selectAll: String
             /** Toolbar action that clears the current selection. */
             val clearSelection: String
+            /** The same toolbar button once everything is selected: it now empties the selection. */
+            val deselect: String
             /** Prefix for the bulk-action bar, e.g. "3 selected". */
             fun count(n: Int): String
             /** Bulk action that pauses every selected transfer. */
@@ -182,6 +184,20 @@ interface BlazeStrings {
             val importPortable: String
             /** Tooltip for the Snail Mode toolbar toggle. */
             val snailMode: String
+        }
+
+        /**
+         * The download table's "more" menu, sitting at the end of the column header — the IDE's table
+         * options, not a settings gear.
+         */
+        val tableOptions: TableOptions
+        interface TableOptions {
+            /** Tooltip of the vertical-ellipsis button that opens the menu. */
+            val menuTooltip: String
+            /** Submenu that shows or hides individual columns. */
+            val columns: String
+            /** Restores every column to its default width. */
+            val resetColumnWidths: String
         }
 
         /** Labels for the status-bar Background Tasks popup. */

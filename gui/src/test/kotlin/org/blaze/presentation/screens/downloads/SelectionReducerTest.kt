@@ -128,4 +128,34 @@ class SelectionReducerTest {
         val after = reduceSelection(Selection(setOf("a"), "a", "a"), emptyList(), SelectionAction.Click("a"))
         assertTrue(after.isEmpty)
     }
+
+    // ── allVisibleSelected: the rule behind the Select All / Deselect label pair ──
+
+    @Test
+    fun `select all makes the table fully selected, and deselecting ends it`() {
+        val all = reduceSelection(Selection(), visible, SelectionAction.SelectAll)
+        assertTrue(allVisibleSelected(visible, all.ids))
+
+        val cleared = reduceSelection(all, visible, SelectionAction.Clear)
+        assertFalse(allVisibleSelected(visible, cleared.ids))
+    }
+
+    @Test
+    fun `a partial selection is never 'all selected'`() {
+        val partial = reduceSelection(Selection(), visible, SelectionAction.Click("b"))
+        assertFalse(allVisibleSelected(visible, partial.ids))
+    }
+
+    @Test
+    fun `an empty table is never 'all selected' - the toggle must not read as Deselect`() {
+        assertFalse(allVisibleSelected(emptyList(), emptySet()))
+    }
+
+    @Test
+    fun `only the rows currently shown decide the label`() {
+        // The user filtered the list down to "a" and "b" and selected those: Select All is spent, even
+        // though rows hidden by the filter are unselected.
+        assertTrue(allVisibleSelected(listOf("a", "b"), setOf("a", "b", "c")))
+        assertFalse(allVisibleSelected(listOf("a", "b", "c"), setOf("a", "b")))
+    }
 }
