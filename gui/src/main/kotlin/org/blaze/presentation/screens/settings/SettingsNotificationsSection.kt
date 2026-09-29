@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.screens.settings.state.SettingsState

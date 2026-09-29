@@ -142,6 +142,7 @@ class DownloadManager(
         loadTasks()
     }
 
+    // TODO: make use of diagnostics or remove it
     val diagnostics: DownloadDiagnostics get() = metrics.snapshot()
 
     /** Engine-wide download ceiling in bytes/s; 0 when throttling is off. */
@@ -425,6 +426,7 @@ class DownloadManager(
         )
     }
 
+    // TODO: make use of info or remove it
     private suspend fun importTorrent(artifact: Path, info: PortableDownloadInfo): DownloadId? {
         val dir = PortableImport.resolveTorrentDestination(artifact) ?: return null
         val record = TorrentPortableFile.read(TorrentPortableFile.markerPath(dir)) ?: return null
@@ -433,6 +435,7 @@ class DownloadManager(
             val cacheDir = repository.storageDir.resolve("cache")
             storage.ensureDirectory(cacheDir)
             val torrentFile = cacheDir.resolve("import-${System.nanoTime()}.torrent")
+            // FIXME: Possibly blocking call in non-blocking context could lead to thread starvation
             Files.write(torrentFile, record.manifest.torrentFile)
             val files = record.manifest.files.map { DownloadFileMetadata(it.relativePath, it.size) }
             enqueue(
@@ -527,7 +530,10 @@ class DownloadManager(
         cleanupMetadata(id)
 
         if (deleteFiles && task != null) {
-            scope.launch(Dispatchers.IO) {
+            // Awaited rather than fired and forgotten: whoever removes a download's files may turn
+            // around and start another download in the same folder, and "is that name free?" is only
+            // answerable once the deletion it just asked for has actually happened.
+            withContext(Dispatchers.IO) {
                 try {
                     val dest = task.request.destination
                     if (task.request is DownloadRequest.Torrent) {

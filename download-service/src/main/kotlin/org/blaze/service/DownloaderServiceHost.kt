@@ -4,13 +4,14 @@ import kotlinx.coroutines.CoroutineScope
 import org.blaze.download.api.ApiVersion
 import org.blaze.download.api.AuthMode
 import org.blaze.download.api.DownloadApiException
+import org.blaze.download.api.DownloadsApi
 import org.blaze.download.api.ServiceDescriptor
 import org.blaze.download.api.ServicePaths
-import org.blaze.download.api.DownloadsApi
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.core.DownloadManager
 import org.blaze.engine.persistence.DownloadRepository
 import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.service.DownloaderServiceHost.Companion.create
 import org.blaze.service.auth.ApiTokenStore
 import org.blaze.service.config.LocalApiSettings
 import org.blaze.service.instance.ServiceDiscovery
@@ -38,6 +39,7 @@ class DownloaderServiceHost(
 ) : AutoCloseable {
     private val logger = LoggerFactory.getLogger(DownloaderServiceHost::class.java)
 
+    // TODO: make use of isServing
     val isServing: Boolean get() = server != null
     val boundHost: String? get() = server?.boundHost
     val boundPort: Int get() = server?.boundPort ?: -1
@@ -91,6 +93,7 @@ class DownloaderServiceHost(
             val api = ApplicationDownloadService(
                 engine = engine,
                 scope = scope,
+                settingsRepository = settingsRepository,
                 authMode = authMode,
                 eventMinIntervalMillis = apiSettings.eventMinIntervalMillis,
             )

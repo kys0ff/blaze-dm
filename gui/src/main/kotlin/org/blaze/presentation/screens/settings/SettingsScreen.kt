@@ -57,6 +57,8 @@ class SettingsScreen : Screen {
     @OptIn(ExperimentalJewelApi::class)
     @Composable
     override fun Content() {
+        // TODO: This screen is a mess, needs to be broken up into smaller composable functions.
+        // TODO: Also create a 'components' package for each screen's common components.
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = koinScreenModel<SettingsScreenModel>()
         val state by screenModel.state.collectAsState()

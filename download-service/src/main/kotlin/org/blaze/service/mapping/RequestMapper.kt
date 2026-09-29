@@ -3,8 +3,10 @@ package org.blaze.service.mapping
 import org.blaze.download.api.ApiErrorCode
 import org.blaze.download.api.DownloadSource
 import org.blaze.download.api.NewDownloadRequest
+import org.blaze.engine.api.CopyName
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.TorrentSource
+import org.blaze.engine.settings.FileConflictBehavior
 import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -29,6 +31,46 @@ object RequestMapper {
             is DownloadSource.Magnet -> torrentMagnet(source.uri, request, destinationDir)
             is DownloadSource.TorrentFile -> torrentFile(source.path, request, destinationDir)
         }
+
+    /**
+     * Gives a brand-new download a destination of its own, so two never share one.
+     *
+     * A torrent's destination *is* its folder, and the name that folder is built from - the metainfo's,
+     * the magnet's `dn`, the URL's last segment - repeats itself as soon as the same torrent is fetched
+     * twice. The step aside has to happen here, while the download is being created, and not later where
+     * HTTP settles its collisions: a torrent creates its folder the moment it starts, so by then "the
+     * folder exists" no longer tells a collision apart from resume, and renaming on that test would
+     * move a download out of the half-finished data it is resuming from.
+     *
+     * [FileConflictBehavior.ASK] and [FileConflictBehavior.RENAME] both mean "keep what is already
+     * there and make room" - ASK because whoever is asking has already been offered the choice of
+     * removing the existing copy, and did not take it. The other two are left exactly where the caller
+     * pointed them: overwriting a folder a torrent already filled is a decision about the user's files
+     * that this layer must not make silently.
+     *
+     * @param taken the question "does something already live at this path".
+     */
+    fun claimDestination(
+        request: DownloadRequest,
+        behavior: FileConflictBehavior,
+        taken: (Path) -> Boolean,
+    ): DownloadRequest {
+        if (request !is DownloadRequest.Torrent) return request
+        if (behavior != FileConflictBehavior.ASK && behavior != FileConflictBehavior.RENAME) return request
+        val parent = request.destination.parent ?: return request
+        if (!taken(request.destination)) return request
+
+        val folder = request.destination.fileName.toString()
+        var attempt = 1
+        var claimed = parent.resolve(CopyName.of(folder, attempt))
+        while (taken(claimed)) {
+            attempt++
+            claimed = parent.resolve(CopyName.of(folder, attempt))
+        }
+        // The name travels with the folder: the row in the list and the directory in the file manager
+        // have to read the same, or the copy looks like it was never made at all.
+        return request.copy(name = claimed.fileName.toString(), destination = claimed)
+    }
 
     private fun http(url: String, request: NewDownloadRequest, dir: Path): DownloadRequest.Http {
         val trimmed = url.trim()

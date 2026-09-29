@@ -1,12 +1,13 @@
 package org.blaze.notifications.internal.windows
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.blaze.notifications.api.NotificationService
 import org.blaze.notifications.api.NotificationSpec
 import org.blaze.notifications.api.NotificationUrgency
 import org.blaze.notifications.internal.runCli
+import org.blaze.notifications.internal.windows.WindowsNotificationService.Companion.powerShellString
 import org.slf4j.LoggerFactory
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Windows backend built on PowerShell's `NotifyIcon.ShowBalloonTip` - the tray-balloon
@@ -26,6 +27,7 @@ import kotlinx.coroutines.withContext
  */
 class WindowsNotificationService(
     /** Balloon lifetime, in milliseconds, as ShowBalloonTip expects it. */
+    // TODO: make use of timeoutMs 'Do not remove'
     private val timeoutMs: Int = 6_000,
 ) : NotificationService {
 
@@ -53,17 +55,17 @@ class WindowsNotificationService(
         fun script(notification: NotificationSpec, timeoutMs: Int = 6_000): String = buildString {
             append("Add-Type -AssemblyName System.Windows.Forms; ")
             append("Add-Type -AssemblyName System.Drawing; ")
-            append("\$icon = New-Object System.Windows.Forms.NotifyIcon; ")
-            append("\$icon.Icon = [System.Drawing.SystemIcons]::Application; ")
-            append("\$icon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::")
+            append($$"$icon = New-Object System.Windows.Forms.NotifyIcon; ")
+            append($$"$icon.Icon = [System.Drawing.SystemIcons]::Application; ")
+            append($$"$icon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::")
             append(tooltipIcon(notification.urgency)); append("; ")
-            append("\$icon.BalloonTipTitle = "); append(powerShellString(notification.title)); append("; ")
-            append("\$icon.BalloonTipText = "); append(powerShellString(notification.body.ifEmpty { " " })); append("; ")
-            append("\$icon.Visible = \$true; ")
-            append("\$icon.ShowBalloonTip($timeoutMs); ")
+            append($$"$icon.BalloonTipTitle = "); append(powerShellString(notification.title)); append("; ")
+            append($$"$icon.BalloonTipText = "); append(powerShellString(notification.body.ifEmpty { " " })); append("; ")
+            append($$"$icon.Visible = $true; ")
+            append($$"$icon.ShowBalloonTip($$timeoutMs); ")
             // The balloon lives in the shell; give it a moment to hand off before the icon dies.
             append("Start-Sleep -Milliseconds ").append(timeoutMs + 500).append("; ")
-            append("\$icon.Dispose()")
+            append($$"$icon.Dispose()")
         }
 
         /** Balloon severity: only the CRITICAL level earns more than the info glyph. */

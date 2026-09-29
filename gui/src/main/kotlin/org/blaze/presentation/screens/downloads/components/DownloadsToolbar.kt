@@ -39,7 +39,7 @@ fun DownloadsToolbar(
      * a bulk, one-way list edit is confirmed first, and that decision belongs to the screen.
      */
     onClearCompleted: () -> Unit,
-    onSelectAll: () -> Unit,
+    onSelectAll: () -> Unit, // TODO: implement it and add to UI
     onClearSelection: () -> Unit,
     onBulkPause: () -> Unit,
     onBulkResume: () -> Unit,

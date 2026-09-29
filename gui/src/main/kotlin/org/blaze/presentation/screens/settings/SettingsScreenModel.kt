@@ -17,7 +17,6 @@ import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.notifications.api.NotificationService
 import org.blaze.platform.autostart.AutoStartCoordinator
-import org.blaze.tray.api.TrayService
 import org.blaze.presentation.screens.settings.state.HandlerUiState
 import org.blaze.presentation.screens.settings.state.SettingsState
 import org.blaze.presentation.screens.settings.state.ThemeUiState
@@ -27,9 +26,11 @@ import org.blaze.resolver.core.ResolverSource
 import org.blaze.theming.core.ThemeRegistry
 import org.blaze.theming.core.ThemeSettingsRepository
 import org.blaze.theming.core.ThemeSource
+import org.blaze.tray.api.TrayService
 import java.nio.file.Path
 
 class SettingsScreenModel(
+    // TODO: Make a bundle of use cases for each bloated screen model
     private val settingsRepository: EngineSettingsRepository,
     private val appSettingsRepository: AppSettingsRepository,
     private val autoStartCoordinator: AutoStartCoordinator,
@@ -50,7 +51,10 @@ class SettingsScreenModel(
     init {
         resetLocalState()
         screenModelScope.launch {
-            combine(resolverRegistry.handlers, resolverSettingsRepository.settings) { handlers, settings ->
+            combine(
+                resolverRegistry.handlers,
+                resolverSettingsRepository.settings
+            ) { handlers, settings ->
                 HandlersSnapshot(
                     handlers = handlers.map { loaded ->
                         HandlerUiState(
@@ -140,232 +144,273 @@ class SettingsScreenModel(
         }
     }
 
-    fun onEvent(event: SettingsEvent) {
-        when (event) {
-            is SettingsEvent.ChangeCategory -> _state.update { it.copy(currentCategory = event.category) }
-            
-            is SettingsEvent.UpdateMaxConcurrentDownloads -> {
-                val text = event.value.text
-                val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
-                _state.update {
-                    it.copy(
-                        maxConcurrentDownloadsText = event.value,
-                        maxConcurrentDownloadsError = err,
-                        settings = if (err == null) it.settings.copy(maxConcurrentDownloads = text.toInt()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateMaxConnectionsPerDownload -> {
-                val text = event.value.text
-                val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
-                _state.update {
-                    it.copy(
-                        maxConnectionsPerDownloadText = event.value,
-                        maxConnectionsPerDownloadError = err,
-                        settings = if (err == null) it.settings.copy(maxConnectionsPerDownload = text.toInt()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateSpeedLimitEnabled -> _state.update {
-                it.copy(settings = it.settings.copy(globalSpeedLimitEnabled = event.enabled))
-            }
-            is SettingsEvent.UpdateDefaultDownloadPriority -> _state.update {
-                it.copy(settings = it.settings.copy(defaultDownloadPriority = event.priority))
-            }
-            is SettingsEvent.UpdateSpeedLimitKbps -> {
-                val text = event.value.text
-                val err = if (text.toLongOrNull() == null || text.toLong() < 1) "Must be > 0" else null
-                _state.update {
-                    it.copy(
-                        globalSpeedLimitKbpsText = event.value,
-                        globalSpeedLimitKbpsError = err,
-                        settings = if (err == null) it.settings.copy(globalSpeedLimitKbps = text.toLong()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateAutoRetryFailed -> _state.update {
-                it.copy(settings = it.settings.copy(autoRetryFailed = event.enabled))
-            }
-            is SettingsEvent.UpdateSnailModeEnabled -> _state.update {
-                it.copy(settings = it.settings.copy(snailModeEnabled = event.enabled))
-            }
-            is SettingsEvent.UpdateSnailSpeedKbps -> {
-                val text = event.value.text
-                val err = if (text.toLongOrNull() == null || text.toLong() < 1) "Must be > 0" else null
-                _state.update {
-                    it.copy(
-                        snailSpeedKbpsText = event.value,
-                        snailSpeedKbpsError = err,
-                        settings = if (err == null) it.settings.copy(snailSpeedKbps = text.toLong()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateExponentialBackoff -> _state.update {
-                it.copy(settings = it.settings.copy(exponentialBackoff = event.enabled))
-            }
-            is SettingsEvent.UpdateMaxRetries -> {
-                val text = event.value.text
-                val err = if (text.toIntOrNull() == null || text.toInt() < 0) "Must be >= 0" else null
-                _state.update {
-                    it.copy(
-                        maxRetriesText = event.value,
-                        maxRetriesError = err,
-                        settings = if (err == null) it.settings.copy(maxRetries = text.toInt()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateRetryDelaySeconds -> {
-                val text = event.value.text
-                val err = if (text.toIntOrNull() == null || text.toInt() < 0) "Must be >= 0" else null
-                _state.update {
-                    it.copy(
-                        retryDelaySecondsText = event.value,
-                        retryDelaySecondsError = err,
-                        settings = if (err == null) it.settings.copy(retryDelaySeconds = text.toInt()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateUserAgent -> _state.update {
+    fun onEvent(event: SettingsEvent) = when (event) {
+        is SettingsEvent.ChangeCategory -> _state.update { it.copy(currentCategory = event.category) }
+
+        is SettingsEvent.UpdateMaxConcurrentDownloads -> {
+            val text = event.value.text
+            val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
+            _state.update {
                 it.copy(
-                    userAgentText = event.value,
-                    settings = it.settings.copy(httpUserAgent = event.value.text)
+                    maxConcurrentDownloadsText = event.value,
+                    maxConcurrentDownloadsError = err,
+                    settings = if (err == null) it.settings.copy(maxConcurrentDownloads = text.toInt()) else it.settings
                 )
             }
-            is SettingsEvent.UpdateMaxRedirects -> {
-                val text = event.value.text
-                val err = if (text.toIntOrNull() == null || text.toInt() < 0) "Must be >= 0" else null
-                _state.update {
-                    it.copy(
-                        maxRedirectsText = event.value,
-                        maxRedirectsError = err,
-                        settings = if (err == null) it.settings.copy(maxRedirects = text.toInt()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateMaxPeerConnections -> {
-                val text = event.value.text
-                val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
-                _state.update {
-                    it.copy(
-                        maxPeerConnectionsText = event.value,
-                        maxPeerConnectionsError = err,
-                        settings = if (err == null) it.settings.copy(maxPeerConnections = text.toInt()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateEnableSeeding -> _state.update {
-                it.copy(settings = it.settings.copy(enableSeeding = event.enabled))
-            }
-            is SettingsEvent.UpdateSeedTimeLimitMinutes -> {
-                val text = event.value.text
-                val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
-                _state.update {
-                    it.copy(
-                        seedTimeLimitMinutesText = event.value,
-                        seedTimeLimitMinutesError = err,
-                        settings = if (err == null) it.settings.copy(seedTimeLimitMinutes = text.toInt()) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateUnlimitedSeeding -> _state.update {
-                it.copy(settings = it.settings.copy(unlimitedSeeding = event.enabled))
-            }
-            is SettingsEvent.UpdateSeedRatioLimit -> {
-                val text = event.value.text
-                val ratio = text.toDoubleOrNull()
-                val err = if (ratio == null || !ratio.isFinite() || ratio < 0.0) "Must be >= 0" else null
-                _state.update {
-                    it.copy(
-                        seedRatioLimitText = event.value,
-                        seedRatioLimitError = err,
-                        settings = if (err == null) it.settings.copy(seedRatioLimit = ratio!!) else it.settings
-                    )
-                }
-            }
-            is SettingsEvent.UpdateThemeMode -> _state.update {
-                it.copy(settings = it.settings.copy(themeMode = event.mode))
-            }
-            is SettingsEvent.UpdateLanguage -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(languageCode = event.code))
-            }
-            is SettingsEvent.UpdateResumeDownloadsOnStartup -> _state.update {
-                it.copy(settings = it.settings.copy(resumeDownloadsOnStartup = event.enabled))
-            }
-            is SettingsEvent.UpdateStartQueuedOnStartup -> _state.update {
-                it.copy(settings = it.settings.copy(startQueuedOnStartup = event.enabled))
-            }
-            is SettingsEvent.UpdateTrayEnabled -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(trayEnabled = event.enabled))
-            }
-            is SettingsEvent.UpdateMinimizeToTrayOnClose -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(minimizeToTrayOnClose = event.enabled))
-            }
-            is SettingsEvent.UpdateRunAtStartup -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(runAtStartup = event.enabled))
-            }
-            is SettingsEvent.UpdateClipboardMonitoring -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(clipboardMonitoringEnabled = event.enabled))
-            }
-            is SettingsEvent.UpdateDesktopNotificationsEnabled -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(desktopNotificationsEnabled = event.enabled))
-            }
-            is SettingsEvent.UpdateNotifyOnCompleted -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(notifyOnCompleted = event.enabled))
-            }
-            is SettingsEvent.UpdateNotifyOnFailed -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(notifyOnFailed = event.enabled))
-            }
-            is SettingsEvent.UpdateNotifyOnRestarted -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(notifyOnRestarted = event.enabled))
-            }
-            is SettingsEvent.UpdateNotifyWhileInSight -> _state.update {
-                it.copy(appSettings = it.appSettings.copy(notifyWhileWindowInSight = event.enabled))
-            }
-            is SettingsEvent.UpdateDefaultDownloadDir -> _state.update {
-                it.copy(settings = it.settings.copy(defaultDownloadDir = event.path))
-            }
-            is SettingsEvent.UpdateAskWhereToSave -> _state.update {
-                it.copy(settings = it.settings.copy(askWhereToSave = event.enabled))
-            }
-            is SettingsEvent.UpdateFileConflictBehavior -> _state.update {
-                it.copy(settings = it.settings.copy(fileConflictBehavior = event.behavior))
-            }
-            is SettingsEvent.UpdateLogLevel -> _state.update {
-                it.copy(settings = it.settings.copy(logLevel = event.level))
-            }
-            is SettingsEvent.UpdateFileLoggingEnabled -> _state.update {
-                it.copy(settings = it.settings.copy(fileLoggingEnabled = event.enabled))
-            }
-
-            is SettingsEvent.ToggleHandler -> _state.update {
-                it.copy(enabledHandlerOverrides = it.enabledHandlerOverrides + (event.id to event.enabled))
-            }
-            is SettingsEvent.UpdateAlwaysAskHandler -> _state.update {
-                it.copy(alwaysAskOverride = event.enabled)
-            }
-            is SettingsEvent.InstallExtension -> screenModelScope.launch {
-                resolverRegistry.install(Path.of(event.jarPath))
-            }
-            is SettingsEvent.RemoveExtension -> screenModelScope.launch {
-                resolverRegistry.uninstall(event.id)
-            }
-            SettingsEvent.ReloadHandlers -> resolverRegistry.reload()
-
-            is SettingsEvent.SelectTheme -> _state.update {
-                it.copy(selectedThemeOverride = event.id)
-            }
-            is SettingsEvent.InstallTheme -> screenModelScope.launch {
-                themeRegistry.install(Path.of(event.jarPath))
-            }
-            is SettingsEvent.RemoveTheme -> screenModelScope.launch {
-                themeRegistry.uninstall(event.id)
-            }
-            SettingsEvent.ReloadThemes -> themeRegistry.reload()
-
-            SettingsEvent.Apply -> applyDraftToLiveState()
-            SettingsEvent.Ok -> persistDraftAndClose()
-            SettingsEvent.Cancel -> screenModelScope.launch { _effects.emit(SettingsEffect.Close) }
         }
+
+        is SettingsEvent.UpdateMaxConnectionsPerDownload -> {
+            val text = event.value.text
+            val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
+            _state.update {
+                it.copy(
+                    maxConnectionsPerDownloadText = event.value,
+                    maxConnectionsPerDownloadError = err,
+                    settings = if (err == null) it.settings.copy(maxConnectionsPerDownload = text.toInt()) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateSpeedLimitEnabled -> _state.update {
+            it.copy(settings = it.settings.copy(globalSpeedLimitEnabled = event.enabled))
+        }
+
+        is SettingsEvent.UpdateDefaultDownloadPriority -> _state.update {
+            it.copy(settings = it.settings.copy(defaultDownloadPriority = event.priority))
+        }
+
+        is SettingsEvent.UpdateSpeedLimitKbps -> {
+            val text = event.value.text
+            val err = if (text.toLongOrNull() == null || text.toLong() < 1) "Must be > 0" else null
+            _state.update {
+                it.copy(
+                    globalSpeedLimitKbpsText = event.value,
+                    globalSpeedLimitKbpsError = err,
+                    settings = if (err == null) it.settings.copy(globalSpeedLimitKbps = text.toLong()) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateAutoRetryFailed -> _state.update {
+            it.copy(settings = it.settings.copy(autoRetryFailed = event.enabled))
+        }
+
+        is SettingsEvent.UpdateSnailModeEnabled -> _state.update {
+            it.copy(settings = it.settings.copy(snailModeEnabled = event.enabled))
+        }
+
+        is SettingsEvent.UpdateSnailSpeedKbps -> {
+            val text = event.value.text
+            val err = if (text.toLongOrNull() == null || text.toLong() < 1) "Must be > 0" else null
+            _state.update {
+                it.copy(
+                    snailSpeedKbpsText = event.value,
+                    snailSpeedKbpsError = err,
+                    settings = if (err == null) it.settings.copy(snailSpeedKbps = text.toLong()) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateExponentialBackoff -> _state.update {
+            it.copy(settings = it.settings.copy(exponentialBackoff = event.enabled))
+        }
+
+        is SettingsEvent.UpdateMaxRetries -> {
+            val text = event.value.text
+            val err = if (text.toIntOrNull() == null || text.toInt() < 0) "Must be >= 0" else null
+            _state.update {
+                it.copy(
+                    maxRetriesText = event.value,
+                    maxRetriesError = err,
+                    settings = if (err == null) it.settings.copy(maxRetries = text.toInt()) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateRetryDelaySeconds -> {
+            val text = event.value.text
+            val err = if (text.toIntOrNull() == null || text.toInt() < 0) "Must be >= 0" else null
+            _state.update {
+                it.copy(
+                    retryDelaySecondsText = event.value,
+                    retryDelaySecondsError = err,
+                    settings = if (err == null) it.settings.copy(retryDelaySeconds = text.toInt()) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateUserAgent -> _state.update {
+            it.copy(
+                userAgentText = event.value,
+                settings = it.settings.copy(httpUserAgent = event.value.text)
+            )
+        }
+
+        is SettingsEvent.UpdateMaxRedirects -> {
+            val text = event.value.text
+            val err = if (text.toIntOrNull() == null || text.toInt() < 0) "Must be >= 0" else null
+            _state.update {
+                it.copy(
+                    maxRedirectsText = event.value,
+                    maxRedirectsError = err,
+                    settings = if (err == null) it.settings.copy(maxRedirects = text.toInt()) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateMaxPeerConnections -> {
+            val text = event.value.text
+            val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
+            _state.update {
+                it.copy(
+                    maxPeerConnectionsText = event.value,
+                    maxPeerConnectionsError = err,
+                    settings = if (err == null) it.settings.copy(maxPeerConnections = text.toInt()) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateEnableSeeding -> _state.update {
+            it.copy(settings = it.settings.copy(enableSeeding = event.enabled))
+        }
+
+        is SettingsEvent.UpdateSeedTimeLimitMinutes -> {
+            val text = event.value.text
+            val err = if (text.toIntOrNull() == null || text.toInt() < 1) "Must be >= 1" else null
+            _state.update {
+                it.copy(
+                    seedTimeLimitMinutesText = event.value,
+                    seedTimeLimitMinutesError = err,
+                    settings = if (err == null) it.settings.copy(seedTimeLimitMinutes = text.toInt()) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateUnlimitedSeeding -> _state.update {
+            it.copy(settings = it.settings.copy(unlimitedSeeding = event.enabled))
+        }
+
+        is SettingsEvent.UpdateSeedRatioLimit -> {
+            val text = event.value.text
+            val ratio = text.toDoubleOrNull()
+            val err =
+                if (ratio == null || !ratio.isFinite() || ratio < 0.0) "Must be >= 0" else null
+            _state.update {
+                it.copy(
+                    seedRatioLimitText = event.value,
+                    seedRatioLimitError = err,
+                    settings = if (err == null) it.settings.copy(seedRatioLimit = ratio!!) else it.settings
+                )
+            }
+        }
+
+        is SettingsEvent.UpdateThemeMode -> _state.update {
+            it.copy(settings = it.settings.copy(themeMode = event.mode))
+        }
+
+        is SettingsEvent.UpdateLanguage -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(languageCode = event.code))
+        }
+
+        is SettingsEvent.UpdateResumeDownloadsOnStartup -> _state.update {
+            it.copy(settings = it.settings.copy(resumeDownloadsOnStartup = event.enabled))
+        }
+
+        is SettingsEvent.UpdateStartQueuedOnStartup -> _state.update {
+            it.copy(settings = it.settings.copy(startQueuedOnStartup = event.enabled))
+        }
+
+        is SettingsEvent.UpdateTrayEnabled -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(trayEnabled = event.enabled))
+        }
+
+        is SettingsEvent.UpdateMinimizeToTrayOnClose -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(minimizeToTrayOnClose = event.enabled))
+        }
+
+        is SettingsEvent.UpdateRunAtStartup -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(runAtStartup = event.enabled))
+        }
+
+        is SettingsEvent.UpdateClipboardMonitoring -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(clipboardMonitoringEnabled = event.enabled))
+        }
+
+        is SettingsEvent.UpdateDesktopNotificationsEnabled -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(desktopNotificationsEnabled = event.enabled))
+        }
+
+        is SettingsEvent.UpdateNotifyOnCompleted -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(notifyOnCompleted = event.enabled))
+        }
+
+        is SettingsEvent.UpdateNotifyOnFailed -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(notifyOnFailed = event.enabled))
+        }
+
+        is SettingsEvent.UpdateNotifyOnRestarted -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(notifyOnRestarted = event.enabled))
+        }
+
+        is SettingsEvent.UpdateNotifyWhileInSight -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(notifyWhileWindowInSight = event.enabled))
+        }
+
+        is SettingsEvent.UpdateDefaultDownloadDir -> _state.update {
+            it.copy(settings = it.settings.copy(defaultDownloadDir = event.path))
+        }
+
+        is SettingsEvent.UpdateAskWhereToSave -> _state.update {
+            it.copy(settings = it.settings.copy(askWhereToSave = event.enabled))
+        }
+
+        is SettingsEvent.UpdateFileConflictBehavior -> _state.update {
+            it.copy(settings = it.settings.copy(fileConflictBehavior = event.behavior))
+        }
+
+        is SettingsEvent.UpdateLogLevel -> _state.update {
+            it.copy(settings = it.settings.copy(logLevel = event.level))
+        }
+
+        is SettingsEvent.UpdateFileLoggingEnabled -> _state.update {
+            it.copy(settings = it.settings.copy(fileLoggingEnabled = event.enabled))
+        }
+
+        is SettingsEvent.ToggleHandler -> _state.update {
+            it.copy(enabledHandlerOverrides = it.enabledHandlerOverrides + (event.id to event.enabled))
+        }
+
+        is SettingsEvent.UpdateAlwaysAskHandler -> _state.update {
+            it.copy(alwaysAskOverride = event.enabled)
+        }
+
+        is SettingsEvent.InstallExtension -> screenModelScope.launch {
+            resolverRegistry.install(Path.of(event.jarPath))
+        }
+
+        is SettingsEvent.RemoveExtension -> screenModelScope.launch {
+            resolverRegistry.uninstall(event.id)
+        }
+
+        SettingsEvent.ReloadHandlers -> resolverRegistry.reload()
+
+        is SettingsEvent.SelectTheme -> _state.update {
+            it.copy(selectedThemeOverride = event.id)
+        }
+
+        is SettingsEvent.InstallTheme -> screenModelScope.launch {
+            themeRegistry.install(Path.of(event.jarPath))
+        }
+
+        is SettingsEvent.RemoveTheme -> screenModelScope.launch {
+            themeRegistry.uninstall(event.id)
+        }
+
+        SettingsEvent.ReloadThemes -> themeRegistry.reload()
+
+        SettingsEvent.Apply -> applyDraftToLiveState()
+        SettingsEvent.Ok -> persistDraftAndClose()
+        SettingsEvent.Cancel -> screenModelScope.launch { _effects.emit(SettingsEffect.Close) }
     }
 
     /**

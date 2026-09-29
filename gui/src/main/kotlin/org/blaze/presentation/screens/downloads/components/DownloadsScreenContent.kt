@@ -298,6 +298,11 @@ fun DownloadsScreenContent(
                         }
                     }
                     FileConflictBehavior.RENAME -> {
+                        // Adding the same source again is exactly the request: the download is created
+                        // under a name that is free, a numbered copy of the one that collided - by the
+                        // service for a torrent's folder, and by the engine for an HTTP file. Choosing
+                        // rename here must not invent a name a layer that can see the whole folder has
+                        // better rules for.
                         onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices, priority = data.priority))
                     }
                     else -> {} // SKIP: do nothing

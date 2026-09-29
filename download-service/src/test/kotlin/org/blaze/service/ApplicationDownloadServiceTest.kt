@@ -16,15 +16,22 @@ import org.blaze.engine.api.DownloadMetadata
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.PortableDownloadInfo
 import org.blaze.engine.api.PortableTransferKind
+import org.blaze.engine.api.TorrentSource
+import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.service.security.PathValidator
 import org.blaze.service.support.FakeEngine
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -47,7 +54,12 @@ class ApplicationDownloadServiceTest {
     private fun service(
         engine: FakeEngine,
         validator: PathValidator = PathValidator.TRUSTED,
-    ) = ApplicationDownloadService(engine, scope, validator, eventMinIntervalMillis = 0)
+        conflict: FileConflictBehavior = FileConflictBehavior.ASK,
+    ): ApplicationDownloadService {
+        val settings = EngineSettingsRepository(Path.of(tmpDest()))
+        settings.updateSettingsInMemory { it.copy(fileConflictBehavior = conflict) }
+        return ApplicationDownloadService(engine, scope, validator, settings, eventMinIntervalMillis = 0)
+    }
 
     private fun tmpDest(): String {
         val dir = File(System.getProperty("java.io.tmpdir"), "blaze-test-" + System.nanoTime())
@@ -202,5 +214,100 @@ class ApplicationDownloadServiceTest {
         val engine = FakeEngine()
         service(engine).shutdown()
         assertTrue(engine.shutdownCalled)
+    }
+
+    // ── the destination a new download is created with (a torrent owns its folder) ──
+
+    private fun magnetReq(uri: String, dest: String) =
+        NewDownloadRequest(source = DownloadSource.Magnet(uri), destination = dest, autoStart = false)
+
+    @Test
+    fun `a torrent whose folder is taken is created as a numbered copy`() = runBlocking {
+        val engine = FakeEngine()
+        val api = service(engine)
+        val dest = tmpDest()
+        Files.createDirectories(Path.of(dest, "Big.Buck")) // the first copy, already on disk
+
+        val dto = api.create(magnetReq("magnet:?xt=urn:btih:aaa&dn=Big.Buck", dest))
+        val enqueued = engine.tasks.single().request as DownloadRequest.Torrent
+
+        assertEquals("Big.Buck (1)", dto.name, "the row must say which copy it is")
+        assertEquals(Path.of(dest, "Big.Buck (1)"), enqueued.destination)
+        assertEquals("Big.Buck (1)", enqueued.name, "name and folder must travel together")
+    }
+
+    @Test
+    fun `the numbered copy steps past every folder already taken`() = runBlocking {
+        val engine = FakeEngine()
+        val api = service(engine)
+        val dest = tmpDest()
+        listOf("Big.Buck", "Big.Buck (1)", "Big.Buck (2)").forEach { Files.createDirectories(Path.of(dest, it)) }
+
+        val dto = api.create(magnetReq("magnet:?xt=urn:btih:aaa&dn=Big.Buck", dest))
+
+        assertEquals("Big.Buck (3)", dto.name)
+    }
+
+    @Test
+    fun `a free folder is created under the name the source gave it`() = runBlocking {
+        val engine = FakeEngine()
+        val api = service(engine)
+
+        val dto = api.create(magnetReq("magnet:?xt=urn:btih:aaa&dn=Big.Buck", tmpDest()))
+
+        assertEquals("Big.Buck", dto.name)
+    }
+
+    @Test
+    fun `a policy that does not rename leaves the folder the caller pointed at`() = runBlocking {
+        val engine = FakeEngine()
+        val api = service(engine, conflict = FileConflictBehavior.OVERWRITE)
+        val dest = tmpDest()
+        Files.createDirectories(Path.of(dest, "Big.Buck"))
+
+        val dto = api.create(magnetReq("magnet:?xt=urn:btih:aaa&dn=Big.Buck", dest))
+
+        assertEquals("Big.Buck", dto.name, "overwriting is the engine's business, not a silent rename")
+    }
+
+    @Test
+    fun `a seeding download does not swallow a fresh copy of its own source`() = runBlocking {
+        val dest = tmpDest()
+        val uri = "magnet:?xt=urn:btih:seed&dn=Seed"
+        val seeding = DownloadTask(
+            id = DownloadId("seeding-1"),
+            name = "Seed",
+            request = DownloadRequest.Torrent("Seed", TorrentSource.Magnet(uri), Path.of(dest, "Seed")),
+            state = org.blaze.engine.api.DownloadState.Seeding,
+            totalBytes = 100,
+            downloadedBytes = 100,
+            downloadSpeed = 0,
+        )
+        // No renaming, so the only thing standing between the two adds is the duplicate check.
+        val api = service(FakeEngine(initial = listOf(seeding)), conflict = FileConflictBehavior.OVERWRITE)
+
+        val dto = api.create(magnetReq(uri, dest))
+
+        assertNotEquals("seeding-1", dto.id, "a seeding task has all its bytes; it is not an in-flight duplicate")
+    }
+
+    @Test
+    fun `a torrent still transferring is still deduplicated`() = runBlocking {
+        val dest = tmpDest()
+        val uri = "magnet:?xt=urn:btih:live&dn=Live"
+        val running = DownloadTask(
+            id = DownloadId("running-1"),
+            name = "Live",
+            request = DownloadRequest.Torrent("Live", TorrentSource.Magnet(uri), Path.of(dest, "Live")),
+            state = org.blaze.engine.api.DownloadState.Downloading,
+            totalBytes = 100,
+            downloadedBytes = 40,
+            downloadSpeed = 1024,
+        )
+        val api = service(FakeEngine(initial = listOf(running)))
+
+        val dto = api.create(magnetReq(uri, dest))
+
+        assertEquals("running-1", dto.id)
     }
 }

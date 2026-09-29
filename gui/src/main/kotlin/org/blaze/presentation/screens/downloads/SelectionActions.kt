@@ -28,6 +28,7 @@ fun Download.canCancel(): Boolean =
     canPause() || state == DownloadState.PAUSED || state == DownloadState.QUEUED
 
 /** Every row can leave the list; a bulk removal never touches files, so it stays always applicable. */
+// TODO: actually implement the removal and make use of it
 fun Download.canRemove(): Boolean = true
 
 /**

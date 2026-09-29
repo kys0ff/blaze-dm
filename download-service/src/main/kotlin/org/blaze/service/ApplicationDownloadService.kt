@@ -23,6 +23,7 @@ import org.blaze.download.api.PrioritySupport
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.service.mapping.RequestMapper
 import org.blaze.service.mapping.toApiError
 import org.blaze.service.mapping.toDto
@@ -30,6 +31,7 @@ import org.blaze.service.mapping.toPublic
 import org.blaze.service.security.IdempotencyStore
 import org.blaze.service.security.PathValidator
 import org.slf4j.LoggerFactory
+import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -41,14 +43,19 @@ import java.util.concurrent.ConcurrentHashMap
  * task stream into a coalesced, rate-limited event stream. It holds no byte-transfer work - the API sits
  * entirely outside the hot path; it only creates and steers downloads, and the engine streams bytes.
  *
+ * Creating a download is also where a destination is *claimed* (step 3 of [create]): the one moment at
+ * which "that folder is already taken" reliably means somebody else's copy, and so the only safe place
+ * to decide that a new one has to be named differently.
+ *
  * Lifecycle races (start+pause, resume+cancel, remove+completion) are left to the engine scheduler, which
  * already serializes every state-mutating operation behind its queue mutex; this layer is a thin, stateless
  * forwarder plus the event projector.
  */
 class ApplicationDownloadService(
     private val engine: DownloadEngine,
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
     private val pathValidator: PathValidator = PathValidator.TRUSTED,
+    private val settingsRepository: EngineSettingsRepository,
     authMode: AuthMode = AuthMode.NONE,
     private val eventMinIntervalMillis: Long = 400,
 ) : DownloadsApi {
@@ -83,6 +90,7 @@ class ApplicationDownloadService(
     // Event projection state, per download id.
     private val lastState = ConcurrentHashMap<String, DownloadState>()
     private val lastProgressAt = ConcurrentHashMap<String, Long>()
+    // TODO: Warning: Java collection 'ConcurrentHashMap' is parameterized with a nullable type
     private val lastErrorCode = ConcurrentHashMap<String, String?>()
 
     init {
@@ -113,12 +121,25 @@ class ApplicationDownloadService(
         val destinationDir = pathValidator.validateDirectory(request.destination)
         val engineRequest = RequestMapper.toEngineRequest(request, destinationDir)
 
-        // 2. Unambiguous duplicate: the same still-live source already queued to the same destination.
+        // 2. Unambiguous duplicate: the same source that is still on its way here.
         findActiveDuplicate(engineRequest)?.let { return it.toDto() }
+
+        // 3. Claim the destination. A torrent keeps its own folder, so a second copy of one that has
+        //    already been fetched cannot share it; this is settled now, while a taken folder still
+        //    proves a collision, and not at transfer time when the folder is the download's own.
+        val behavior = settingsRepository.settings.value.fileConflictBehavior
+        val claimed = RequestMapper.claimDestination(engineRequest, behavior, Files::exists)
+        if (claimed.destination != engineRequest.destination) {
+            logger.info(
+                "Destination {} is taken; starting the download in {}",
+                engineRequest.destination,
+                claimed.destination,
+            )
+        }
 
         val engineFiles = request.files?.map { org.blaze.engine.api.DownloadFileMetadata(path = it.path, size = it.size) }
         val id = engine.enqueue(
-            request = engineRequest,
+            request = claimed,
             totalBytes = request.expectedSizeBytes,
             files = engineFiles,
             scheduledAt = request.scheduledAtEpochMs?.let { java.time.Instant.ofEpochMilli(it) },
@@ -132,10 +153,10 @@ class ApplicationDownloadService(
         return engine.getTask(id)?.toDto()
             ?: DownloadDto(
                 id = id.value,
-                name = engineRequest.name,
+                name = claimed.name,
                 state = DownloadState.QUEUED,
                 source = sourceInfoOf(request.source),
-                destination = engineRequest.destination.toString(),
+                destination = claimed.destination.toString(),
                 totalBytes = request.expectedSizeBytes,
                 createdAtEpochMs = System.currentTimeMillis(),
                 resumable = true,
@@ -162,7 +183,7 @@ class ApplicationDownloadService(
     private fun findActiveDuplicate(engineRequest: org.blaze.engine.api.DownloadRequest): DownloadTask? {
         val signature = sourceSignature(engineRequest) ?: return null
         return engine.observeAllTasks().value.firstOrNull { task ->
-            !task.isTerminalForService() && sourceSignature(task.request) == signature
+            task.isStillTransferring() && sourceSignature(task.request) == signature
         }
     }
 
@@ -296,7 +317,18 @@ class ApplicationDownloadService(
     }
 }
 
-private fun DownloadTask.isTerminalForService(): Boolean =
-    state == org.blaze.engine.api.DownloadState.Completed ||
-        state == org.blaze.engine.api.DownloadState.Failed ||
-        state == org.blaze.engine.api.DownloadState.Cancelled
+/**
+ * Whether this task still has bytes on the way to it - the only kind of download that makes adding the
+ * same source twice a duplicate rather than a second copy.
+ *
+ * A seeding torrent is deliberately excluded. It is live and it is uploading, but its download finished
+ * long ago: someone adding that source again is asking for another copy of files they already have, and
+ * the honest answer is a second download, not a silent no-op that leaves the list exactly as it was.
+ */
+private fun DownloadTask.isStillTransferring(): Boolean = when (state) {
+    org.blaze.engine.api.DownloadState.Completed,
+    org.blaze.engine.api.DownloadState.Failed,
+    org.blaze.engine.api.DownloadState.Cancelled,
+    org.blaze.engine.api.DownloadState.Seeding -> false
+    else -> true
+}

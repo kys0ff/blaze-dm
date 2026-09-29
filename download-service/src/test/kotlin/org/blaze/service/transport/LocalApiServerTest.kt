@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.blaze.download.api.ApiVersion
 import org.blaze.download.api.AuthMode
+import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.service.ApplicationDownloadService
 import org.blaze.service.auth.ApiTokenStore
 import org.blaze.service.config.LocalApiSettings
@@ -53,6 +54,7 @@ class LocalApiServerTest {
         val store = ApiTokenStore(tokenFile)
         val api = ApplicationDownloadService(
             engine = engine, scope = scope,
+            settingsRepository = EngineSettingsRepository(Paths.get(File(System.getProperty("java.io.tmpdir"), "settings-" + System.nanoTime()).absolutePath)),
             authMode = if (settings.requireAuth) AuthMode.BEARER_TOKEN else AuthMode.NONE,
             eventMinIntervalMillis = settings.eventMinIntervalMillis,
         )

@@ -12,9 +12,9 @@ import org.jetbrains.jewel.intui.standalone.theme.light
 /**
  * Bridges the UI-agnostic [ThemePalette] into Jewel's [GlobalColors], so a theme can restyle
  * the surfaces Jewel itself paints (panel background, borders, secondary text) and — crucially
- * — the focus colour that every input, checkbox and button uses for its focused outline.
+ * — the focus color that every input, checkbox and button uses for its focused outline.
  *
- * Only the colours a theme actually provides are overridden; everything else keeps the stock
+ * Only the colors a theme actually provides are overridden; everything else keeps the stock
  * Int UI value by delegating to the framework's own builders. When a theme overrides nothing,
  * the untouched default [GlobalColors] is returned.
  */

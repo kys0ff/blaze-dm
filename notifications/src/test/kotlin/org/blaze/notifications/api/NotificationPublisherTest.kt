@@ -34,7 +34,7 @@ class NotificationPublisherTest {
     @Test
     fun `a closed gate suppresses the notification entirely`() = runTest {
         val service = RecordingService()
-        NotificationPublisher(service, NotificationGate { false }).publish(spec)
+        NotificationPublisher(service) { false }.publish(spec)
         assertEquals(emptyList(), service.shown)
     }
 
@@ -56,7 +56,7 @@ class NotificationPublisherTest {
     fun `an unsupported backend never reaches the gate and drops the request`() = runTest {
         var gateConsulted = false
         val service = RecordingService(supported = false)
-        val publisher = NotificationPublisher(service, NotificationGate { gateConsulted = true; true })
+        val publisher = NotificationPublisher(service) { gateConsulted = true; true }
 
         publisher.publish(spec)
 

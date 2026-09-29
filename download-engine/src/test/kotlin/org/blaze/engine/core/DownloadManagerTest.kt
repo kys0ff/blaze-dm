@@ -80,17 +80,8 @@ class DownloadManagerTest {
 
             manager.remove(id, deleteFiles = true)
 
-            // Wait for the async deletion
-            var deleted = false
-            for (i in 1..100) {
-                if (!Files.exists(torrentFolder)) {
-                    deleted = true
-                    break
-                }
-                delay(50.milliseconds)
-            }
-
-            assertTrue(deleted, "Torrent folder should be deleted")
+            // No waiting: removing files is awaited, so the answer is final the moment it returns.
+            assertFalse(Files.exists(torrentFolder), "Torrent folder should be deleted")
             assertFalse(Files.exists(torrentFile), "Torrent file should be deleted")
             assertFalse(Files.exists(nestedFile), "A file in a torrent subfolder should be deleted")
             assertTrue(Files.exists(unrelatedFile), "Unrelated file in parent folder must not be deleted!")

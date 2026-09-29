@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
+import org.blaze.engine.api.CopyName
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadId
@@ -82,7 +83,7 @@ class DownloadExecutorImpl(
                     scheduledAt = Instant.now().plusMillis(delayMs),
                     retryCount = currentTask.retryCount + 1
                 )
-                currentTask = retryingTask
+                currentTask = retryingTask // TODO: Warning: Assigned value is never read
                 send(retryingTask)
             }
         }
@@ -116,6 +117,10 @@ class DownloadExecutorImpl(
             // pointing at the same target across retries and restarts.
             val resolved = if (finalDestination == request.destination) request
             else request.copy(destination = finalDestination)
+            // and the label follows it: a transfer that ended up as "movie (1).mkv" has to read that
+            // way in the list too, or the disambiguation the user asked for looks like it never happened.
+            val labelled = if (resolved.destination == request.destination) task
+            else task.copy(name = resolved.destination.fileName.toString())
 
             val client = HttpNetworkClient(
                 client = httpClient,
@@ -163,7 +168,7 @@ class DownloadExecutorImpl(
                 val speed = progress.sample(update.downloadedBytes)
                 send(
                     updateTask(
-                        task = task,
+                        task = labelled,
                         request = resolved,
                         state = DownloadState.Downloading,
                         totalBytes = totalBytes,
@@ -182,7 +187,7 @@ class DownloadExecutorImpl(
                     logger.info("HTTP download completed: {}", finalDestination)
                     send(
                         updateTask(
-                            task = task,
+                            task = labelled,
                             request = resolved,
                             state = DownloadState.Completed,
                             totalBytes = outcome.totalBytes ?: outcome.downloadedBytes,
@@ -197,7 +202,7 @@ class DownloadExecutorImpl(
                     metrics.recordFailed()
                     send(
                         updateTask(
-                            task = task,
+                            task = labelled,
                             request = resolved,
                             state = DownloadState.Failed,
                             totalBytes = totalBytes,
@@ -214,6 +219,11 @@ class DownloadExecutorImpl(
         channelFlow {
             var current = task
             val settings = settingsRepository.settings.value
+            // No conflict resolution here, unlike HTTP: a torrent writes straight into its folder, so
+            // from the first moment of its first attempt "the destination exists" describes this
+            // download rather than a rival one. Deciding the name there would rename a download every
+            // time it is resumed. The collision is settled when the download is created instead, by
+            // org.blaze.service.mapping.RequestMapper.claimDestination.
             val networkClient = TorrentNetworkClient(
                 maxPeerConnections = settings.maxPeerConnections,
                 enableSeeding = settings.enableSeeding,
@@ -231,7 +241,7 @@ class DownloadExecutorImpl(
                             state = DownloadState.Downloading,
                             totalBytes = event.totalBytes,
                             downloadedBytes = current.downloadedBytes,
-                            name = event.name,
+                            name = displayNameFor(current.request.destination, event.name),
                             files = event.files,
                             // A torrent resumes from its own piece bitmap, independently of any
                             // server header, so the answer is known from the very first metadata.
@@ -357,10 +367,10 @@ class DownloadExecutorImpl(
                 val extension = if (fullStr.contains(".")) fullStr.substringAfterLast(".") else ""
                 val extStr = if (extension.isNotEmpty()) ".$extension" else ""
                 var count = 1
-                var newFile = destination.resolveSibling("$baseName ($count)$extStr")
+                var newFile = destination.resolveSibling(CopyName.of(baseName, count) + extStr)
                 while (storage.exists(newFile)) {
                     count++
-                    newFile = destination.resolveSibling("$baseName ($count)$extStr")
+                    newFile = destination.resolveSibling(CopyName.of(baseName, count) + extStr)
                 }
                 logger.info("Destination {} already exists; saving as {}", destination, newFile)
                 newFile to storage.getPartialFile(newFile).toPath()
@@ -403,4 +413,18 @@ class DownloadExecutorImpl(
             const val MIN_SAMPLE_INTERVAL_NS = 200_000_000L
         }
     }
+}
+
+/**
+ * The label a torrent gets once its metainfo is known.
+ *
+ * The metainfo's own name is the best title a download can have, and it replaces the guess the source
+ * forced - a bare magnet, a numeric URL, a `file.torrent` nobody named. One guess it must not replace:
+ * the numbered folder Blaze gave this download because the name it wanted was already taken. Undoing
+ * that would leave two rows reading identically in the list while the files sit in folders that do not,
+ * which is indistinguishable from the rename never having happened.
+ */
+internal fun displayNameFor(destination: Path, metainfoName: String): String {
+    val folder = destination.fileName?.toString() ?: return metainfoName
+    return if (CopyName.attemptOf(folder, metainfoName) != null) folder else metainfoName
 }

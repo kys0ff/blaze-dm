@@ -20,6 +20,7 @@ val applicationModule = module {
             engine = get(),
             scope = get(),
             pathValidator = PathValidator.TRUSTED,
+            settingsRepository = get(),
         )
     }
 }

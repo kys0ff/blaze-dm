@@ -148,7 +148,9 @@ interface FreedesktopNotifications : DBusInterface {
         expireTimeout: Int,
     ): UInt32
 
+    // TODO: make use of CloseNotification if you can see a case for it 'Do not remove'
     fun CloseNotification(id: UInt32)
 
+    // TODO: make use of GetCapabilities if you can see a case for it 'Do not remove'
     fun GetCapabilities(): List<String>
 }
