@@ -24,13 +24,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Outline
@@ -54,7 +59,10 @@ internal fun SettingsSection(
         ) {
             Text(
                 text = title,
-                style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.SemiBold)
+                // The one exemption the chrome's regular-weight rule grants inside Settings: a group
+                // header. It goes through [BlazeTypography.emphasizedHeader] so the weight is a single
+                // audited value instead of a per-call-site copy.
+                style = BlazeTypography.emphasizedHeader,
             )
             Box(
                 modifier = Modifier
@@ -92,12 +100,20 @@ internal fun ReadOnlyPathField(
     }
 }
 
-/** Left-hand category entry with rounded IDE-style selection and an optional error marker. */
+/**
+ * Left-hand category entry with rounded IDE-style selection and an optional error marker.
+ *
+ * [query] is the sidebar's live search text: every occurrence of it in [label] is painted in the
+ * accent so a filtered row still explains why it survived. The selected row skips the tint — it already
+ * has a background, accent text on an accent-tinted selection is unreadable, and the chrome's text is
+ * regular weight everywhere, so color is the only highlight available.
+ */
 @Composable
 internal fun SettingsNavItem(
     label: String,
     isSelected: Boolean,
     hasError: Boolean,
+    query: String = "",
     onClick: () -> Unit
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -110,6 +126,7 @@ internal fun SettingsNavItem(
         else -> Color.Transparent
     }
     val contentColor = if (isSelected) colors.contentSelectedActive else Color.Unspecified
+    val highlight = BlazeColors.accent
 
     Box(
         modifier = Modifier
@@ -119,17 +136,17 @@ internal fun SettingsNavItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(28.dp)
+                .height(BlazeLayout.SettingsNavRowHeight)
                 .clip(RoundedCornerShape(6.dp))
                 .background(background)
                 .hoverable(interaction)
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-                .padding(horizontal = 10.dp),
+                .padding(start = 8.dp, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = label,
+                text = if (isSelected) AnnotatedString(label) else highlightedLabel(label, query, highlight),
                 color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -144,6 +161,38 @@ internal fun SettingsNavItem(
                 )
             }
         }
+    }
+}
+
+/**
+ * [label] with every case-insensitive occurrence of [query] wrapped in a [highlight] [SpanStyle].
+ * Returns the plain label when there is nothing to mark, so the rows cost nothing while the
+ * sidebar's search box is empty. The color is passed in rather than read here because this is a plain
+ * (non-composable) string builder.
+ */
+private fun highlightedLabel(label: String, query: String, highlight: Color): AnnotatedString {
+    if (query.isBlank()) return AnnotatedString(label)
+
+    val matches = mutableListOf<IntRange>()
+    var cursor = 0
+    while (cursor <= label.length - query.length) {
+        val index = label.indexOf(query, startIndex = cursor, ignoreCase = true)
+        if (index < 0) break
+        matches += index until index + query.length
+        cursor = index + query.length
+    }
+    if (matches.isEmpty()) return AnnotatedString(label)
+
+    return buildAnnotatedString {
+        var written = 0
+        matches.forEach { range ->
+            append(label.substring(written, range.first))
+            withStyle(SpanStyle(color = highlight)) {
+                append(label.substring(range.first, range.last + 1))
+            }
+            written = range.last + 1
+        }
+        append(label.substring(written))
     }
 }
 

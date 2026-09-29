@@ -12,13 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,11 +28,13 @@ import org.blaze.presentation.screens.downloads.components.AdvisoryCallout
 import org.blaze.presentation.screens.downloads.components.AdvisoryTone
 import org.blaze.presentation.screens.downloads.components.label
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSize
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 
 @Composable
 fun AddDownloadMetadataView(
@@ -69,7 +71,7 @@ fun AddDownloadMetadataView(
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(strings.common.name, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
-                    Text(state.source, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                    Text(state.source, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(dStrings.saveTo, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
@@ -88,7 +90,7 @@ fun AddDownloadMetadataView(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = dStrings.metadataResolved,
-            style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.Medium)
+            style = BlazeTypography.emphasizedHeader,
         )
 
         Column(
@@ -101,7 +103,7 @@ fun AddDownloadMetadataView(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(strings.common.name, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
-                Text(metadata.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(metadata.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(dStrings.size, color = JewelTheme.globalColors.text.info, modifier = Modifier.width(60.dp))
@@ -132,7 +134,7 @@ fun AddDownloadMetadataView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(dStrings.files, fontWeight = FontWeight.Medium)
+                    Text(dStrings.files, style = BlazeTypography.emphasizedHeader)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             text = dStrings.selectAll,
@@ -153,50 +155,58 @@ fun AddDownloadMetadataView(
                     }
                 }
 
-                LazyColumn(
+                // Same as the batch list: Jewel's container owns the scroll, so the file list gets
+                // the chrome's hover-only overlay scrollbar instead of clipping at 240dp silently.
+                val fileListState = rememberLazyListState()
+                VerticallyScrollableContainer(
+                    scrollState = fileListState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 240.dp)
                         .background(JewelTheme.globalColors.panelBackground.copy(alpha = 0.3f))
-                        .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp))
-                        .padding(4.dp)
+                        .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp)),
                 ) {
-                    items(metadata.files) { file ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    state.selectedFileIndices = if (state.selectedFileIndices.contains(file.index)) {
-                                        state.selectedFileIndices - file.index
-                                    } else {
-                                        state.selectedFileIndices + file.index
+                    LazyColumn(
+                        state = fileListState,
+                        modifier = Modifier.fillMaxWidth().padding(4.dp),
+                    ) {
+                        items(metadata.files) { file ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        state.selectedFileIndices = if (state.selectedFileIndices.contains(file.index)) {
+                                            state.selectedFileIndices - file.index
+                                        } else {
+                                            state.selectedFileIndices + file.index
+                                        }
                                     }
-                                }
-                                .padding(vertical = 4.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Checkbox(
-                                checked = state.selectedFileIndices.contains(file.index),
-                                onCheckedChange = {
-                                    state.selectedFileIndices = if (it) {
-                                        state.selectedFileIndices + file.index
-                                    } else {
-                                        state.selectedFileIndices - file.index
+                                    .padding(vertical = 4.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = state.selectedFileIndices.contains(file.index),
+                                    onCheckedChange = {
+                                        state.selectedFileIndices = if (it) {
+                                            state.selectedFileIndices + file.index
+                                        } else {
+                                            state.selectedFileIndices - file.index
+                                        }
                                     }
-                                }
-                            )
-                            Text(
-                                text = file.name,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = formatSize(file.size, strings),
-                                color = JewelTheme.globalColors.text.info,
-                                fontSize = 12.sp
-                            )
+                                )
+                                Text(
+                                    text = file.name,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = formatSize(file.size, strings),
+                                    color = JewelTheme.globalColors.text.info,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -228,10 +238,7 @@ private fun PriorityPicker(state: AddDownloadState) {
             Text(
                 text = level.label(p),
                 color = if (selected) BlazeColors.accent else JewelTheme.globalColors.text.info,
-                style = JewelTheme.defaultTextStyle.copy(
-                    fontSize = 12.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                ),
+                style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
                     .background(

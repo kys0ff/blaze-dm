@@ -23,7 +23,7 @@ import org.koin.compose.koinInject
  * owned by a dedicated unit.
  *
  * - [rememberBlazeStrings]  - locale-driven UI strings,
- * - [rememberAppShell]      - window lifecycle (visibility, close-to-tray, quit),
+ * - [rememberAppShell]      - window lifecycle (visibility, close-to-tray, the modal Settings window, quit),
  * - [AppTrayHost]           - system-tray wiring on top of the `:tray` library,
  * - [AppTaskbarProgress]    - aggregate download progress on the taskbar / dock icon,
  * - [AppClipboardMonitor]   - optional clipboard watching that feeds the external-open inbox,
@@ -46,6 +46,9 @@ fun ApplicationScope.BlazeApplication() {
         commandBus.commands.collect { command ->
             when (command) {
                 AppCommand.Exit -> shell.quit()
+                // Settings is a window, not a route, so opening it belongs to the shell: it works from
+                // the title bar, the stripe or an external request with no screen having to host it.
+                AppCommand.OpenSettings -> shell.openSettings()
                 AppCommand.PauseAll -> downloadRepository.pauseAll()
                 AppCommand.ResumeAll -> downloadRepository.resumeAll()
                 else -> Unit
@@ -89,13 +92,7 @@ fun ApplicationScope.BlazeApplication() {
         LocalLayoutDirection provides if (currentLocale.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
     ) {
         AppTheme {
-            BlazeWindow(
-                windowState = shell.windowState,
-                visible = shell.windowVisible.value,
-                raiseToken = shell.windowRaiseToken.value,
-                onCloseRequest = shell::onCloseRequest,
-                onMinimize = shell::onMinimize,
-            )
+            BlazeWindow(shell = shell)
         }
     }
 }

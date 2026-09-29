@@ -10,11 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
@@ -48,20 +44,10 @@ fun RemoveDownloadDialog(
     IdeDialog(onDismiss = onDismiss, width = 440.dp) {
         IdeDialogTitle(dStrings.removeTitle)
 
-        val message = dStrings.removeMessage(downloadName)
-        val nameIndex = message.indexOf(downloadName)
+        // The name sits in the sentence in the same regular weight as the rest of it - the chrome is
+        // regular-weight everywhere except dialog titles and group headers, and this is body text.
         Text(
-            text = buildAnnotatedString {
-                if (nameIndex != -1) {
-                    append(message.substring(0, nameIndex))
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
-                        append(downloadName)
-                    }
-                    append(message.substring(nameIndex + downloadName.length))
-                } else {
-                    append(message)
-                }
-            },
+            text = dStrings.removeMessage(downloadName),
             maxLines = 3,
             overflow = TextOverflow.Ellipsis
         )

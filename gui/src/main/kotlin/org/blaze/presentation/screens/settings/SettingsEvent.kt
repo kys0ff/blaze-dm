@@ -42,6 +42,8 @@ sealed interface SettingsEvent {
     data class UpdateThemeMode(val mode: ThemeMode) : SettingsEvent
     /** UI language as a BlazeLocale code; buffered in the app-settings draft like the rest. */
     data class UpdateLanguage(val code: String) : SettingsEvent
+    /** The frame's ambient accent glow; also buffered in the app-settings draft. */
+    data class UpdateAmbientGlowEnabled(val enabled: Boolean) : SettingsEvent
     
     // Startup
     data class UpdateResumeDownloadsOnStartup(val enabled: Boolean) : SettingsEvent

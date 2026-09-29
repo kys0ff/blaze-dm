@@ -16,16 +16,21 @@ import org.blaze.tray.api.TrayService
 import org.koin.compose.koinInject
 
 /**
- * Owns the app-window lifecycle: geometry, visibility, and shutdown.
+ * Owns the app-window lifecycle: geometry, visibility, the modal Settings window, and shutdown.
  *
  * `windowVisible` drives the AWT frame while the tray hides the window instead of
  * quitting; the internal `exiting` flag marks the real shutdown so the close handler
  * and the tray's Quit don't loop back into "hide".
+ *
+ * [settingsOpen] is shell state rather than screen state because the Settings window is a real
+ * window: it has to be reachable when no screen is in a position to open it (the tray, an external
+ * open, the title-bar menu) and it has to be torn down when the frame itself goes away.
  */
 class AppShell internal constructor(
     val windowState: WindowState,
     val windowVisible: MutableState<Boolean>,
     val windowRaiseToken: MutableState<Long>,
+    val settingsOpen: MutableState<Boolean>,
     private val appSettingsRepository: AppSettingsRepository,
     private val trayService: TrayService,
     private val downloadsApi: DownloadsApi,
@@ -37,11 +42,24 @@ class AppShell internal constructor(
     /**
      * Surface the window for an external open / Dock reopen: un-hide when minimized to tray and
      * always re-raise + focus (the bump makes [BlazeWindow] re-run its raise even when the window
-     * was already "visible", e.g. behind another app).
+     * was already "visible", e.g. behind another app). The Settings dialog is owned by the frame, so
+     * raising the frame raises it with - and a modal that opened while the app was hidden to the
+     * tray would otherwise sit behind it, unreachable.
      */
     fun raiseWindow() {
         windowVisible.value = true
         windowRaiseToken.value += 1
+    }
+
+    /** Open the modal Settings window, surfacing the owner frame first if it is hidden. */
+    fun openSettings() {
+        raiseWindow()
+        settingsOpen.value = true
+    }
+
+    /** Close the modal Settings window (leaving the in-flight draft uncommitted). */
+    fun closeSettings() {
+        settingsOpen.value = false
     }
 
     /** Minimize-to-tray can only work when the tray is both enabled and supported. */
@@ -54,14 +72,14 @@ class AppShell internal constructor(
     /** Hide the window into the tray (or quit, when the tray can't hold the app). */
     fun onCloseRequest() {
         if (trayActive && appSettings.minimizeToTrayOnClose && !exiting) {
-            hide()
+            hideToTray()
         } else {
             quit()
         }
     }
 
     /** Fold a title-bar minimize into the single hide-to-tray model. */
-    fun onMinimize() = hide()
+    fun onMinimize() = hideToTray()
 
     /** Shut the download service down cleanly and exit the Compose application. */
     fun quit() {
@@ -72,7 +90,14 @@ class AppShell internal constructor(
         exitApplication()
     }
 
-    private fun hide() {
+    /**
+     * Hide the window into the tray (or quit, when the tray can't hold the app). The Settings window
+     * goes with it: a modal dialog whose owner is unmapped would be left floating with nothing to be
+     * modal to, and dropping it out of the composition runs the settings model's `onDispose` revert -
+     * exactly the "closed without committing" the tray hide means.
+     */
+    fun hideToTray() {
+        closeSettings()
         windowVisible.value = false
     }
 }
@@ -88,15 +113,17 @@ fun ApplicationScope.rememberAppShell(): AppShell {
     )
     val windowVisible = remember { mutableStateOf(true) }
     val windowRaiseToken = remember { mutableStateOf(0L) }
+    val settingsOpen = remember { mutableStateOf(false) }
     val appSettingsRepository = koinInject<AppSettingsRepository>()
     val trayService = koinInject<TrayService>()
     val downloadsApi = koinInject<DownloadsApi>()
 
-    return remember(windowState, windowVisible) {
+    return remember(windowState, windowVisible, settingsOpen) {
         AppShell(
             windowState = windowState,
             windowVisible = windowVisible,
             windowRaiseToken = windowRaiseToken,
+            settingsOpen = settingsOpen,
             appSettingsRepository = appSettingsRepository,
             trayService = trayService,
             downloadsApi = downloadsApi,

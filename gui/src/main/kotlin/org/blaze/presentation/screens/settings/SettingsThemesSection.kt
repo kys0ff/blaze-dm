@@ -16,6 +16,7 @@ import org.blaze.presentation.screens.settings.state.SettingsState
 import org.blaze.presentation.screens.settings.state.ThemeUiState
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.RadioButtonRow
 import org.jetbrains.jewel.ui.component.Text
@@ -54,6 +55,20 @@ internal fun ThemesSection(
                 )
             }
         }
+    }
+
+    SettingsSection(tStrings.chromeHeader) {
+        CheckboxRow(
+            text = tStrings.ambientGlowLabel,
+            checked = state.appSettings.ambientGlowEnabled,
+            onCheckedChange = { onEvent(SettingsEvent.UpdateAmbientGlowEnabled(it)) }
+        )
+        Text(
+            text = tStrings.ambientGlowDesc,
+            style = infoStyle,
+            color = JewelTheme.globalColors.text.info,
+            modifier = Modifier.padding(start = DependentIndent)
+        )
     }
 
     SettingsSection(tStrings.themesDirHeader) {

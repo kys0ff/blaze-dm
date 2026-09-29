@@ -4,9 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -19,22 +21,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
-import cafe.adriel.voyager.navigator.LocalNavigator
-import cafe.adriel.voyager.navigator.currentOrThrow
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.logging.LogConfigurator
-import org.blaze.presentation.components.ToolWindowHeader
-import org.blaze.presentation.screens.downloads.DownloadsScreen
+import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.DialogButton
+import org.blaze.presentation.components.ToolWindowSearchField
+import org.blaze.presentation.components.dialogButtonOrder
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.screens.settings.state.SettingsState
+import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -48,10 +52,20 @@ import org.koin.compose.koinInject
 import java.nio.file.Path
 
 /**
- * The settings screen shell: header, category sidebar, the content pane hosting the selected
- * category section, and the OK/Apply/Cancel bar. Each category's controls live in its own file
- * (`SettingsGeneralSection`, `SettingsDownloadsSection`, ...); this file only wires the screen
- * model to the layout and owns the modal pickers the sections request through callbacks.
+ * How the hosted Settings content closes its own window. The content never learns what hosts it - the
+ * IDE's dialog buttons and the window's native close button both mean "this Settings session is over",
+ * and only the host knows which window to take away.
+ */
+internal val LocalSettingsDialogDismiss =
+    staticCompositionLocalOf<() -> Unit> { error("Settings must be hosted by SettingsDialogWindow") }
+
+/**
+ * The Settings content: the category sidebar with its filter field, the pane hosting the selected
+ * category section, and the OK / Cancel / Apply bar. Each category's controls live in its own file
+ * (`SettingsGeneralSection`, `SettingsDownloadsSection`, ...); this file only wires the screen model
+ * to the layout and owns the pickers the sections request through callbacks. It is hosted by
+ * [org.blaze.presentation.application.components.SettingsDialogWindow] as a modal window, so there is
+ * no header strip - the window's own title bar carries the title.
  */
 class SettingsScreen : Screen {
     @OptIn(ExperimentalJewelApi::class)
@@ -59,7 +73,7 @@ class SettingsScreen : Screen {
     override fun Content() {
         // TODO: This screen is a mess, needs to be broken up into smaller composable functions.
         // TODO: Also create a 'components' package for each screen's common components.
-        val navigator = LocalNavigator.currentOrThrow
+        val onDismiss = LocalSettingsDialogDismiss.current
         val screenModel = koinScreenModel<SettingsScreenModel>()
         val state by screenModel.state.collectAsState()
         val strings = blazeStrings
@@ -80,18 +94,25 @@ class SettingsScreen : Screen {
         // All categories share one scroll state, so start each one at the top.
         LaunchedEffect(state.currentCategory) { scrollState.scrollTo(0) }
 
-        // The screen model owns when to leave; it just signals Close after OK/Cancel have done their work.
-        LaunchedEffect(Unit) {
+        // The screen model owns when to leave; it just signals Close once OK/Cancel have done their
+        // work, and removing the window is the host's business.
+        LaunchedEffect(onDismiss) {
             screenModel.effects.collect { effect ->
                 when (effect) {
-                    SettingsEffect.Close -> navigator.replaceAll(DownloadsScreen())
+                    SettingsEffect.Close -> onDismiss()
                 }
             }
         }
 
-        Column(modifier = Modifier.fillMaxSize()) {
-            ToolWindowHeader(title = strings.settings.title)
-
+        // The IDE's Settings dialog is one uniform surface, and now that Settings is a real window
+        // its client area *is* that surface: the category list, the section and the footer already
+        // paint the island color, so the root has to paint it too. A rounded Island wrapper would
+        // only add a gap of unpainted pixels under the native frame.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BlazeIslandColors.island),
+        ) {
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 SettingsSidebar(
                     selected = state.currentCategory,
@@ -189,23 +210,46 @@ class SettingsScreen : Screen {
 // Layout scaffolding
 // ---------------------------------------------------------------------------
 
-/** Left-hand category list; the Downloads entry shows an error dot when a field is invalid. */
+/**
+ * Left-hand category list, led by a search box; the Downloads entry shows an error dot when a field
+ * is invalid.
+ *
+ * The IDE's Settings dialog opens with a field that prunes its tree. The category list here is flat and
+ * tiny, so the same behavior costs one `filter` — typing keeps the rows whose label contains the query
+ * and [SettingsNavItem] tints the matched run. The query is view state, deliberately not in the screen
+ * model: nothing outside this sidebar reads it.
+ *
+ * The sidebar and [SettingsButtonBar] are `internal` (not private) so the headless screenshot harness
+ * can render the screen's chrome skeleton — surface color, nav metrics, footer order — without wiring
+ * the screen model up.
+ */
 @OptIn(ExperimentalJewelApi::class)
 @Composable
-private fun SettingsSidebar(
+internal fun SettingsSidebar(
     selected: SettingsCategory,
     hasDownloadsError: Boolean,
     strings: BlazeStrings,
     onSelect: (SettingsCategory) -> Unit
 ) {
+    var query by remember { mutableStateOf("") }
+
     Column(
         modifier = Modifier
-            .width(180.dp)
+            .width(BlazeLayout.SettingsNavWidth)
             .fillMaxHeight()
             .background(JewelTheme.globalColors.panelBackground)
             .padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
+        ToolWindowSearchField(
+            query = query,
+            placeholder = strings.settings.searchPlaceholder,
+            clearDescription = strings.settings.clearSearch,
+            onQueryChange = { query = it },
+            fieldWidth = BlazeLayout.SettingsNavWidth,
+        )
+        Spacer(Modifier.height(6.dp))
+
         val categories = listOf(
             SettingsCategory.GENERAL to strings.settings.generalCategory,
             SettingsCategory.DOWNLOADS to strings.settings.downloadsCategory,
@@ -215,12 +259,24 @@ private fun SettingsSidebar(
             SettingsCategory.NOTIFICATIONS to strings.settings.notifications.category,
             SettingsCategory.LOGS to strings.settings.logsCategory
         )
+        val matching = categories.filter { (_, label) ->
+            query.isBlank() || label.contains(query, ignoreCase = true)
+        }
 
-        categories.forEach { (category, label) ->
+        if (matching.isEmpty()) {
+            Text(
+                text = strings.settings.searchNoMatches,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+            )
+        }
+
+        matching.forEach { (category, label) ->
             SettingsNavItem(
                 label = label,
                 isSelected = selected == category,
                 hasError = category == SettingsCategory.DOWNLOADS && hasDownloadsError,
+                query = query,
                 onClick = { onSelect(category) }
             )
         }
@@ -254,10 +310,15 @@ private fun SettingsContent(
 /**
  * OK commits and closes, Apply commits and stays, Cancel discards and closes. Committing is what
  * finally writes the buffered draft to the repositories/registries.
+ *
+ * The three are laid out by [dialogButtonOrder], the one platform switch: `OK, Cancel, Apply` on
+ * Windows/Linux and `Cancel, Apply, OK` on macOS, where the default button belongs in the corner the
+ * pointer rests in. Only the button *kind* is fixed per action, so OK stays accent-filled wherever it
+ * lands.
  */
 @OptIn(ExperimentalJewelApi::class)
 @Composable
-private fun SettingsButtonBar(
+internal fun SettingsButtonBar(
     okEnabled: Boolean,
     applyEnabled: Boolean,
     onOk: () -> Unit,
@@ -276,14 +337,20 @@ private fun SettingsButtonBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            DefaultButton(onClick = onOk, enabled = okEnabled) {
-                Text(strings.common.ok)
-            }
-            OutlinedButton(onClick = onApply, enabled = applyEnabled) {
-                Text(strings.common.apply)
-            }
-            OutlinedButton(onClick = onCancel) {
-                Text(strings.common.cancel)
+            dialogButtonOrder(hasApply = true).forEach { button ->
+                when (button) {
+                    DialogButton.Ok -> DefaultButton(onClick = onOk, enabled = okEnabled) {
+                        Text(strings.common.ok)
+                    }
+
+                    DialogButton.Cancel -> OutlinedButton(onClick = onCancel) {
+                        Text(strings.common.cancel)
+                    }
+
+                    DialogButton.Apply -> OutlinedButton(onClick = onApply, enabled = applyEnabled) {
+                        Text(strings.common.apply)
+                    }
+                }
             }
         }
     }

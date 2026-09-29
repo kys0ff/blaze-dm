@@ -13,7 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.domain.models.DownloadState
@@ -21,6 +20,7 @@ import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 
@@ -66,7 +66,7 @@ fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier, dimmed: Boo
         Text(
             text = text,
             color = if (dimmed) JewelTheme.globalColors.text.disabled else Color.Unspecified,
-            style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+            style = BlazeTypography.badge
         )
     }
 }
@@ -88,7 +88,7 @@ fun PriorityChip(priority: DownloadPriority, modifier: Modifier = Modifier) {
     Text(
         text = priority.label(strings.downloads.priority),
         color = color,
-        style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+        style = BlazeTypography.badge,
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
             .background(color.copy(alpha = 0.14f))

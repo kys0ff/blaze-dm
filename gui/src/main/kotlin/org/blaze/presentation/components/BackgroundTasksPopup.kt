@@ -14,9 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +33,7 @@ import org.jetbrains.jewel.ui.component.HorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.typography
 
@@ -162,17 +161,19 @@ private fun BackgroundTasksCard(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             )
         } else {
-            Column(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
+            // Jewel's container owns the vertical scroll (and with it the overlay scrollbar); a bare
+            // `.verticalScroll()` here would leave the list scrolling with no indicator at all.
+            VerticallyScrollableContainer(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
             ) {
-                running.forEach { download ->
-                    BackgroundTaskRow(
-                        download = download,
-                        onPause = { onPause(download.id) },
-                        onCancel = { onCancel(download.id) },
-                    )
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    running.forEach { download ->
+                        BackgroundTaskRow(
+                            download = download,
+                            onPause = { onPause(download.id) },
+                            onCancel = { onCancel(download.id) },
+                        )
+                    }
                 }
             }
         }
@@ -234,7 +235,7 @@ private fun BackgroundTaskRow(
         if (download.canPauseFromTasks()) {
             ToolbarIconButton(key = AllIconsKeys.Actions.Pause, tooltip = s.pause, onClick = onPause)
         }
-        ToolbarIconButton(key = AllIconsKeys.Actions.Cancel, tooltip = s.cancel, onClick = onCancel)
+        ToolbarIconButton(key = BlazeIcons.Stop, tooltip = s.cancel, onClick = onCancel)
     }
 }
 

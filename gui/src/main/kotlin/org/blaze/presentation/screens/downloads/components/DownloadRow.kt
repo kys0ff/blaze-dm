@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,6 +51,7 @@ import org.blaze.presentation.screens.downloads.isTorrentSource
 import org.blaze.presentation.screens.downloads.isUnresumableInProgress
 import org.blaze.presentation.screens.downloads.isWaitingForPeers
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
 import org.blaze.presentation.util.formatSpeed
@@ -61,7 +63,10 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icon.IconKey
+import org.jetbrains.jewel.ui.component.styling.HorizontalProgressBarColors
+import org.jetbrains.jewel.ui.component.styling.HorizontalProgressBarStyle
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.jetbrains.jewel.ui.theme.horizontalProgressBarStyle
 import org.jetbrains.jewel.ui.theme.simpleListItemStyle
 import org.jetbrains.jewel.ui.typography
 import java.io.File
@@ -312,7 +317,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = sizeText(download, strings),
-                            style = JewelTheme.typography.small.copy(fontFeatureSettings = TabularFigures),
+                            style = BlazeTypography.rowCell,
                             color = primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -325,7 +330,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = speedText(download, strings),
-                            style = JewelTheme.typography.small.copy(fontFeatureSettings = TabularFigures),
+                            style = BlazeTypography.rowCell,
                             color = secondary,
                             maxLines = 1,
                         )
@@ -337,7 +342,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = etaText(download, strings),
-                            style = JewelTheme.typography.small.copy(fontFeatureSettings = TabularFigures),
+                            style = BlazeTypography.rowCell,
                             color = secondary,
                             maxLines = 1,
                         )
@@ -425,35 +430,63 @@ private fun ProgressCell(
     secondary: Color,
     strings: BlazeStrings
 ) { // TODO: make use of strings or remove it
-    val isCompleted =
-        download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
     val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
             (download.totalSize == null || (download.downloadedSize == 0L && download.speed == 0L))
     val progress = download.progress.coerceIn(0f, 1f)
+
+    // A finished transfer is done transferring, whether it is COMPLETED or still SEEDING to peers: its
+    // full-width bar is noise, because the row already says "100%" and names the state, and a saturated
+    // strip across every done row is what makes a list of finished work look busy. A finished row keeps
+    // only the readout, in the secondary color, in the space where the bar was.
+    //
+    // While a transfer is *not* done, the fill is the row's own state color (the same
+    // [indicatorColor] ramp the badge uses), so the column reads as status rather than as decoration:
+    // paused amber, failed red, downloading/queued the accent.
+    val isCompleted = download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
+    val stateFill = download.state.indicatorColor()
+    val baseStyle = JewelTheme.horizontalProgressBarStyle
+    val barStyle = remember(baseStyle, stateFill) { baseStyle.copyColors(progress = stateFill) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (isIndeterminate) {
-            IndeterminateHorizontalProgressBar(
+        when {
+            isCompleted -> Spacer(Modifier.weight(1f))
+            isIndeterminate -> IndeterminateHorizontalProgressBar(
                 modifier = Modifier.weight(1f).height(4.dp)
             )
-        } else {
-            HorizontalProgressBar(
-                progress = if (isCompleted) 1f else progress,
+            else -> HorizontalProgressBar(
+                progress = progress,
                 modifier = Modifier.weight(1f).height(4.dp),
+                style = barStyle,
             )
         }
         Text(
             text = if (isIndeterminate) "\u2014" else "${(progress * 100).toInt()}%",
-            style = JewelTheme.typography.small.copy(fontFeatureSettings = TabularFigures),
+            style = BlazeTypography.rowCell,
             color = secondary,
             maxLines = 1,
         )
     }
 }
+
+/**
+ * The theme's progress-bar style with only its [progress] color swapped: Jewel's style has no
+ * `copy`, so the colors are rebuilt from the live one, keeping the track and indeterminate ramp
+ * (and therefore the theme) intact.
+ */
+private fun HorizontalProgressBarStyle.copyColors(progress: Color) = HorizontalProgressBarStyle(
+    colors = HorizontalProgressBarColors(
+        track = colors.track,
+        progress = progress,
+        indeterminateBase = colors.indeterminateBase,
+        indeterminateHighlight = colors.indeterminateHighlight,
+    ),
+    metrics = metrics,
+    indeterminateCycleDuration = indeterminateCycleDuration,
+)
 
 @Composable
 private fun StateCell(

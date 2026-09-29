@@ -73,10 +73,10 @@ data class DownloadsState(
     // ── Tool-window layout, seeded from and persisted back to [org.blaze.data.AppSettings] ──
     /** Chosen column widths in dp keyed by [org.blaze.presentation.components.DownloadsColumn.id]. */
     val columnWidths: Map<String, Float> = emptyMap(),
-    /** Whether the Details tool window beside the list is shown. */
-    val detailsVisible: Boolean = true,
+    /** Whether the Details tool window beside the list is shown. Collapsed until a row is picked. */
+    val detailsVisible: Boolean = false,
     /** Fraction of the list|details split given to the list. */
-    val detailsSplitFraction: Float = 0.72f,
+    val detailsSplitFraction: Float = 0.68f,
     /** Whether pausing a progress-losing download asks first (persisted "do not ask again"). */
     val warnBeforeDiscardingProgress: Boolean = true,
     /** How the Details tool window presents itself (docked beside the list, or floated over it). */

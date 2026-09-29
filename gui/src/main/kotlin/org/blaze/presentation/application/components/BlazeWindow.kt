@@ -7,12 +7,18 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.window.WindowState
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.rememberDialogState
+import org.blaze.data.AppSettingsRepository
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
+import org.blaze.presentation.application.AppShell
 import org.blaze.platform.tray.AppTrayIcon
+import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.LocalAmbientGlowEnabled
 import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.LocalWindowActive
 import org.blaze.presentation.components.notifications.LocalNotifications
@@ -27,19 +33,15 @@ import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 
 @Composable
-fun BlazeWindow(
-    windowState: WindowState,
-    visible: Boolean,
-    raiseToken: Long,
-    onCloseRequest: () -> Unit,
-    onMinimize: () -> Unit,
-) {
+fun BlazeWindow(shell: AppShell) {
     DecoratedWindow(
-        onCloseRequest = onCloseRequest,
-        state = windowState,
-        visible = visible,
+        onCloseRequest = shell::onCloseRequest,
+        state = shell.windowState,
+        visible = shell.windowVisible.value,
         title = "Blaze",
     ) {
+        val visible = shell.windowVisible.value
+        val raiseToken = shell.windowRaiseToken.value
         LaunchedEffect(window) {
             window.minimumSize = Dimension(760, 480)
             // No `.desktop` entry matches an IDE launch, so the taskbar reads the icon
@@ -59,7 +61,7 @@ fun BlazeWindow(
                 override fun windowStateChanged(e: WindowEvent) {
                     if (e.newState and Frame.ICONIFIED != 0) {
                         window.extendedState = Frame.NORMAL
-                        onMinimize()
+                        shell.onMinimize()
                     }
                 }
             }
@@ -100,10 +102,14 @@ fun BlazeWindow(
         // gray inactive-window selection when the frame loses focus, and every tooltip/menu reads
         // the same OS-formatted accelerator labels instead of hard-coding "Ctrl"/"Cmd".
         val shortcutLabels = remember { platformShortcutLabels() }
+        // The ambient glow is a chrome preference, so it lives with the other shell settings and is
+        // read reactively here: Apply in Settings changes the frame immediately without a restart.
+        val appSettings = koinInject<AppSettingsRepository>().settings.collectAsState().value
         CompositionLocalProvider(
             LocalNotifications provides notifications,
             LocalWindowActive provides state.isActive,
             LocalShortcutLabels provides shortcutLabels,
+            LocalAmbientGlowEnabled provides appSettings.ambientGlowEnabled,
         ) {
             // The title bar lives inside the providers so its menu tooltips and the hamburger's own
             // shortcut labels read the same OS-formatted accelerators as the rest of the chrome.
@@ -115,6 +121,25 @@ fun BlazeWindow(
                 NotificationHost(
                     state = notifications,
                     modifier = Modifier.align(Alignment.BottomEnd),
+                )
+            }
+
+            // The modal Settings window. Composing it here is what gives it the right owner and the
+            // right context: Compose's DialogWindow takes its owner from LocalAwtWindow (provided by
+            // this window's panel), so the dialog is document-modal to the main frame, stays above it
+            // and never appears in the taskbar; and it inherits the strings, layout direction, theme
+            // and shortcut labels provided around BlazeContent, so its own chrome matches the rest of
+            // the app in light, dark and RTL. The state is hoisted outside the `if` so the user's
+            // resize and drag survive closing and reopening Settings within a session.
+            val settingsDialogState = rememberDialogState(
+                position = WindowPosition(Alignment.Center),
+                width = BlazeLayout.SettingsDialogWidth,
+                height = BlazeLayout.SettingsDialogHeight,
+            )
+            if (shell.settingsOpen.value) {
+                SettingsDialogWindow(
+                    state = settingsDialogState,
+                    onDismiss = shell::closeSettings,
                 )
             }
         }

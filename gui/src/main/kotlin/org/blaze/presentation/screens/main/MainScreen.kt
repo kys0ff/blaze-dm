@@ -29,6 +29,7 @@ import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BackgroundTasksStatusItem
+import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.SidebarItem
@@ -40,12 +41,12 @@ import org.blaze.presentation.application.components.AboutDialog
 import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeIslandColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSpeed
 import org.blaze.presentation.screens.downloads.attention
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
-import org.blaze.presentation.screens.settings.SettingsScreen
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -72,26 +73,24 @@ class MainScreen : Screen {
         var showTasks by remember { mutableStateOf(false) }
 
         Navigator(DownloadsScreen()) { navigator ->
-            // The title-bar chrome raises navigation / dialog commands it cannot serve itself: the
-            // gear opens Settings and About shows the dialog, both of which live on this screen where
-            // the navigator and dialog state exist. The view-scoped commands (new download, focus
-            // search, toggle details) are handled lower down by the downloads screen itself.
-            LaunchedEffect(navigator, commandBus) {
+            // The title-bar chrome raises dialog commands it cannot serve itself: About shows a dialog
+            // that lives on this screen, where the dialog state exists. Settings is not one of them - it
+            // is a modal window the application shell owns. The view-scoped commands (new download,
+            // focus search, toggle details) are handled lower down by the downloads screen itself.
+            LaunchedEffect(commandBus) {
                 commandBus.commands.collect { command ->
                     when (command) {
-                        AppCommand.OpenSettings ->
-                            if (navigator.lastItem !is SettingsScreen) navigator.replaceAll(SettingsScreen())
                         AppCommand.ShowAbout -> showAbout = true
                         else -> Unit
                     }
                 }
             }
-            val frameBackground =
-                if (BlazeLayout.useIslands) BlazeIslandColors.frame else JewelTheme.globalColors.panelBackground
+            // The frame (flat color + ambient glow) is painted once, by BlazeContent, so the
+            // chrome and every gap in this screen leak the same continuous field. Painting a solid
+            // background here would bury it.
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(frameBackground),
+                    .fillMaxSize(),
             ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.weight(1f)) {
@@ -103,7 +102,7 @@ class MainScreen : Screen {
                             count = downloads.size.takeIf { it > 0 }
                         ),
                         SidebarItem(
-                            label = strings.settings.title,
+                            label = strings.menu.settings,
                             icon = AllIconsKeys.General.Settings,
                             id = "settings",
                             shortcut = shortcuts.settings,
@@ -112,11 +111,9 @@ class MainScreen : Screen {
                     )
 
                     val currentScreen = navigator.lastItem
-                    val selectedItem = when (currentScreen) {
-                        is DownloadsScreen -> sidebarItems[0]
-                        is SettingsScreen -> sidebarItems[1]
-                        else -> sidebarItems[0]
-                    }
+                    // Downloads is the only view the stripe switches between: Settings is a modal
+                    // window, not a route, and opening a dialog never changes tool-window selection.
+                    val selectedItem = sidebarItems[0]
 
                     ToolWindowStripe(
                         items = sidebarItems,
@@ -127,9 +124,7 @@ class MainScreen : Screen {
                                     DownloadsScreen()
                                 )
 
-                                "settings" -> if (currentScreen !is SettingsScreen) navigator.replaceAll(
-                                    SettingsScreen()
-                                )
+                                "settings" -> commandBus.send(AppCommand.OpenSettings)
                             }
                         }
                     )
@@ -165,13 +160,14 @@ class MainScreen : Screen {
                             onClick = { showTasks = !showTasks },
                         )
                         if (state.snailModeEnabled) {
-                            val snailStyle = JewelTheme.typography.small
+                            // Small, regular, secondary-adjacent: the status bar never carries weight.
+                            val snailStyle = BlazeTypography.statusBar
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
                                 Icon(
-                                    key = AllIconsKeys.Actions.Suspend,
+                                    key = BlazeIcons.SnailMode,
                                     contentDescription = null,
                                     tint = BlazeColors.warning,
                                     modifier = Modifier.size(12.dp)

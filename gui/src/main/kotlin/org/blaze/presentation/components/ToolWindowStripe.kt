@@ -61,7 +61,11 @@ fun ToolWindowStripe(
     modifier: Modifier = Modifier,
 ) {
     val (top, bottom) = items.partition { !it.pinned }
-    val stripeBackground = if (BlazeLayout.useIslands) BlazeIslandColors.frame else JewelTheme.globalColors.panelBackground
+    // The stripe sits directly on the window frame, so in the Islands shell it paints nothing of
+    // its own: the frame layer behind it (flat color + ambient glow) shows through, which is
+    // exactly how the reference's stripe bleeds the glow down its first ~280dp.
+    val stripeBackground =
+        if (BlazeLayout.useIslands) Color.Transparent else JewelTheme.globalColors.panelBackground
 
     Column(
         modifier = modifier

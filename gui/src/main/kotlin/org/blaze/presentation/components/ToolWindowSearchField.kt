@@ -1,4 +1,4 @@
-package org.blaze.presentation.screens.downloads.components
+package org.blaze.presentation.components
 
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,8 +19,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.theme.blazeSearchFieldStyle
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IconButton
@@ -29,18 +30,25 @@ import org.jetbrains.jewel.ui.component.TextField
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 /**
- * Compact IntelliJ-style filter/search field shown in the Downloads tool window toolbar.
- * Typing filters the list live; [Escape] clears the query.
+ * Compact IntelliJ-style filter field shared by the tool-window chrome: the Downloads toolbar filters
+ * the list with it, and the Settings sidebar filters its category tree with the same control.
+ *
+ * Both uses want the same picture, which is why the styling lives here rather than at the call sites —
+ * island-level fill, a hairline rim that takes the accent only on focus, the search glyph inside and a
+ * clear button once there is text. Typing filters live; [Escape] empties the query. [placeholder] and
+ * [clearDescription] are supplied by the caller because they name what is being filtered.
  */
 @OptIn(ExperimentalJewelApi::class)
 @Composable
-fun DownloadsSearchField(
+fun ToolWindowSearchField(
     query: String,
+    placeholder: String,
+    clearDescription: String,
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    fieldWidth: Dp = BlazeLayout.SearchFieldWidth,
     focusRequester: FocusRequester = remember { FocusRequester() },
 ) {
-    val strings = blazeStrings
     var fieldValue by remember { mutableStateOf(TextFieldValue(query)) }
 
     // Keep the local field in sync when the query is changed elsewhere (e.g. cleared externally).
@@ -54,9 +62,11 @@ fun DownloadsSearchField(
             fieldValue = it
             onQueryChange(it.text)
         },
-        placeholder = {
-            Text(strings.downloads.searchPlaceholder)
-        },
+        // The IDE's search field is a hole cut in its own island, not a brighter plate sitting on top
+        // of one: island-level fill, a 1dp hairline rim that takes the accent only on focus (see
+        // [org.blaze.presentation.theme.blazeSearchFieldStyle]).
+        style = blazeSearchFieldStyle(),
+        placeholder = { Text(placeholder) },
         leadingIcon = {
             Icon(
                 key = AllIconsKeys.Actions.Find,
@@ -75,14 +85,14 @@ fun DownloadsSearchField(
                 ) {
                     Icon(
                         key = AllIconsKeys.Actions.Close,
-                        contentDescription = strings.downloads.clearSearch,
+                        contentDescription = clearDescription,
                         modifier = Modifier.size(12.dp),
                     )
                 }
             }
         },
         modifier = modifier
-            .width(220.dp)
+            .width(fieldWidth)
             .height(26.dp)
             .padding(horizontal = 6.dp)
             .focusRequester(focusRequester)

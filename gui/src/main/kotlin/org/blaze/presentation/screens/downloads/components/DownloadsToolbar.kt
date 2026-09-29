@@ -8,8 +8,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.ToolWindowHeader
+import org.blaze.presentation.components.ToolWindowSearchField
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.SelectionActions
@@ -73,8 +75,10 @@ fun DownloadsToolbar(
                     onBulkRemove = onBulkRemove,
                 )
             } else {
-                DownloadsSearchField(
+                ToolWindowSearchField(
                     query = searchQuery,
+                    placeholder = strings.downloads.searchPlaceholder,
+                    clearDescription = strings.downloads.clearSearch,
                     onQueryChange = { onEvent(DownloadsEvent.SearchChanged(it)) },
                     focusRequester = searchFocusRequester,
                 )
@@ -116,7 +120,10 @@ fun DownloadsToolbar(
                     onClick = onClearCompleted
                 )
                 ToggleableIconActionButton(
-                    key = AllIconsKeys.Actions.Suspend,
+                    // A speed control, so it carries the speed glyph (bolt / stopwatch) rather than the
+                    // red stop square it used: `Actions.Suspend` resolves to the New UI run-stop icon,
+                    // which reads as "kill everything", not "throttle the rate".
+                    key = if (snailModeEnabled) BlazeIcons.SnailMode else BlazeIcons.FullSpeed,
                     contentDescription = strings.downloads.toolbar.snailMode,
                     value = snailModeEnabled,
                     onValueChange = { onEvent(DownloadsEvent.ToggleSnailMode(it)) },
@@ -159,7 +166,9 @@ private fun BulkActions(
         onClick = onBulkResume,
     )
     ToolbarIconButton(
-        key = AllIconsKeys.Actions.Cancel,
+        // Stopping running transfers is the IDE's "Stop", and it draws as the plain red square (see
+        // [BlazeIcons.Stop]); the generic New UI cross this used to borrow said "close", not "abort".
+        key = BlazeIcons.Stop,
         tooltip = if (actions.canCancel) s.cancelSelected(actions.cancelCount) else s.cancel,
         enabled = actions.canCancel,
         onClick = onBulkCancel,

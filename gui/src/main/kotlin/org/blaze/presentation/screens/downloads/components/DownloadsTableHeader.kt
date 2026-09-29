@@ -30,7 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -41,6 +40,7 @@ import org.blaze.presentation.components.DownloadsColumn
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadSortField
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -125,9 +125,9 @@ private fun RowScope.HeaderCell(
     onSort: () -> Unit,
     onResize: (Float) -> Unit,
 ) {
-    val accent = BlazeColors.accent
-    val baseColor = JewelTheme.globalColors.text.normal
-    val labelColor = if (sortedActive) accent else baseColor
+    // A sorted column is marked by its arrow alone. The IDE never recolors a header label, and an
+    // accent-blue "Name" competes with the selected row for the user's attention.
+    val labelColor = JewelTheme.globalColors.text.normal
     val hoverInteraction = remember { MutableInteractionSource() }
     val hovered by hoverInteraction.collectIsHoveredAsState()
 
@@ -156,7 +156,7 @@ private fun RowScope.HeaderCell(
         ) {
             Text(
                 text = column.headerLabel(),
-                style = JewelTheme.typography.small.copy(fontWeight = FontWeight.Medium),
+                style = BlazeTypography.tableHeader,
                 color = labelColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -167,7 +167,9 @@ private fun RowScope.HeaderCell(
                 Icon(
                     key = if (ascending) AllIconsKeys.General.ArrowUp else AllIconsKeys.General.ArrowDown,
                     contentDescription = null,
-                    tint = accent,
+                    // The arrow carries the sort state, and it does so in the secondary text color:
+                    // state should be readable without being loud.
+                    tint = JewelTheme.globalColors.text.info,
                     modifier = Modifier.size(12.dp),
                 )
             }
@@ -198,7 +200,7 @@ private fun RowScope.HeaderCell(
  * context menu) so bulk selection stays discoverable.
  */
 @Composable
-private fun RowScope.HeaderOptionsSlot(onSelectAll: () -> Unit) {
+private fun RowScope.HeaderOptionsSlot(onSelectAll: () -> Unit) { // TODO: Warning: Receiver parameter is never used
     val selection = blazeStrings.downloads.selection
     var expanded by remember { mutableStateOf(false) }
 
@@ -258,7 +260,7 @@ private fun MenuEntry(text: String, onClick: () -> Unit) {
     ) {
         Text(
             text = text,
-            style = JewelTheme.typography.small,
+            style = BlazeTypography.chip,
             color = JewelTheme.globalColors.text.normal,
             maxLines = 1,
         )

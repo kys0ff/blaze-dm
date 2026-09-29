@@ -633,8 +633,8 @@ fun DownloadsScreenContent(
                             second = second,
                             modifier = Modifier.fillMaxWidth().weight(1f),
                             dividerStyle = gapDivider,
-                            firstPaneMinWidth = if (moveTo.detailsFirst) 240.dp else 320.dp,
-                            secondPaneMinWidth = if (moveTo.detailsFirst) 320.dp else 240.dp,
+                            firstPaneMinWidth = if (moveTo.detailsFirst) BlazeLayout.ListPaneMinWidth else BlazeLayout.DetailsPaneMinWidth,
+                            secondPaneMinWidth = if (moveTo.detailsFirst) BlazeLayout.DetailsPaneMinWidth else BlazeLayout.ListPaneMinWidth,
                             draggableWidth = BlazeLayout.SplitDragWidth,
                             state = splitState,
                         )
@@ -662,7 +662,9 @@ fun DownloadsScreenContent(
                         DetailsMoveTo.BOTTOM_LEFT -> Alignment.BottomStart
                         DetailsMoveTo.BOTTOM_RIGHT -> Alignment.BottomEnd
                     }
-                    val widthFraction = if (moveTo.isBottom) 0.5f else 0.42f
+                    // A floating pane is an overlay, so it stays narrower than the docked split's third
+                    // (BlazeLayout.DetailsDefaultListFraction) rather than covering half the list.
+                    val widthFraction = if (moveTo.isBottom) 0.5f else 0.34f
                     val heightFraction = if (moveTo.isBottom) 0.42f else 0.62f
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         listPane()

@@ -91,7 +91,7 @@ fun AppTrayHost(strings: BlazeStrings, shell: AppShell) {
                 TrayMenuItem.WindowToggle(
                     hiddenLabel = strings.tray.show,
                     shownLabel = strings.tray.hide,
-                ) { shell.windowVisible.value = !shell.windowVisible.value },
+                ) { if (shell.windowVisible.value) shell.hideToTray() else shell.raiseWindow() },
             ) + downloadItems + listOf(
                 snailItem,
                 TrayMenuItem.Separator,

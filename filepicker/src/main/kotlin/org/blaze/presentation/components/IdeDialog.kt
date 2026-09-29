@@ -113,20 +113,29 @@ fun IdeDialogActions(
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 4.dp),
-        horizontalArrangement = Arrangement.End,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically
     ) {
         leading()
         Spacer(Modifier.weight(1f))
-        OutlinedButton(onClick = onDismiss) {
-            Text(dismissText)
-        }
-        Spacer(Modifier.width(8.dp))
-        DefaultButton(
-            onClick = onConfirm,
-            enabled = confirmEnabled
-        ) {
-            Text(confirmText)
+        // The row follows the platform's own order off the centralized switch: OK then Cancel on
+        // Windows/Linux, Cancel then OK on macOS. A plain dialog has no Apply, so the exhaustive
+        // branch for it is intentionally empty.
+        dialogButtonOrder(hasApply = false).forEach { button ->
+            when (button) {
+                DialogButton.Ok -> DefaultButton(
+                    onClick = onConfirm,
+                    enabled = confirmEnabled
+                ) {
+                    Text(confirmText)
+                }
+
+                DialogButton.Cancel -> OutlinedButton(onClick = onDismiss) {
+                    Text(dismissText)
+                }
+
+                DialogButton.Apply -> Unit
+            }
         }
     }
 }

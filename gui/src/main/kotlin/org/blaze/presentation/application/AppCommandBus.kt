@@ -8,11 +8,11 @@ import kotlinx.coroutines.flow.asSharedFlow
  * An application-wide command the chrome (the title-bar hamburger menu, and later the tray or global
  * shortcuts) can raise without knowing which screen is currently visible.
  *
- * Each command is handled by whichever collaborator owns the capability: the downloads screen model
- * folds transport / selection / layout ones into its own events, the main screen handles navigation
- * and the About dialog, and the application shell owns exit. Keeping them as a small enum — rather
- * than reaching into a `ScreenModel` from the title bar — is what lets the menu live in the window
- * chrome while the actions stay where they belong.
+ * Each command is handled by whichever collaborator owns the capability: the application shell serves
+ * exit, pause/resume-all and opening the modal Settings window, the downloads screen model folds
+ * transport / selection / layout ones into its own events, and the main screen shows the About dialog.
+ * Keeping them as a small enum - rather than reaching into a `ScreenModel` from the title bar - is what
+ * lets the menu live in the window chrome while the actions stay where they belong.
  */
 enum class AppCommand {
     NewDownload,

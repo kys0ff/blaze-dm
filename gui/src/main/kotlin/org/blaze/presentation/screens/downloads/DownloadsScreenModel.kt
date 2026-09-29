@@ -435,7 +435,17 @@ class DownloadsScreenModel(
      */
     private fun reduceSelectionNow(action: SelectionAction) {
         val visible = state.value.filteredDownloads.map { it.id }
+        val before = _selection.value.ids
         _selection.update { reduceSelection(it, visible, action) }
+
+        // Details is a collapsed tool window: selecting a row is what earns it a place on the frame,
+        // so the first selection re-opens the pane (and the reopen is persisted like any other layout
+        // change). Clearing the selection deliberately does NOT close it again - closing is the user's
+        // call, made with the toolbar or title-bar toggle.
+        if (_selection.value.ids.isNotEmpty() && before.isEmpty() && !_layout.value.detailsVisible) {
+            _layout.update { it.copy(detailsVisible = true) }
+            persistLayout()
+        }
     }
 
     /** Runs a single command, reporting any failure as an error effect with the given [context] prefix. */

@@ -434,6 +434,9 @@ object EnStrings : BlazeStrings {
     override val settings = object : BlazeStrings.Settings {
         override val title = "Settings"
         override val placeholder = "App configuration will appear here."
+        override val searchPlaceholder = "Search settings…"
+        override val clearSearch = "Clear search"
+        override val searchNoMatches = "No matching settings"
         override val generalCategory = "General"
         override val downloadsCategory = "Downloads"
         override val filesCategory = "Files"
@@ -546,6 +549,9 @@ object EnStrings : BlazeStrings {
             override val removeAction = "Remove"
             override val builtinTag = "Built-in"
             override val pluginTag = "Extension"
+            override val chromeHeader = "Window chrome"
+            override val ambientGlowLabel = "Ambient title-bar glow"
+            override val ambientGlowDesc = "A soft accent-colored glow at the top-left of the window frame, behind the title bar and the side stripe."
         }
 
         override val notifications = object : BlazeStrings.Settings.Notifications {

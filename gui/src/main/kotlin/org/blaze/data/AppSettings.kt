@@ -53,10 +53,18 @@ data class AppSettings(
     val downloadsSortField: String = "DATE_ADDED",
     /** Direction of the persisted sort (see [downloadsSortField]). */
     val downloadsSortAscending: Boolean = false,
-    /** Whether the Details tool window beside the list is shown. */
-    val detailsPaneVisible: Boolean = true,
-    /** Fraction of the list|details split given to the list, persisted across launches. */
-    val detailsSplitFraction: Float = 0.72f,
+    /**
+     * Whether the Details tool window beside the list is shown. Off by default: the pane is a tool
+     * window, and a tool window that opens on an empty selection spends 30% of the frame explaining
+     * that there is nothing to show. Selecting a row reveals it (see DownloadsScreenModel), and the
+     * toolbar / title-bar menu toggle it by hand.
+     */
+    val detailsPaneVisible: Boolean = false,
+    /**
+     * Fraction of the list|details split given to the list, persisted across launches. Defaults to the
+     * details pane taking about a third (320-380dp on a typical window).
+     */
+    val detailsSplitFraction: Float = 0.68f,
     /** Confirm before pausing a download whose progress would be discarded. On by default. */
     val warnBeforeDiscardingProgress: Boolean = true,
     /** Name of the [org.blaze.presentation.screens.downloads.DetailsViewMode] the pane presents in. */
@@ -65,4 +73,13 @@ data class AppSettings(
     val detailsMoveTo: String = "RIGHT_TOP",
     /** Whether the pane's tabs are grouped into one continuous view instead of a tab strip. */
     val groupDetailsTabs: Boolean = false,
+
+    // ── Chrome ─────────────────────────────────────────────────────────────────
+    /**
+     * The IDE's soft accent-colored glow at the top-left of the window frame (behind the title bar,
+     * the tool-window stripe and the island gaps). On by default - it is the New UI's default look -
+     * but it is the one piece of chrome that can read as a tint cast over a plain frame, so it is
+     * user-switchable under Themes.
+     */
+    val ambientGlowEnabled: Boolean = true,
 )

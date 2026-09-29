@@ -13,6 +13,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.icons.BlazeFlame
+import org.blaze.presentation.theme.BlazeTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -57,9 +58,7 @@ fun TitleBarScope.BlazeTitleBarIdentity() {
 
         Text(
             text = "Blaze",
-            style = JewelTheme.defaultTextStyle.copy(
-                fontWeight = FontWeight.Medium,
-            ),
+            style = BlazeTypography.titleBarLabel,
         )
 
         SpeedLimitWidget()

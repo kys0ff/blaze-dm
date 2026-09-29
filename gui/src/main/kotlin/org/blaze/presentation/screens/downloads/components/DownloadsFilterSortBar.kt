@@ -1,6 +1,7 @@
 package org.blaze.presentation.screens.downloads.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -26,7 +27,8 @@ import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.screens.downloads.DownloadCounts
 import org.blaze.presentation.screens.downloads.DownloadFilter
 import org.blaze.presentation.screens.downloads.DownloadsEvent
-import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeIslandColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.typography
@@ -83,16 +85,27 @@ private fun FilterChip(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    // The IDE's selected tab is a gray rounded rect with a hairline rim and primary text, never a
+    // saturated accent fill — an accent pill turns every filter row into a call to action. It uses
+    // the same token family as the selected stripe button, so "selected" reads identically wherever
+    // the user meets it.
     val background = when {
-        selected -> BlazeColors.accent.copy(alpha = 0.22f)
-        hovered -> BlazeColors.hover
+        selected -> BlazeIslandColors.stripeSelected
+        hovered -> BlazeIslandColors.stripeHover
         else -> Color.Transparent
     }
-    val contentColor = if (selected) BlazeColors.accent else JewelTheme.globalColors.text.normal
     Row(
         modifier = Modifier
             .clip(ChipShape)
             .background(background)
+            // The rim is the same translucent overlay the stripe family uses for hover: over the gray
+            // fill it reads as a lighter edge in dark and a darker one in light, which is exactly
+            // what the reference's selected tab shows.
+            .border(
+                BlazeLayout.IslandBorderWidth,
+                if (selected) BlazeIslandColors.stripeHover else Color.Transparent,
+                ChipShape,
+            )
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 3.dp),
@@ -101,16 +114,17 @@ private fun FilterChip(
     ) {
         Text(
             text = label,
-            style = JewelTheme.typography.small,
-            color = contentColor,
+            style = BlazeTypography.chip,
+            color = JewelTheme.globalColors.text.normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         if (count > 0) {
+            // Counts are a readout, not part of the label: secondary in both states.
             Text(
                 text = count.toString(),
-                style = JewelTheme.typography.small,
-                color = if (selected) contentColor else JewelTheme.globalColors.text.info,
+                style = BlazeTypography.chip,
+                color = JewelTheme.globalColors.text.info,
             )
         }
     }

@@ -312,6 +312,10 @@ class SettingsScreenModel(
             it.copy(appSettings = it.appSettings.copy(languageCode = event.code))
         }
 
+        is SettingsEvent.UpdateAmbientGlowEnabled -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(ambientGlowEnabled = event.enabled))
+        }
+
         is SettingsEvent.UpdateResumeDownloadsOnStartup -> _state.update {
             it.copy(settings = it.settings.copy(resumeDownloadsOnStartup = event.enabled))
         }

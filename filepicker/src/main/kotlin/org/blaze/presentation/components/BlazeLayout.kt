@@ -23,6 +23,15 @@ object BlazeLayout {
      */
     const val useIslands: Boolean = true
 
+    /**
+     * Structural switch for the IDE's ambient chrome glow — the soft accent-colored field anchored
+     * at the window's top-left corner that the title bar, the tool-window stripe and the island
+     * gaps sit on (see [org.blaze.presentation.theme.BlazeAmbientGradient]). Flip to false to drop
+     * the feature entirely; the user-facing half of it is the "Ambient title-bar glow" preference,
+     * folded in through [LocalAmbientGlowEnabled].
+     */
+    const val useAmbientGradient: Boolean = true
+
     /** Island corner radius, measured off the reference IDE corner (~10-12dp). */
     val IslandRadius = 11.dp
 
@@ -82,7 +91,45 @@ object BlazeLayout {
     val FormMaxWidth = 640.dp // TODO: make use of this
 
     /** In-list search field width in the toolbar. */
-    val SearchFieldWidth = 220.dp // TODO: make use of this
+    val SearchFieldWidth = 180.dp
+
+    /**
+     * Overlay scrollbar track thickness. The IDE's scrollbars are thin, rounded and only present while
+     * the pointer is over the scroll area or it is scrolling (see
+     * [org.blaze.presentation.theme.blazeOverlayScrollbarStyle]); Jewel's Windows/Linux default is a
+     * permanently visible ~15dp track, which is what the brief rejects.
+     */
+    val OverlayScrollbarThickness = 7.dp
+
+    /**
+     * The Details tool window's share of the list|details split when it first opens, expressed as the
+     * *list's* fraction (so the pane gets 1 - this). 0.68 puts the pane at ~32% of the content width,
+     * inside the 30-35% the reference shows, and the split's own 320dp pane minimum keeps it usable on
+     * narrow windows.
+     */
+    const val DetailsDefaultListFraction = 0.68f
+
+    /** Smallest the Details pane may be dragged (the IDE's tool-window minimum). */
+    val DetailsPaneMinWidth = 320.dp
+
+    /** Largest the list pane may be squeezed to when the Details pane is widened. */
+    val ListPaneMinWidth = 240.dp
+
+    /** Height of a row in the Settings category list (the IDE's compact list row). */
+    val SettingsNavRowHeight = 24.dp
+
+    /** Width of the Settings category list. */
+    val SettingsNavWidth = 200.dp
+
+    /**
+     * Initial size of the modal Settings window. Wide enough for the category list plus a full
+     * settings column at the IDE's comfortable width, and small enough to sit centered over the main
+     * frame on a laptop screen without being clamped.
+     */
+    val SettingsDialogWidth = 920.dp
+
+    /** Initial height of the modal Settings window (see [SettingsDialogWidth]). */
+    val SettingsDialogHeight = 640.dp
 
     /** Invisible drag hit-area around a split divider (Jewel default is 8dp; IDE chrome is thinner). */
     val SplitDragWidth = 8.dp
@@ -125,6 +172,14 @@ enum class DownloadsColumn(
  * when the frame is not focused.
  */
 val LocalWindowActive: ProvidableCompositionLocal<Boolean> = staticCompositionLocalOf { true }
+
+/**
+ * Whether the ambient glow is drawn, supplied by the window shell from the persisted
+ * "Ambient title-bar glow" setting. Kept as a composition local (rather than read straight from
+ * the repository) so the frame layer recomposes the instant the preference changes and the
+ * rendering helpers stay free of a dependency on the data layer.
+ */
+val LocalAmbientGlowEnabled: ProvidableCompositionLocal<Boolean> = staticCompositionLocalOf { true }
 
 /**
  * Local shortcut label provider so tooltips and context menus can render the accelerator in the

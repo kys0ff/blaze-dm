@@ -440,6 +440,9 @@ object ArStrings : BlazeStrings {
     override val settings = object : BlazeStrings.Settings {
         override val title = "الإعدادات"
         override val placeholder = "ستظهر إعدادات التطبيق هنا."
+        override val searchPlaceholder = "بحث في الإعدادات…"
+        override val clearSearch = "مسح البحث"
+        override val searchNoMatches = "لا توجد إعدادات مطابقة"
         override val generalCategory = "عام"
         override val downloadsCategory = "التنزيلات"
         override val filesCategory = "الملفات"
@@ -552,6 +555,9 @@ object ArStrings : BlazeStrings {
             override val removeAction = "إزالة"
             override val builtinTag = "مضمّن"
             override val pluginTag = "امتداد"
+            override val chromeHeader = "هيكل النافذة"
+            override val ambientGlowLabel = "توهّج محيط بشريط العنوان"
+            override val ambientGlowDesc = "توهّج ناعم بلون التمييز في أعلى يسار إطار النافذة، خلف شريط العنوان والشريط الجانبي."
         }
 
         override val notifications = object : BlazeStrings.Settings.Notifications {

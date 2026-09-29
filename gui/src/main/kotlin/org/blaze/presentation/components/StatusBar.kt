@@ -15,11 +15,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeIslandColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -41,9 +42,11 @@ fun StatusBar(
     trailing: @Composable RowScope.() -> Unit = {}
 ) {
     val strings = blazeStrings
-    val small = JewelTheme.typography.small
+    val small = BlazeTypography.statusBar
+    // The bar is part of the frame, so in the Islands shell it paints nothing and lets the frame
+    // layer (flat color + ambient glow) show through, exactly like the tool-window stripe.
     val frameBackground =
-        if (BlazeLayout.useIslands) BlazeIslandColors.frame else JewelTheme.globalColors.panelBackground
+        if (BlazeLayout.useIslands) Color.Transparent else JewelTheme.globalColors.panelBackground
 
     Column(modifier = modifier.fillMaxWidth()) {
         // Islands: the frame background and the gap above do the separation, so no hairline.
@@ -62,6 +65,9 @@ fun StatusBar(
             Text(
                 text = info,
                 style = small,
+                // The IDE's status text is small, regular and *secondary* — it is a readout, never
+                // the thing the user is meant to look at first.
+                color = JewelTheme.globalColors.text.info,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)

@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
@@ -16,9 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.renderComposeScene
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.models.SelectedFile
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.DownloadsColumn
@@ -35,10 +40,19 @@ import org.blaze.presentation.screens.downloads.components.DownloadsList
 import org.blaze.presentation.screens.downloads.components.DownloadsToolbar
 import org.blaze.presentation.screens.downloads.components.PauseRiskDialog
 import org.blaze.presentation.screens.downloads.toCounts
+import org.blaze.presentation.screens.settings.SettingsButtonBar
+import org.blaze.presentation.screens.settings.SettingsSidebar
+import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.presentation.theme.BlazeTheme
+import org.blaze.presentation.theme.BlazeTypography
+import org.blaze.presentation.theme.blazeAmbientFrame
 import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.Orientation
+import org.jetbrains.jewel.ui.component.Divider
+import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.jetbrains.jewel.window.defaultTitleBarStyle
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
 
@@ -179,11 +193,53 @@ fun main() {
             }
         }
 
-        // Full Islands shell: frame background, left stripe (with a selected gray button), the
-        // downloads + details islands separated by a gap, and the status bar below on the frame.
-        // This is the landmark source for the delta-check script (frame/island/gap/radius/stripe).
+        // The same toolbar with a selection, i.e. the bulk cluster that replaces the search field:
+        // pause, resume, the plain red stop square and remove. Fixture for the stop glyph (#4).
+        shot("08-toolbar-selection-$suffix", 940, 40, dark) {
+            DownloadsToolbar(
+                hasActiveDownloads = true,
+                hasPausedDownloads = true,
+                hasCompletedDownloads = true,
+                hasSelection = true,
+                selectedCount = 3,
+                selectionActions = SelectionActions.of(samples),
+                searchQuery = "",
+                snailModeEnabled = false,
+                searchFocusRequester = remember { FocusRequester() },
+                onEvent = {},
+                onAddDownload = {},
+                onImportPortable = {},
+                onClearCompleted = {},
+                onSelectAll = {},
+                onClearSelection = {},
+                onBulkPause = {},
+                onBulkResume = {},
+                onBulkCancel = {},
+                onBulkRemove = {},
+                detailsVisible = false,
+                onToggleDetails = {},
+            )
+        }
+
+        // Full Islands shell: the frame layer *with* its ambient glow, the left stripe (with a
+        // selected gray button), the downloads + details islands separated by a gap, and the status
+        // bar below on the frame. This is the landmark source for the delta-check script
+        // (frame/island/gap/radius/stripe + the gradient tint landmarks).
         shot("10-shell-$suffix", 1100, 720, dark) {
-            Column(modifier = Modifier.fillMaxSize().background(BlazeIslandColors.frame)) {
+            // The chrome's text styles are resolved here and their real FontWeight printed, so the
+            // "regular weight everywhere" rule is measured on every run instead of being asserted.
+            val fontReport = BlazeTypography.auditReport()
+            remember(fontReport) { fontReport.trimEnd().lines().forEach { println(it) } }
+            Column(modifier = Modifier.fillMaxSize().blazeAmbientFrame(anchorY = 0.dp)) {
+                // The real window paints the glow behind a transparent Islands title bar, so an
+                // empty strip of that exact height reproduces the reference's title band: the
+                // gradient's horizontal peak lives inside it, and the stripe/gap below shows the
+                // vertical decay. The headless scene has no decorations of its own.
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(JewelTheme.defaultTitleBarStyle.metrics.height)
+                )
                 Row(modifier = Modifier.weight(1f)) {
                     ToolWindowStripe(
                         items = listOf(
@@ -234,6 +290,51 @@ fun main() {
                     }
                 }
                 StatusBar(info = "1 downloading", throughput = "2.7 MB/s", isConnected = true)
+            }
+        }
+
+        // The Settings window's content, rendered from the screen's own scaffolding pieces. It is the
+        // fixture for three fixes: the whole surface must be one color from list to footer (#10 - the
+        // middle pane is deliberately given no background of its own, so a leak of another shade would
+        // show here), the nav's search box and row metrics (#13), and the platform-ordered
+        // OK/Cancel/Apply footer (#11). Fake strings and no screen model, exactly like the other shots.
+        shot("11-settings-shell-$suffix", 900, 520, dark) {
+            val strings = blazeStrings
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(BlazeIslandColors.island),
+            ) {
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    SettingsSidebar(
+                        selected = SettingsCategory.GENERAL,
+                        hasDownloadsError = false,
+                        strings = strings,
+                        onSelect = {},
+                    )
+                    Divider(Orientation.Vertical, Modifier.fillMaxHeight())
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(strings.settings.generalCategory)
+                        Text(
+                            text = strings.settings.placeholder,
+                            color = JewelTheme.globalColors.text.info,
+                        )
+                    }
+                }
+                SettingsButtonBar(
+                    okEnabled = true,
+                    applyEnabled = true,
+                    onOk = {},
+                    onApply = {},
+                    onCancel = {},
+                    strings = strings,
+                )
             }
         }
     }

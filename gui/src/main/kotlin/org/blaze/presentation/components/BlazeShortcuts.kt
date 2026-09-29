@@ -1,23 +1,14 @@
 package org.blaze.presentation.components
 
 /**
- * The single place the UI learns which modifier key the current desktop uses for accelerators.
+ * The accelerator labels the chrome shows, formatted for the desktop this app is running on.
  *
- * Compose Desktop is JVM-only, so this is a plain `when` on `os.name` (the same pattern the
- * `:platform` module's service factories use) rather than expect/actual. Everything that needs to
- * show a shortcut — tooltips, context menus, the settings tree — reads the formatted strings from
+ * The platform itself is decided once, by
+ * [CurrentUiPlatform][org.blaze.presentation.components.CurrentUiPlatform] (shared with the dialog
+ * footers, which order their buttons off the same switch). Everything that needs to show a shortcut —
+ * tooltips, context menus, the settings tree — reads the formatted strings from
  * [platformShortcutLabels] instead of hard-coding "Ctrl" vs "Cmd".
  */
-internal enum class UiPlatform { Windows, macOS, Linux } // TODO: Warning: Enum entry name 'macOS' should start with an uppercase letter
-
-internal val CurrentUiPlatform: UiPlatform by lazy {
-    val os = System.getProperty("os.name").orEmpty().lowercase()
-    when {
-        os.contains("mac") || os.contains("darwin") -> UiPlatform.macOS
-        os.startsWith("windows") -> UiPlatform.Windows
-        else -> UiPlatform.Linux
-    }
-}
 
 /** Primary accelerator modifier: "Cmd" on macOS, "Ctrl" elsewhere (matches the IDE). */
 internal val ModifierKeyName: String

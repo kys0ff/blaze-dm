@@ -534,6 +534,12 @@ interface BlazeStrings {
     interface Settings {
         val title: String
         val placeholder: String
+        /** Placeholder of the box that filters the category list, like the IDE Settings search. */
+        val searchPlaceholder: String
+        /** Accessible name of the search box's clear button. */
+        val clearSearch: String
+        /** Shown in the category list when the search box filters every entry out. */
+        val searchNoMatches: String
         val generalCategory: String
         val downloadsCategory: String
         val filesCategory: String
@@ -649,6 +655,10 @@ interface BlazeStrings {
             val removeAction: String
             val builtinTag: String
             val pluginTag: String
+            /** Window-chrome group: the IDE's ambient accent glow around the frame's top-left. */
+            val chromeHeader: String
+            val ambientGlowLabel: String
+            val ambientGlowDesc: String
         }
 
         val notifications: Notifications

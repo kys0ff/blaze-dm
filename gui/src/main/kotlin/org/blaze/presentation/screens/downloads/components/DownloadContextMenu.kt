@@ -5,6 +5,7 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
+import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.screens.downloads.canCancel
 import org.blaze.presentation.screens.downloads.canPause
@@ -76,7 +77,7 @@ fun buildDownloadContextMenu(
                 add(option(labels.retry, AllIconsKeys.Actions.Restart, actions.retry))
         }
         if (isCancellable) {
-            add(option(labels.cancel, AllIconsKeys.Actions.Cancel, actions.cancel))
+            add(option(labels.cancel, BlazeIcons.Stop, actions.cancel))
         }
 
         // ── Priority (only while the transfer still has queue time ahead of it) ──

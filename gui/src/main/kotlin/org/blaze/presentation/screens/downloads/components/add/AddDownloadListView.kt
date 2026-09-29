@@ -6,11 +6,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,7 +47,6 @@ fun AddDownloadListView(
         ) {
             Text(
                 text = "${state.batchItems.count { it.isSelected }} / ${state.batchItems.size} ${dStrings.itemsSelected}",
-                style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.Medium)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -69,67 +68,77 @@ fun AddDownloadListView(
             }
         }
 
-        LazyColumn(
+        // The batch list is a scroll area like every other one in the chrome, so it goes through
+        // Jewel's container: the overlay scrollbar appears on hover/scroll instead of the list
+        // silently clipping at 300dp with no indicator.
+        val batchListState = rememberLazyListState()
+        VerticallyScrollableContainer(
+            scrollState = batchListState,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 300.dp)
                 .background(JewelTheme.globalColors.panelBackground.copy(alpha = 0.3f))
-                .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp))
-                .padding(4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+                .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(4.dp)),
         ) {
-            items(state.batchItems) { item ->
-                val metadata = item.metadata
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { item.isSelected = !item.isSelected }
-                        .padding(vertical = 4.dp, horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Checkbox(
-                        checked = item.isSelected,
-                        onCheckedChange = { item.isSelected = it }
-                    )
-                    
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = metadata?.name ?: item.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = if (metadata != null) FontWeight.Medium else FontWeight.Normal
+            LazyColumn(
+                state = batchListState,
+                modifier = Modifier.fillMaxWidth().padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                items(state.batchItems) { item ->
+                    val metadata = item.metadata
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { item.isSelected = !item.isSelected }
+                            .padding(vertical = 4.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Checkbox(
+                            checked = item.isSelected,
+                            onCheckedChange = { item.isSelected = it }
                         )
-                        if (metadata != null) {
+                    
+                        Column(modifier = Modifier.weight(1f)) {
+                            // Regular weight throughout: the chrome's rule is no bold except a dialog's
+                            // title and a group header, so the resolved link is not emboldened.
                             Text(
-                                text = formatSize(metadata.totalSize, strings),
-                                style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
-                                color = JewelTheme.globalColors.text.info
+                                text = metadata?.name ?: item.url,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                            // Marked per link, because only some servers refuse ranges.
-                            if (metadata.resumeSupported == false) {
-                                AdvisoryChip(
-                                    strings.downloads.advisories.cannotResume,
-                                    AdvisoryTone.WARNING
+                            if (metadata != null) {
+                                Text(
+                                    text = formatSize(metadata.totalSize, strings),
+                                    style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
+                                    color = JewelTheme.globalColors.text.info
+                                )
+                                // Marked per link, because only some servers refuse ranges.
+                                if (metadata.resumeSupported == false) {
+                                    AdvisoryChip(
+                                        strings.downloads.advisories.cannotResume,
+                                        AdvisoryTone.WARNING
+                                    )
+                                }
+                            } else if (item.isFetching) {
+                                Text(
+                                    text = dStrings.fetchingMetadata,
+                                    style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
+                                    color = JewelTheme.globalColors.text.info
+                                )
+                            } else if (item.error != null) {
+                                Text(
+                                    text = item.error!!,
+                                    style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
+                                    color = JewelTheme.globalColors.text.error
                                 )
                             }
-                        } else if (item.isFetching) {
-                            Text(
-                                text = dStrings.fetchingMetadata,
-                                style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
-                                color = JewelTheme.globalColors.text.info
-                            )
-                        } else if (item.error != null) {
-                            Text(
-                                text = item.error!!,
-                                style = JewelTheme.defaultTextStyle.copy(fontSize = 11.sp),
-                                color = JewelTheme.globalColors.text.error
-                            )
                         }
-                    }
 
-                    if (item.isFetching) {
-                        IndeterminateHorizontalProgressBar(modifier = Modifier.width(60.dp))
+                        if (item.isFetching) {
+                            IndeterminateHorizontalProgressBar(modifier = Modifier.width(60.dp))
+                        }
                     }
                 }
             }

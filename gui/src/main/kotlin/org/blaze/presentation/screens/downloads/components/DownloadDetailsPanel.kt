@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -19,7 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
@@ -39,6 +36,7 @@ import org.blaze.presentation.screens.downloads.pauseLosesProgress
 import org.blaze.presentation.screens.downloads.percentDone
 import org.blaze.presentation.screens.downloads.resumeSupport
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
 import org.blaze.presentation.util.formatSpeed
@@ -50,6 +48,7 @@ import org.jetbrains.jewel.ui.component.SimpleTabContent
 import org.jetbrains.jewel.ui.component.TabData
 import org.jetbrains.jewel.ui.component.TabStrip
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 import org.jetbrains.jewel.ui.component.separator
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.theme.defaultTabStyle
@@ -242,21 +241,25 @@ private fun DetailsBody(
 
         if (groupTabs) {
             // Grouped: General and Files run together in one continuous scroll, no tab strip.
-            Column(
-                modifier = Modifier.fillMaxWidth().weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(BlazeLayout.ContentPaddingLarge),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GeneralTab(download)
-                if (showFiles) {
-                    Text(
-                        text = filesLabel,
-                        style = JewelTheme.typography.medium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = JewelTheme.globalColors.text.normal,
-                    )
-                    FilesTab(files.map { it.path to it.size })
+            // The Jewel container owns the scroll so the pane gets the overlay scrollbar like every
+            // other scroll area in the chrome.
+            VerticallyScrollableContainer(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(BlazeLayout.ContentPaddingLarge),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GeneralTab(download)
+                    if (showFiles) {
+                        Text(
+                            text = filesLabel,
+                            // The grouped view's one section heading, i.e. a group header - the exempt
+                            // family. Routed through the shared style so its weight is audited.
+                            style = BlazeTypography.emphasizedHeader,
+                            color = JewelTheme.globalColors.text.normal,
+                        )
+                        FilesTab(files.map { it.path to it.size })
+                    }
                 }
             }
         } else {
@@ -286,15 +289,16 @@ private fun DetailsBody(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = BlazeLayout.ContentPadding),
             )
 
-            Column(
-                modifier = Modifier.fillMaxWidth().weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(BlazeLayout.ContentPaddingLarge),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                when (tabIndex) {
-                    0 -> GeneralTab(download)
-                    else -> FilesTab(files.map { it.path to it.size })
+            VerticallyScrollableContainer(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(BlazeLayout.ContentPaddingLarge),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    when (tabIndex) {
+                        0 -> GeneralTab(download)
+                        else -> FilesTab(files.map { it.path to it.size })
+                    }
                 }
             }
         }
