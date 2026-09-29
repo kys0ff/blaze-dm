@@ -44,6 +44,7 @@ class LocalApiServerTest {
         job.cancel()
     }
 
+    // TODO: make use of property 'api'
     private class Running(val base: String, val port: Int, val token: String, val api: ApplicationDownloadService)
 
     private fun start(

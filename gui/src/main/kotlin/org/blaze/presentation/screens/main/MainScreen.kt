@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.Navigator
@@ -21,13 +23,17 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.Sidebar
+import org.blaze.presentation.components.BackgroundTasksPopup
+import org.blaze.presentation.components.BackgroundTasksStatusItem
+import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.SidebarItem
+import org.blaze.presentation.components.ToolWindowStripe
 import org.blaze.presentation.components.StatusBar
 import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatSpeed
 import org.blaze.presentation.screens.downloads.attention
+import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.settings.SettingsScreen
@@ -35,6 +41,7 @@ import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.jetbrains.jewel.ui.typography
 
 class MainScreen : Screen {
     @Composable
@@ -43,8 +50,17 @@ class MainScreen : Screen {
         val state by screenModel.state.collectAsState()
         val downloads = state.downloads
         val strings = blazeStrings
+        val shortcuts = LocalShortcutLabels.current
+
+        // Live transfers surfaced in the status bar; QUEUED counts too so the popup shows the whole
+        // pending set, while a row's own pause button is only offered while it is actually moving.
+        val running = downloads.filter {
+            it.state == DownloadState.DOWNLOADING || it.state == DownloadState.QUEUED
+        }
+        var showTasks by remember { mutableStateOf(false) }
 
         Navigator(DownloadsScreen()) { navigator ->
+            Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.weight(1f)) {
                     val sidebarItems = listOf(
@@ -54,7 +70,12 @@ class MainScreen : Screen {
                             id = "downloads",
                             count = downloads.size.takeIf { it > 0 }
                         ),
-                        SidebarItem(strings.settings.title, AllIconsKeys.General.Settings, "settings")
+                        SidebarItem(
+                            label = strings.settings.title,
+                            icon = AllIconsKeys.General.Settings,
+                            id = "settings",
+                            shortcut = shortcuts.settings,
+                        )
                     )
 
                     val currentScreen = navigator.lastItem
@@ -64,9 +85,9 @@ class MainScreen : Screen {
                         else -> sidebarItems[0]
                     }
 
-                    Sidebar(
+                    ToolWindowStripe(
                         items = sidebarItems,
-                        selectedItem = selectedItem,
+                        selectedId = selectedItem.id,
                         onItemSelected = { item ->
                             when (item.id) {
                                 "downloads" -> if (currentScreen !is DownloadsScreen) navigator.replaceAll(
@@ -91,8 +112,13 @@ class MainScreen : Screen {
                         ?.let { strings.downloads.speed(formatSpeed(it, strings)) },
                     alert = downloads.toStatusAlert(strings),
                     trailing = {
+                        BackgroundTasksStatusItem(
+                            runningCount = running.size,
+                            expanded = showTasks,
+                            onClick = { showTasks = !showTasks },
+                        )
                         if (state.snailModeEnabled) {
-                            val snailStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+                            val snailStyle = JewelTheme.typography.small
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -114,6 +140,16 @@ class MainScreen : Screen {
                         }
                     }
                 )
+            }
+
+            if (showTasks) {
+                BackgroundTasksPopup(
+                    running = running,
+                    onPause = { id -> screenModel.onEvent(DownloadsEvent.Pause(id)) },
+                    onCancel = { id -> screenModel.onEvent(DownloadsEvent.Cancel(id)) },
+                    onDismiss = { showTasks = false },
+                )
+            }
             }
         }
     }

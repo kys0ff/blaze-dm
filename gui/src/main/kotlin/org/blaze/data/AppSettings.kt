@@ -41,5 +41,28 @@ data class AppSettings(
      * Also notify while the Blaze window is visible and focused. Off by default: a user staring
      * at the list has already seen the row change, so a desktop banner would only repeat it.
      */
-    val notifyWhileWindowInSight: Boolean = false
+    val notifyWhileWindowInSight: Boolean = false,
+
+    // ── Downloads tool-window layout ───────────────────────────────────────────
+    // Kept as primitives (not a nested @Serializable type from another module) so this file stays
+    // self-contained; the view rehydrates them into its own layout model.
+
+    /** Chosen download-table column widths, keyed by column id, in dp. Absent id = default width. */
+    val downloadsColumnWidths: Map<String, Float> = emptyMap(),
+    /** Name of the [org.blaze.presentation.screens.downloads.DownloadSortField] the list is ordered by. */
+    val downloadsSortField: String = "DATE_ADDED",
+    /** Direction of the persisted sort (see [downloadsSortField]). */
+    val downloadsSortAscending: Boolean = false,
+    /** Whether the Details tool window beside the list is shown. */
+    val detailsPaneVisible: Boolean = true,
+    /** Fraction of the list|details split given to the list, persisted across launches. */
+    val detailsSplitFraction: Float = 0.72f,
+    /** Confirm before pausing a download whose progress would be discarded. On by default. */
+    val warnBeforeDiscardingProgress: Boolean = true,
+    /** Name of the [org.blaze.presentation.screens.downloads.DetailsViewMode] the pane presents in. */
+    val detailsViewMode: String = "DOCK_PINNED",
+    /** Name of the [org.blaze.presentation.screens.downloads.DetailsMoveTo] the pane docks to. */
+    val detailsMoveTo: String = "RIGHT_TOP",
+    /** Whether the pane's tabs are grouped into one continuous view instead of a tab strip. */
+    val groupDetailsTabs: Boolean = false,
 )

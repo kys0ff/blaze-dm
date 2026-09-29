@@ -10,13 +10,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.typography
 
 @Composable
 fun ToolWindowHeader(
@@ -27,7 +27,7 @@ fun ToolWindowHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(32.dp)
+                .height(BlazeLayout.ToolWindowHeaderHeight)
                 .background(JewelTheme.globalColors.panelBackground)
                 .padding(start = 12.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -35,7 +35,7 @@ fun ToolWindowHeader(
         ) {
             Text(
                 text = title,
-                style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.Medium),
+                style = JewelTheme.typography.medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

@@ -11,6 +11,30 @@ sealed interface DownloadsEvent {
 
     /** Narrows the list to a single state (or clears the narrowing with [DownloadFilter.ALL]). */
     data class FilterBy(val filter: DownloadFilter) : DownloadsEvent
+
+    /** Sets a table column's width in dp ([columnId] is a `DownloadsColumn.id`); persisted. */
+    data class ResizeColumn(val columnId: String, val widthDp: Float) : DownloadsEvent
+
+    /** Records the list|details split fraction after a divider drag; persisted. */
+    data class SetSplitFraction(val fraction: Float) : DownloadsEvent
+
+    /** Shows or hides the Details tool window; persisted. */
+    data class ToggleDetails(val visible: Boolean) : DownloadsEvent
+
+    /** Turns the pause-progress confirmation on/off (the "do not ask again" checkbox); persisted. */
+    data class SetWarnBeforeDiscardingProgress(val enabled: Boolean) : DownloadsEvent
+
+    /** Picks the Details pane's view mode (docked / floated); persisted. */
+    data class SetDetailsViewMode(val mode: DetailsViewMode) : DownloadsEvent
+
+    /** Docks the Details pane to a new edge/corner; persisted. */
+    data class SetDetailsMoveTo(val position: DetailsMoveTo) : DownloadsEvent
+
+    /** Groups the Details pane's tabs into one continuous view, or splits them back out; persisted. */
+    data class ToggleGroupDetailsTabs(val enabled: Boolean) : DownloadsEvent
+
+    /** Applies a size/side preset from the Details pane's Resize submenu; persisted. */
+    data class ResizeDetails(val preset: DetailsResize) : DownloadsEvent
     data class AddDownload(
         val url: String,
         val savePath: String,

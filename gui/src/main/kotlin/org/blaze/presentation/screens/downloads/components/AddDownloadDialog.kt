@@ -12,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -40,6 +39,7 @@ import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.typography
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -326,7 +326,7 @@ fun AddDownloadDialog(
                 IndeterminateHorizontalProgressBar(modifier = Modifier.fillMaxWidth())
                 Text(
                     text = dStrings.fetchingMetadata,
-                    style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+                    style = JewelTheme.typography.small
                 )
             }
         }

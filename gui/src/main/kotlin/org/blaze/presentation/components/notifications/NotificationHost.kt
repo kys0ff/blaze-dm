@@ -34,7 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.blaze.i18n.blazeStrings
@@ -46,6 +45,7 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Link
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.jetbrains.jewel.ui.typography
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -114,7 +114,9 @@ private fun NotificationBalloon(
     }
 
     LaunchedEffect(hovered) {
-        if (!hovered) {
+        // Info/warning balloons fade on their own; errors stay until dismissed, like the IDE's
+        // sticky error notifications (a 12s timeout would drop the detail before it is read).
+        if (!hovered && notification.type != NotificationType.ERROR) {
             delay(notification.type.timeoutMillis.milliseconds)
             close()
         }
@@ -139,7 +141,7 @@ private fun NotificationBalloon(
                     min = balloonMinWidth,
                     max = balloonMaxWidth,
                 )
-                .shadow(8.dp, balloonShape)
+                .shadow(4.dp, balloonShape)
                 .clip(balloonShape)
                 .background(panelColor)
                 .then(
@@ -188,8 +190,7 @@ private fun NotificationBalloon(
 
                 Text(
                     text = notification.message,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
+                    style = JewelTheme.typography.small,
                     maxLines = 6,
                     overflow = TextOverflow.Ellipsis,
                 )

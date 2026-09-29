@@ -88,6 +88,17 @@ interface BlazeStrings {
             val descending: String
         }
 
+        /** Header labels for the download table's columns (sorting reuses [Sorting]). */
+        val columns: Columns
+        interface Columns {
+            val name: String
+            val progress: String
+            val size: String
+            val speed: String
+            val eta: String
+            val status: String
+        }
+
         val selection: Selection
         interface Selection {
             /** Tooltip/label for the per-row selection checkbox. */
@@ -108,6 +119,50 @@ interface BlazeStrings {
             val remove: String
         }
         
+        /** Labels for the collapsible Details tool window shown beside the list. */
+        val detailsPane: DetailsPane
+        interface DetailsPane {
+            val tabGeneral: String
+            val tabFiles: String
+            /** Shown in the pane when no single download is selected. */
+            val emptyHint: String
+            /** Toolbar/stripe toggle that hides the pane. */
+            val hide: String
+            /** Toolbar/stripe toggle that brings the pane back. */
+            val show: String
+
+            /** The gear menu that opens the pane's IDE-style tool-window options. */
+            val options: ToolWindowOptions
+            interface ToolWindowOptions {
+                /** Tooltip for the gear button that opens the options menu. */
+                val menuTooltip: String
+                /** Toggle that stacks the pane's tabs into one continuous view. */
+                val groupTabs: String
+                val viewMode: String
+                val moveTo: String
+                val resize: String
+                // View Mode (5)
+                val dockPinned: String
+                val dockUnpinned: String
+                val undock: String
+                val float: String
+                val window: String
+                // Move To (6)
+                val leftTop: String
+                val leftBottom: String
+                val rightTop: String
+                val rightBottom: String
+                val bottomLeft: String
+                val bottomRight: String
+                // Resize (5)
+                val stretchLeft: String
+                val stretchRight: String
+                val stretchTop: String
+                val stretchBottom: String
+                val maximize: String
+            }
+        }
+
         val toolbar: Toolbar
         interface Toolbar {
             val add: String
@@ -117,6 +172,15 @@ interface BlazeStrings {
             val importPortable: String
             /** Tooltip for the Snail Mode toolbar toggle. */
             val snailMode: String
+        }
+
+        /** Labels for the status-bar Background Tasks popup. */
+        val backgroundTasks: BackgroundTasks
+        interface BackgroundTasks {
+            val title: String
+            val empty: String
+            /** Clickable status-bar summary naming how many transfers are live. */
+            fun runningCount(n: Int): String
         }
 
         val dialogs: Dialogs

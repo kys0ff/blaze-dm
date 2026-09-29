@@ -1,10 +1,8 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,17 +12,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,22 +32,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.download.api.DownloadPriority
+import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.ToolbarIconButton
+import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.DownloadsColumn
+import org.blaze.presentation.components.LocalWindowActive
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
-import org.blaze.presentation.screens.downloads.canCancel
-import org.blaze.presentation.screens.downloads.canPause
-import org.blaze.presentation.screens.downloads.canResume
 import org.blaze.presentation.screens.downloads.isTorrentSource
 import org.blaze.presentation.screens.downloads.isUnresumableInProgress
 import org.blaze.presentation.screens.downloads.isWaitingForPeers
@@ -71,48 +62,66 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.theme.simpleListItemStyle
+import org.jetbrains.jewel.ui.typography
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
-private val ListItemShape = RoundedCornerShape(6.dp)
-private val RowMinHeight = 52.dp
-private val LeadingIconSize = 16.dp
+private val RowShape = RoundedCornerShape(4.dp)
+internal val CellStartPadding = 8.dp
+internal val CellEndPadding = 10.dp
+
+/** Fixed slot for the leading selection checkbox, so the header's select-all and every row align. */
+val SelectionCellWidth = 24.dp
 
 /**
- * Fixed slot for the trailing area so the text column never re-measures when the hover
- * actions appear (max 4 buttons: files toggle, pause/resume/retry, cancel, remove).
- * Tune to your ToolbarIconButton size.
+ * Resolves a column's share of the table width. Every cell in the header and in a row reads this,
+ * so columns stay perfectly aligned; using the dp value as a weight lets the row always fill the
+ * available width (the IDE's stretchy table) while a drag re-weights just the resized column.
  */
-private val TrailingWidth = 104.dp
-
-private const val META_SEPARATOR = " · "
+internal fun DownloadsColumn.weightFor(widths: Map<String, Float>): Float =
+    widths[id] ?: defaultWidth.value
 
 /**
- * How often a completed row re-checks its artifact on disk. A finished transfer's entry rarely
- * changes, so without this a file deleted by the OS or a file manager would leave the row looking
- * healthy until the next unrelated list update. Only visible rows are composed, so the cost is
- * bounded by what's on screen.
+ * Whether a finished download's artifact is still on disk. A completed transfer's entry rarely
+ * changes, so without a periodic re-check a file deleted by the OS would leave the row looking
+ * healthy until the next unrelated list update. Only visible rows are composed.
  */
 private const val ARTIFACT_CHECK_INTERVAL_MS = 3_000L
 
-/**
- * Whether a finished download's artifact is still on disk. [savePath] is the file for HTTP and the
- * folder a torrent wrote into, and [File.exists] answers for both.
- */
 private fun downloadArtifactExists(savePath: String): Boolean =
     runCatching { File(savePath).exists() }.getOrDefault(false)
 
 /**
- * The row's selection toggle. Drawn as a small rounded box (rather than Jewel's `Checkbox`, which is
- * bound to list-item styling) so it sits cleanly on the leading edge of a compact download row. The
- * border only appears when [emphasized] — on hover, in selection mode, or when checked — so a resting
- * list stays quiet.
+ * The row's leading icon. Active transport states own their glyph (uploading seeds, failures),
+ * while a resting row is identified by *what it is*: a torrent reads as a folder, a finished
+ * single file reads as its file type, and an in-flight web link keeps the download glyph.
+ */
+private fun Download.leadingIconKey(): IconKey = when {
+    state == DownloadState.SEEDING -> AllIconsKeys.Actions.Upload
+    state == DownloadState.FAILED -> AllIconsKeys.General.Error
+    isTorrentSource() -> AllIconsKeys.Nodes.Folder
+    state == DownloadState.COMPLETED -> fileTypeIcon(name)
+    else -> AllIconsKeys.Actions.Download
+}
+
+private val ARCHIVE_EXTENSIONS =
+    setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "iso", "zst")
+
+private fun fileTypeIcon(fileName: String): IconKey {
+    val extension = fileName.substringAfterLast('.', "").lowercase()
+    return if (extension in ARCHIVE_EXTENSIONS) AllIconsKeys.FileTypes.Archive else AllIconsKeys.FileTypes.Any_type
+}
+
+/**
+ * The row's selection toggle: a small rounded box (rather than Jewel's `Checkbox`, bound to list-item
+ * styling) so it sits cleanly in the compact leading slot. The border only appears when [emphasized].
  */
 @Composable
 private fun SelectionCheckbox(checked: Boolean, emphasized: Boolean, onToggle: () -> Unit) {
     val strings = blazeStrings
     val shape = RoundedCornerShape(3.dp)
-    val borderColor = if (checked || emphasized) BlazeColors.accent else JewelTheme.globalColors.borders.normal
+    val borderColor =
+        if (checked || emphasized) BlazeColors.accent else JewelTheme.globalColors.borders.normal
     Box(
         modifier = Modifier
             .size(15.dp)
@@ -120,8 +129,7 @@ private fun SelectionCheckbox(checked: Boolean, emphasized: Boolean, onToggle: (
             .background(if (checked) BlazeColors.accent else Color.Transparent)
             .border(1.dp, borderColor, shape)
             .semantics { contentDescription = strings.downloads.selection.select }
-            .clickable(onClick = onToggle)
-            .padding(1.dp),
+            .clickable(onClick = onToggle),
         contentAlignment = Alignment.Center,
     ) {
         if (checked) {
@@ -134,58 +142,56 @@ private fun SelectionCheckbox(checked: Boolean, emphasized: Boolean, onToggle: (
     }
 }
 
+/** A themed tooltip bubble (Compose foundation's `TooltipArea` is not Material), styled from tokens. */
+@Composable
+private fun TableCellTooltip(text: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(JewelTheme.globalColors.panelBackground)
+            .border(1.dp, JewelTheme.globalColors.borders.normal, RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(text = text, style = JewelTheme.typography.small)
+    }
+}
+
 /**
- * The row's leading icon. Active transport states own their glyph (uploading seeds, failures),
- * while a resting row is identified by *what it is*: a torrent reads as a folder (its artifact is
- * a directory tree), a finished single file reads as its file type, and an in-flight web link
- * keeps the download glyph. Icons are decoration - the state is always spelled out by the badge,
- * so the accessibility description stays on the state text for screen readers.
+ * One download rendered as an IDE table row: a fixed [BlazeLayout.RowHeight] tall, single-line row
+ * split into the six weighted columns so it aligns exactly with [DownloadsTableHeader]. Everything
+ * the wide two-line row used to carry is preserved but relocated: the per-file breakdown and the
+ * lifecycle advisories now surface in the Details pane, and the destructive-pause warning lives on
+ * the Pause affordance's tooltip - see the row element -> location mapping.
  */
-private fun Download.leadingIconKey(): IconKey = when {
-    state == DownloadState.SEEDING -> AllIconsKeys.Actions.Upload
-    state == DownloadState.FAILED -> AllIconsKeys.General.Error
-    isTorrentSource() -> AllIconsKeys.Nodes.Folder
-    state == DownloadState.COMPLETED -> fileTypeIcon(name)
-    else -> AllIconsKeys.Actions.Download
-}
-
-/** Extensions whose artifact is almost certainly an archive; anything else gets the generic file glyph. */
-private val ARCHIVE_EXTENSIONS = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "iso", "zst")
-
-private fun fileTypeIcon(fileName: String): IconKey {
-    val extension = fileName.substringAfterLast('.', "").lowercase()
-    return if (extension in ARCHIVE_EXTENSIONS) AllIconsKeys.FileTypes.Archive else AllIconsKeys.FileTypes.Any_type
-}
-
 @OptIn(ExperimentalJewelApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DownloadRow(
     download: Download,
     actions: DownloadRowActions,
+    columnWidths: Map<String, Float>,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     inSelectionMode: Boolean = false,
     onSelect: (toggle: Boolean) -> Unit = {},
     hideResume: Boolean = false,
-    capabilities: DownloadCapabilities = DownloadCapabilities()
+    capabilities: DownloadCapabilities = DownloadCapabilities(),
 ) {
-    var showFileList by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val listColors = JewelTheme.simpleListItemStyle.colors
+    // The IDE paints the blue selection only while its window is focused; a blurred frame falls back
+    // to the gray inactive selection, exactly like a focused-then-unfocused tool window.
+    val windowActive = LocalWindowActive.current
+    val selectedBg =
+        if (windowActive) listColors.backgroundSelectedActive else listColors.backgroundSelected
+    val selectedFg =
+        if (windowActive) listColors.contentSelectedActive else listColors.contentSelected
     val strings = blazeStrings
 
-    val files = download.selectedFiles.orEmpty()
-    val hasFiles = files.isNotEmpty()
-
-    // ── Derived state ─────────────────────────────────────────────────────────
     val isFailed = download.state == DownloadState.FAILED
-    val isCompleted = download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
-    val isTorrent = download.isTorrentSource()
+    val isCompleted =
+        download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
 
-    // A finished row's file can vanish outside the app (deleted, moved, disk cleaned). Track that
-    // so the row can gray itself and offer to fetch the file again or clear the entry. Re-checked on
-    // a timer because a completed download barely ever changes, so recomposition alone would stay stale.
     var fileMissing by remember(download.id, download.state, download.savePath) {
         mutableStateOf(isCompleted && !downloadArtifactExists(download.savePath))
     }
@@ -198,73 +204,55 @@ fun DownloadRow(
         }
     }
 
-    // ── Colors ────────────────────────────────────────────────────────────────
     val background = when {
-        isSelected -> listColors.backgroundSelectedActive
+        isSelected -> selectedBg
         hovered -> BlazeColors.hover
         else -> Color.Transparent
     }
     val disabledText = JewelTheme.globalColors.text.disabled
     val primary = when {
-        isSelected -> listColors.contentSelectedActive
+        isSelected -> selectedFg
         fileMissing -> disabledText
         else -> Color.Unspecified
     }
     val secondary = when {
-        isSelected -> listColors.contentSelectedActive
+        isSelected -> selectedFg
         fileMissing -> disabledText
         else -> JewelTheme.globalColors.text.info
     }
 
-    val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
-        (download.totalSize == null || (download.downloadedSize == 0L && download.speed == 0L))
-    val progress = download.progress.coerceIn(0f, 1f)
-    val showActions = hovered || isSelected || isFailed || fileMissing || download.state == DownloadState.SEEDING
-
-    val meta = buildList {
-        if (download.scheduledAt != null && download.scheduledAt > System.currentTimeMillis()) {
-            add(strings.downloads.status.scheduled)
+    // ── Conditions the State cell surfaces + the tooltip explains ───────────────
+    val waitingForPeers = download.isWaitingForPeers()
+    val cannotResume = !isCompleted && !isFailed && download.isUnresumableInProgress()
+    val stateTooltip = buildString {
+        if (waitingForPeers) append(strings.downloads.advisories.waitingForPeers)
+        if (cannotResume) {
+            if (isNotEmpty()) append("\n")
+            append(strings.downloads.advisories.cannotResume)
         }
-        if (hasFiles) add(strings.downloads.filesCount(files.size))
-        val totalSize = download.totalSize
-        add(
-            if (totalSize != null) {
-                strings.downloads.progress(
-                    formatSize(download.downloadedSize, strings),
-                    formatSize(totalSize, strings)
-                )
-            } else {
-                formatSize(download.downloadedSize, strings)
-            }
-        )
-        if (download.state == DownloadState.DOWNLOADING || download.state == DownloadState.SEEDING) {
-            add(strings.downloads.speed(formatSpeed(download.speed, strings)))
-            val showEta = !isTorrent || (download.downloadedSize > 0L || download.speed > 0L)
-            if (showEta) {
-                download.eta?.let { add(formatDuration(it)) }
-            }
+        if (fileMissing) {
+            if (isNotEmpty()) append("\n")
+            append(strings.downloads.advisories.fileMissing)
         }
-        if (download.peers > 0) add(strings.downloads.peers(download.peers))
-    }.joinToString(META_SEPARATOR)
+    }
 
-    val smallText = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
-
-    // Right-click anywhere on the row opens the state-aware context menu. The row's own
-    // gestures (select on click, open on double-click) live on the inner Row, so the
-    // secondary-button detector installed by ContextMenuArea and the primary clicks coexist.
     ContextMenuArea(
-        items = { buildDownloadContextMenu(download, capabilities, strings, actions, hideResume, fileMissing) }
-    ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 1.dp)
+        items = {
+            buildDownloadContextMenu(
+                download,
+                capabilities,
+                strings,
+                actions,
+                hideResume,
+                fileMissing
+            )
+        }
     ) {
         Row(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
-                .heightIn(min = RowMinHeight)
-                .clip(ListItemShape)
+                .height(BlazeLayout.RowHeight)
+                .clip(RowShape)
                 .background(background)
                 .hoverable(interaction)
                 .combinedClickable(
@@ -272,217 +260,271 @@ fun DownloadRow(
                     indication = null,
                     onClick = { onSelect(false) },
                     onDoubleClick = { if (isCompleted && !fileMissing) actions.openFile() },
-                )
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Selection checkbox: always present so multi-select is discoverable, but only colored once
-            // the row is part of the selection (or the list is already in selection mode).
-            SelectionCheckbox(
-                checked = isSelected,
-                emphasized = isSelected || inSelectionMode || hovered,
-                onToggle = { onSelect(true) },
-            )
-            Icon(
-                key = download.leadingIconKey(),
-                contentDescription = download.state.label(strings),
-                tint = if (fileMissing) disabledText else Color.Unspecified,
-                modifier = Modifier.size(LeadingIconSize)
-            )
-
-            // ── Text column ───────────────────────────────────────────────────
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = download.name,
-                    color = primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Completed items are done: an IDE wouldn't keep a full progress bar around.
-                if (!isCompleted) {
-                    Spacer(Modifier.height(4.dp))
-                    if (isIndeterminate) {
-                        IndeterminateHorizontalProgressBar(
-                            modifier = Modifier.fillMaxWidth().height(4.dp)
-                        )
-                    } else {
-                        HorizontalProgressBar(
-                            progress = progress,
-                            modifier = Modifier.fillMaxWidth().height(4.dp)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    StatusBadge(download.state, dimmed = fileMissing)
-                    // Priority is a persistent property of the row, not an in-progress hint - so unlike
-                    // the portable indicator it stays visible after completion, letting the user see and
-                    // confirm what setting the download was queued under.
-                    if (download.priority != DownloadPriority.NORMAL) {
-                        PriorityChip(download.priority)
-                    }
-                    // The file is gone: say so up front, since opening it (double-click, menu) is no longer possible.
-                    if (fileMissing) {
-                        AdvisoryChip(strings.downloads.advisories.fileMissing, AdvisoryTone.ERROR)
-                    }
-                    // Conditions the row can state up front, before a click spends something: a server
-                    // that refuses ranges makes pause destructive, a peerless torrent makes it endless.
-                    if (download.isWaitingForPeers()) {
-                        AdvisoryChip(strings.downloads.advisories.waitingForPeers, AdvisoryTone.WARNING)
-                    }
-                    if (!isCompleted && !isFailed && download.isUnresumableInProgress()) {
-                        AdvisoryChip(strings.downloads.advisories.cannotResume, AdvisoryTone.WARNING)
-                    }
-                    // Every in-flight download carries self-contained resume state, so the artifact can
-                    // be moved to another PC and continued. Show an unobtrusive badge until completion,
-                    // when the metadata is stripped and the badge disappears with it.
-                    if (!isCompleted && !isFailed) {
-                        Icon(
-                            key = AllIconsKeys.General.ShowInfos,
-                            contentDescription = strings.downloads.portable.indicator,
-                            tint = secondary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                    Text(
-                        text = meta,
-                        style = smallText,
-                        color = secondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .then(
-                                if (hasFiles) Modifier.clickable { showFileList = !showFileList }
-                                else Modifier
-                            )
-                    )
-                    if (isFailed) {
-                        download.error?.let { error ->
-                            Text(
-                                text = error.toFriendlyMessage(strings),
-                                style = smallText,
-                                color = if (isSelected) primary else BlazeColors.error,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // ── Trailing slot: percent when idle, actions on hover/selection ──
+            // ── Leading selection slot (mirrors the header's select-all) ──
             Box(
-                modifier = Modifier.width(TrailingWidth),
-                contentAlignment = Alignment.CenterEnd
+                modifier = Modifier.width(SelectionCellWidth).fillMaxHeight(),
+                contentAlignment = Alignment.Center,
             ) {
-                if (showActions) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        if (hasFiles) {
-                            ToolbarIconButton(
-                                if (showFileList) AllIconsKeys.General.ChevronDown
-                                else AllIconsKeys.General.ChevronRight,
-                                strings.downloads.actions.showFiles,
-                                { showFileList = !showFileList }
-                            )
-                        }
-                        // The same eligibility the bulk cluster and the right-click menu read, so a
-                        // row never offers a command its state cannot obey.
-                        when {
-                            download.canPause() ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Pause, strings.downloads.actions.pause, actions.pause)
-
-                            download.canResume(hideResume) ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Resume, strings.downloads.actions.resume, actions.resume)
-
-                            download.state == DownloadState.FAILED ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Restart, strings.downloads.actions.retry, actions.retry)
-
-                            // The file was deleted after finishing, so fetching it again is the one
-                            // useful thing to offer right on the row.
-                            download.state == DownloadState.COMPLETED && fileMissing ->
-                                ToolbarIconButton(AllIconsKeys.Actions.Download, strings.downloads.actions.reDownload, actions.reDownload)
-                        }
-                        if (download.canCancel()) {
-                            ToolbarIconButton(AllIconsKeys.Actions.Cancel, strings.downloads.actions.cancel, actions.cancel)
-                        }
-                        if (fileMissing) {
-                            ToolbarIconButton(AllIconsKeys.Actions.GC, strings.downloads.actions.clear, actions.clear)
-                        } else {
-                            ToolbarIconButton(AllIconsKeys.Actions.GC, strings.downloads.actions.remove, actions.remove)
-                        }
-                    }
-                } else if (!isCompleted && !isIndeterminate) {
-                    Text(
-                        text = "${(progress * 100).toInt()}%",
-                        style = smallText,
-                        color = secondary
-                    )
-                }
+                SelectionCheckbox(
+                    checked = isSelected,
+                    emphasized = isSelected || inSelectionMode || hovered,
+                    onToggle = { onSelect(true) },
+                )
             }
-        }
 
-        // ── Expandable file list (now laid out *below* the row, not on top of it) ──
-        AnimatedVisibility(
-            visible = showFileList && hasFiles,
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
-            val panelShape = ListItemShape
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 36.dp, end = 10.dp, top = 2.dp, bottom = 6.dp)
-                    .heightIn(max = 220.dp) // torrents can contain thousands of files
-                    .clip(panelShape)
-                    .background(JewelTheme.globalColors.panelBackground.copy(alpha = 0.5f))
-                    .border(1.dp, JewelTheme.globalColors.borders.normal, panelShape),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(files) { file ->
-                    // The panel sits outside the selected row, so always use the theme's
-                    // "info" color here — `secondary` turns white when selected.
-                    val dim = JewelTheme.globalColors.text.info
-                    val path = file.path.replace('\\', '/')
-                    val name = path.substringAfterLast('/')
-                    val dir = path.substringBeforeLast('/', "")
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+            // ── Columns, in order, weighted to match the header ──
+            DownloadsColumn.entries.forEach { column ->
+                val cellModifier = Modifier
+                    .weight(column.weightFor(columnWidths))
+                    .fillMaxHeight()
+                    .padding(start = CellStartPadding, end = CellEndPadding)
+                when (column) {
+                    DownloadsColumn.Name -> Box(
+                        cellModifier,
+                        contentAlignment = Alignment.CenterStart
                     ) {
-                        // IDE style: file name first, parent path dimmed after it.
+                        NameCell(
+                            download,
+                            primary,
+                            secondary,
+                            iconTint = if (fileMissing) disabledText else Color.Unspecified,
+                            strings = strings
+                        )
+                    }
+
+                    DownloadsColumn.Progress -> Box(
+                        cellModifier,
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        ProgressCell(download, secondary, strings)
+                    }
+
+                    DownloadsColumn.Size -> Box(
+                        cellModifier,
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
                         Text(
-                            text = buildAnnotatedString {
-                                append(name)
-                                if (dir.isNotEmpty()) {
-                                    withStyle(SpanStyle(color = dim)) { append("  $dir") }
-                                }
-                            },
-                            style = smallText,
+                            text = sizeText(download, strings),
+                            style = JewelTheme.typography.small,
+                            color = primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
                         )
+                    }
+
+                    DownloadsColumn.Speed -> Box(
+                        cellModifier,
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
                         Text(
-                            text = formatSize(file.size, strings),
-                            style = smallText,
-                            color = dim
+                            text = speedText(download, strings),
+                            style = JewelTheme.typography.small,
+                            color = secondary,
+                            maxLines = 1,
                         )
+                    }
+
+                    DownloadsColumn.Eta -> Box(
+                        cellModifier,
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Text(
+                            text = etaText(download, strings),
+                            style = JewelTheme.typography.small,
+                            color = secondary,
+                            maxLines = 1,
+                        )
+                    }
+
+                    DownloadsColumn.State -> {
+                        val stateContent: @Composable () -> Unit = {
+                            Box(cellModifier, contentAlignment = Alignment.CenterStart) {
+                                StateCell(
+                                    download,
+                                    waitingForPeers,
+                                    cannotResume,
+                                    fileMissing,
+                                    primary,
+                                    secondary,
+                                    strings
+                                )
+                            }
+                        }
+                        if (stateTooltip.isNotEmpty()) {
+                            TableCellTooltipContent(text = stateTooltip, content = stateContent)
+                        } else {
+                            stateContent()
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TableCellTooltipContent(text: String, content: @Composable () -> Unit) {
+    TooltipArea(tooltip = { TableCellTooltip(text) }, content = content)
+}
+
+@Composable
+private fun NameCell(
+    download: Download,
+    primary: Color,
+    secondary: Color,
+    iconTint: Color,
+    strings: BlazeStrings,
+) {
+    val files = download.selectedFiles.orEmpty()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            key = download.leadingIconKey(),
+            contentDescription = download.state.label(strings),
+            tint = iconTint,
+            modifier = Modifier.size(BlazeLayout.RowLeadingIconSize),
+        )
+        Text(
+            text = download.name,
+            color = primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (files.isNotEmpty()) {
+            Text(
+                text = "(${strings.downloads.filesCount(files.size)})",
+                style = JewelTheme.typography.small,
+                color = secondary,
+                maxLines = 1,
+            )
+        }
+        if (download.priority != DownloadPriority.NORMAL) {
+            PriorityChip(download.priority)
+        }
+    }
+}
+
+@Composable
+private fun ProgressCell(
+    download: Download,
+    secondary: Color,
+    strings: BlazeStrings
+) { // TODO: make use of strings or remove it
+    val isCompleted =
+        download.state == DownloadState.COMPLETED || download.state == DownloadState.SEEDING
+    val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
+            (download.totalSize == null || (download.downloadedSize == 0L && download.speed == 0L))
+    val progress = download.progress.coerceIn(0f, 1f)
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (isIndeterminate) {
+            IndeterminateHorizontalProgressBar(
+                modifier = Modifier.weight(1f).height(4.dp)
+            )
+        } else {
+            HorizontalProgressBar(
+                progress = if (isCompleted) 1f else progress,
+                modifier = Modifier.weight(1f).height(4.dp),
+            )
+        }
+        Text(
+            text = if (isIndeterminate) "\u2014" else "${(progress * 100).toInt()}%",
+            style = JewelTheme.typography.small,
+            color = secondary,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun StateCell(
+    download: Download,
+    waitingForPeers: Boolean,
+    cannotResume: Boolean,
+    fileMissing: Boolean,
+    primary: Color,
+    secondary: Color, // TODO: make use of secondary
+    strings: BlazeStrings,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (waitingForPeers) {
+            // "Waiting for peers" reads as the state itself; full detail lives in the cell tooltip.
+            Text(
+                text = strings.downloads.advisories.waitingForPeers,
+                style = JewelTheme.typography.small,
+                color = if (primary != Color.Unspecified) primary else BlazeColors.warning,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            StatusBadge(download.state, dimmed = fileMissing)
+        }
+        if (download.state == DownloadState.FAILED) {
+            download.error?.let { error ->
+                Text(
+                    text = error.toFriendlyMessage(strings),
+                    style = JewelTheme.typography.small,
+                    color = if (primary != Color.Unspecified) primary else BlazeColors.error,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+        if (cannotResume) {
+            Icon(
+                key = AllIconsKeys.General.Warning,
+                contentDescription = strings.downloads.advisories.cannotResume,
+                tint = BlazeColors.warning,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
+}
+
+private fun sizeText(download: Download, strings: BlazeStrings): String {
+    val total = download.totalSize
+    return if (total != null) {
+        strings.downloads.progress(
+            formatSize(download.downloadedSize, strings),
+            formatSize(total, strings)
+        )
+    } else {
+        formatSize(download.downloadedSize, strings)
+    }
+}
+
+private fun speedText(download: Download, strings: BlazeStrings): String {
+    val active =
+        download.state == DownloadState.DOWNLOADING || download.state == DownloadState.SEEDING
+    return if (active && download.speed > 0) formatSpeed(download.speed, strings) else "\u2014"
+}
+
+private fun etaText(
+    download: Download,
+    strings: BlazeStrings
+): String { // TODO: make use of strings or remove it
+    val active =
+        download.state == DownloadState.DOWNLOADING || download.state == DownloadState.SEEDING
+    val eta = download.eta
+    return if (active && eta != null && (download.downloadedSize > 0L || download.speed > 0L)) {
+        formatDuration(eta)
+    } else {
+        "\u2014"
     }
 }

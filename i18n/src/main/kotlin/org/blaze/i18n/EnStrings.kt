@@ -66,6 +66,15 @@ object EnStrings : BlazeStrings {
             override val descending = "Descending"
         }
 
+        override val columns = object : BlazeStrings.Downloads.Columns {
+            override val name = "Name"
+            override val progress = "Progress"
+            override val size = "Size"
+            override val speed = "Speed"
+            override val eta = "ETA"
+            override val status = "Status"
+        }
+
         override val selection = object : BlazeStrings.Downloads.Selection {
             override val select = "Select"
             override val selectAll = "Select all"
@@ -84,6 +93,43 @@ object EnStrings : BlazeStrings {
             override val clearCompleted = "Clear completed"
             override val importPortable = "Import portable download"
             override val snailMode = "Snail Mode — throttle all downloads to a crawl"
+        }
+
+        override val detailsPane = object : BlazeStrings.Downloads.DetailsPane {
+            override val tabGeneral = "General"
+            override val tabFiles = "Files"
+            override val emptyHint = "Select a download to see details"
+            override val hide = "Hide details"
+            override val show = "Show details"
+            override val options = object : BlazeStrings.Downloads.DetailsPane.ToolWindowOptions {
+                override val menuTooltip = "Tool Window Options"
+                override val groupTabs = "Group Tabs"
+                override val viewMode = "View Mode"
+                override val moveTo = "Move To"
+                override val resize = "Resize"
+                override val dockPinned = "Dock Pinned"
+                override val dockUnpinned = "Dock Unpinned"
+                override val undock = "Undock"
+                override val float = "Float"
+                override val window = "Window"
+                override val leftTop = "Left Top"
+                override val leftBottom = "Left Bottom"
+                override val rightTop = "Right Top"
+                override val rightBottom = "Right Bottom"
+                override val bottomLeft = "Bottom Left"
+                override val bottomRight = "Bottom Right"
+                override val stretchLeft = "Stretch to Left"
+                override val stretchRight = "Stretch to Right"
+                override val stretchTop = "Stretch to Top"
+                override val stretchBottom = "Stretch to Bottom"
+                override val maximize = "Maximize Tool Window"
+            }
+        }
+
+        override val backgroundTasks = object : BlazeStrings.Downloads.BackgroundTasks {
+            override val title = "Background Tasks"
+            override val empty = "No downloads in progress"
+            override fun runningCount(n: Int) = if (n == 1) "1 download in progress" else "$n downloads in progress"
         }
 
         override val dialogs = object : BlazeStrings.Downloads.Dialogs {

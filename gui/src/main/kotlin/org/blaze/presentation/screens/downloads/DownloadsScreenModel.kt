@@ -2,6 +2,7 @@ package org.blaze.presentation.screens.downloads
 
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,7 @@ import org.blaze.domain.usecase.ResumeAllDownloadsUseCase
 import org.blaze.domain.usecase.ResumeDownloadUseCase
 import org.blaze.domain.usecase.RetryDownloadUseCase
 import org.blaze.domain.usecase.SetPriorityDownloadUseCase
+import org.blaze.data.AppSettingsRepository
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenRequest
@@ -45,6 +47,7 @@ class DownloadsScreenModel(
     private val addDownload: AddDownloadUseCase,
     private val getDestinationPath: GetDestinationPathUseCase,
     val settingsRepository: EngineSettingsRepository,
+    private val appSettingsRepository: AppSettingsRepository,
     private val pauseDownload: PauseDownloadUseCase,
     private val resumeDownload: ResumeDownloadUseCase,
     private val cancelDownload: CancelDownloadUseCase,
@@ -75,9 +78,65 @@ class DownloadsScreenModel(
 
     private val _searchQuery = MutableStateFlow("")
 
-    /** Column order + narrowing chosen through the toolbar's sort/filter controls. */
-    private val _sort = MutableStateFlow(DownloadSortField.DATE_ADDED to false)
+    /**
+     * Persisted tool-window layout (column widths, Details visibility, split fraction, pause
+     * confirmation), seeded from disk on construction and written back on change. Kept in one flow
+     * so the frequent layout edits debounce to a single `app.json` write.
+     */
+    private data class LayoutPrefs(
+        val columnWidths: Map<String, Float>,
+        val detailsVisible: Boolean,
+        val splitFraction: Float,
+        val warnBeforeDiscarding: Boolean,
+        val viewMode: DetailsViewMode,
+        val moveTo: DetailsMoveTo,
+        val groupTabs: Boolean,
+    )
+
+    /** Column order + narrowing chosen through the table header / filter bar. */
+    private val _sort = MutableStateFlow(
+        downloadSortFieldFromName(appSettingsRepository.settings.value.downloadsSortField) to
+            appSettingsRepository.settings.value.downloadsSortAscending
+    )
     private val _filter = MutableStateFlow(DownloadFilter.ALL)
+    private val _layout = MutableStateFlow(
+        appSettingsRepository.settings.value.let { saved ->
+            LayoutPrefs(
+                columnWidths = saved.downloadsColumnWidths,
+                detailsVisible = saved.detailsPaneVisible,
+                splitFraction = saved.detailsSplitFraction,
+                warnBeforeDiscarding = saved.warnBeforeDiscardingProgress,
+                viewMode = detailsViewModeFromName(saved.detailsViewMode),
+                moveTo = detailsMoveToFromName(saved.detailsMoveTo),
+                groupTabs = saved.groupDetailsTabs,
+            )
+        }
+    )
+
+    private var layoutPersistJob: Job? = null
+
+    /** Coalesces rapid layout edits (divider / column drags) into one debounced disk write. */
+    private fun persistLayout() {
+        layoutPersistJob?.cancel()
+        layoutPersistJob = screenModelScope.launch {
+            delay(LAYOUT_PERSIST_DEBOUNCE_MS.milliseconds)
+            val layout = _layout.value
+            val (field, ascending) = _sort.value
+            appSettingsRepository.updateSettings {
+                it.copy(
+                    downloadsColumnWidths = layout.columnWidths,
+                    downloadsSortField = field.name,
+                    downloadsSortAscending = ascending,
+                    detailsPaneVisible = layout.detailsVisible,
+                    detailsSplitFraction = layout.splitFraction,
+                    warnBeforeDiscardingProgress = layout.warnBeforeDiscarding,
+                    detailsViewMode = layout.viewMode.name,
+                    detailsMoveTo = layout.moveTo.name,
+                    groupDetailsTabs = layout.groupTabs,
+                )
+            }
+        }
+    }
 
     /** The same shared list the state renders, kept so the transition watcher can re-check a fact. */
     private val downloadsFlow = getDownloads()
@@ -93,7 +152,7 @@ class DownloadsScreenModel(
         canCopy = clipboard.isSupported
     )
 
-    val state: StateFlow<DownloadsState> = combine(
+    private val baseState = combine(
         downloadsFlow,
         _searchQuery,
         settingsRepository.settings,
@@ -120,6 +179,21 @@ class DownloadsScreenModel(
             snailSpeedKbps = settings.snailSpeedKbps,
             capabilities = capabilities,
             filteredDownloads = searched.filterAndSort(filter, field, ascending),
+        )
+    }
+
+    val state: StateFlow<DownloadsState> = combine(
+        baseState,
+        _layout,
+    ) { base, layout ->
+        base.copy(
+            columnWidths = layout.columnWidths,
+            detailsVisible = layout.detailsVisible,
+            detailsSplitFraction = layout.splitFraction,
+            warnBeforeDiscardingProgress = layout.warnBeforeDiscarding,
+            viewMode = layout.viewMode,
+            moveTo = layout.moveTo,
+            groupTabs = layout.groupTabs,
         )
     }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), DownloadsState(capabilities = capabilities))
 
@@ -176,14 +250,71 @@ class DownloadsScreenModel(
         when (event) {
             is DownloadsEvent.SearchChanged -> _searchQuery.value = event.query
 
-            is DownloadsEvent.SortBy -> _sort.update { (field, ascending) ->
-                if (field == event.field) field to !ascending
-                // A freshly chosen column starts in its natural direction: newest/fastest first for
-                // date and speed, A-z / smallest first for the rest.
-                else event.field to (event.field != DownloadSortField.DATE_ADDED && event.field != DownloadSortField.SPEED)
+            is DownloadsEvent.SortBy -> {
+                _sort.update { (field, ascending) ->
+                    if (field == event.field) field to !ascending
+                    // A freshly chosen column starts in its natural direction: biggest/most-advanced
+                    // first for date, speed, ETA and progress, A-z / smallest first for the rest.
+                    else event.field to (event.field != DownloadSortField.DATE_ADDED &&
+                        event.field != DownloadSortField.SPEED &&
+                        event.field != DownloadSortField.ETA &&
+                        event.field != DownloadSortField.PROGRESS)
+                }
+                persistLayout()
             }
 
             is DownloadsEvent.FilterBy -> _filter.value = event.filter
+
+            is DownloadsEvent.ResizeColumn -> {
+                _layout.update { it.copy(columnWidths = it.columnWidths + (event.columnId to event.widthDp)) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.SetSplitFraction -> {
+                _layout.update { it.copy(splitFraction = event.fraction.coerceIn(0.15f, 0.85f)) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.ToggleDetails -> {
+                _layout.update { it.copy(detailsVisible = event.visible) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.SetWarnBeforeDiscardingProgress -> {
+                _layout.update { it.copy(warnBeforeDiscarding = event.enabled) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.SetDetailsViewMode -> {
+                _layout.update { it.copy(viewMode = event.mode) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.SetDetailsMoveTo -> {
+                _layout.update { it.copy(moveTo = event.position) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.ToggleGroupDetailsTabs -> {
+                _layout.update { it.copy(groupTabs = event.enabled) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.ResizeDetails -> {
+                // A resize names the edge the pane stretches toward, so it also docks the pane there
+                // where that edge is a supported side; the size is kept as the list's share.
+                _layout.update { l ->
+                    val (fraction, moveTo) = when (event.preset) {
+                        DetailsResize.STRETCH_LEFT -> 0.30f to DetailsMoveTo.LEFT_TOP
+                        DetailsResize.STRETCH_RIGHT -> 0.30f to DetailsMoveTo.RIGHT_TOP
+                        DetailsResize.STRETCH_BOTTOM -> 0.30f to DetailsMoveTo.BOTTOM_LEFT
+                        DetailsResize.STRETCH_TOP -> 0.30f to l.moveTo
+                        DetailsResize.MAXIMIZE -> 0.15f to l.moveTo
+                    }
+                    l.copy(splitFraction = fraction.coerceIn(0.15f, 0.85f), moveTo = moveTo)
+                }
+                persistLayout()
+            }
 
             is DownloadsEvent.ToggleSnailMode -> screenModelScope.launch {
                 // Operational switch: persist immediately so the engine's limiter flow reacts at once.
@@ -317,5 +448,8 @@ class DownloadsScreenModel(
     private companion object {
         /** How long a download must stay failed before it is worth interrupting the user for. */
         const val RETRY_GRACE_MILLIS = 5_000L
+
+        /** How long to wait after the last layout tweak before writing `app.json`. */
+        const val LAYOUT_PERSIST_DEBOUNCE_MS = 350L
     }
 }

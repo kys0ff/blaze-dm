@@ -12,6 +12,7 @@ val screenModelModule = module {
             addDownload = get(),
             getDestinationPath = get(),
             settingsRepository = get(),
+            appSettingsRepository = get(),
             pauseDownload = get(),
             resumeDownload = get(),
             cancelDownload = get(),

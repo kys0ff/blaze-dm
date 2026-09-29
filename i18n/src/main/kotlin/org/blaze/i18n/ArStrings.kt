@@ -72,6 +72,15 @@ object ArStrings : BlazeStrings {
             override val descending = "تنازلي"
         }
 
+        override val columns = object : BlazeStrings.Downloads.Columns {
+            override val name = "الاسم"
+            override val progress = "التقدّم"
+            override val size = "الحجم"
+            override val speed = "السرعة"
+            override val eta = "الوقت المتبقّي"
+            override val status = "الحالة"
+        }
+
         override val selection = object : BlazeStrings.Downloads.Selection {
             override val select = "تحديد"
             override val selectAll = "تحديد الكل"
@@ -90,6 +99,43 @@ object ArStrings : BlazeStrings {
             override val clearCompleted = "مسح المكتملة"
             override val importPortable = "استيراد تنزيل محمول"
             override val snailMode = "وضع الحلزون — تقييد جميع التنزيلات إلى أقصى حد"
+        }
+
+        override val detailsPane = object : BlazeStrings.Downloads.DetailsPane {
+            override val tabGeneral = "عام"
+            override val tabFiles = "الملفات"
+            override val emptyHint = "حدّد تنزيلًا لعرض التفاصيل"
+            override val hide = "إخفاء التفاصيل"
+            override val show = "إظهار التفاصيل"
+            override val options = object : BlazeStrings.Downloads.DetailsPane.ToolWindowOptions {
+                override val menuTooltip = "خيارات النافذة"
+                override val groupTabs = "تجميع التبويبات"
+                override val viewMode = "وضع العرض"
+                override val moveTo = "نقل إلى"
+                override val resize = "تغيير الحجم"
+                override val dockPinned = "إرساء مثبّت"
+                override val dockUnpinned = "إرساء غير مثبّت"
+                override val undock = "إلغاء الإرساء"
+                override val float = "عائم"
+                override val window = "نافذة"
+                override val leftTop = "يسار أعلى"
+                override val leftBottom = "يسار أسفل"
+                override val rightTop = "يمين أعلى"
+                override val rightBottom = "يمين أسفل"
+                override val bottomLeft = "أسفل اليسار"
+                override val bottomRight = "أسفل اليمين"
+                override val stretchLeft = "تمدّد إلى اليسار"
+                override val stretchRight = "تمدّد إلى اليمين"
+                override val stretchTop = "تمدّد إلى الأعلى"
+                override val stretchBottom = "تمدّد إلى الأسفل"
+                override val maximize = "تكبير النافذة"
+            }
+        }
+
+        override val backgroundTasks = object : BlazeStrings.Downloads.BackgroundTasks {
+            override val title = "المهام الخلفية"
+            override val empty = "لا توجد تنزيلات قيد التشغيل"
+            override fun runningCount(n: Int) = if (n == 1) "تنزيل واحد قيد التشغيل" else "$n تنزيلات قيد التشغيل"
         }
 
         override val dialogs = object : BlazeStrings.Downloads.Dialogs {

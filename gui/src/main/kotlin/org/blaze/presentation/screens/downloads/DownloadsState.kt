@@ -15,8 +15,15 @@ data class DownloadCapabilities(
     val canCopy: Boolean = false
 )
 
-/** The column the downloads list is ordered by. Drives the toolbar's sort control. */
-enum class DownloadSortField { NAME, SIZE, SPEED, STATE, DATE_ADDED }
+/** The column the downloads list is ordered by. Drives the table header's sort indicator. */
+enum class DownloadSortField { NAME, SIZE, SPEED, STATE, DATE_ADDED, PROGRESS, ETA }
+
+/**
+ * Rehydrates a persisted sort field name, falling back to the default for an unknown/hand-edited
+ * value so a stale `app.json` can never leave the list unorderable.
+ */
+fun downloadSortFieldFromName(name: String): DownloadSortField =
+    DownloadSortField.entries.firstOrNull { it.name == name } ?: DownloadSortField.DATE_ADDED
 
 /**
  * A single-select state filter for the list. [matches] decides which rows survive the active filter,
@@ -55,7 +62,23 @@ data class DownloadsState(
     /** Engine-wide "Snail Mode" crawl state, mirrored from the download settings for the toolbar/status bar. */
     val snailModeEnabled: Boolean = false,
     val snailSpeedKbps: Long = 64,
-    val capabilities: DownloadCapabilities = DownloadCapabilities()
+    val capabilities: DownloadCapabilities = DownloadCapabilities(),
+
+    // ── Tool-window layout, seeded from and persisted back to [org.blaze.data.AppSettings] ──
+    /** Chosen column widths in dp keyed by [org.blaze.presentation.components.DownloadsColumn.id]. */
+    val columnWidths: Map<String, Float> = emptyMap(),
+    /** Whether the Details tool window beside the list is shown. */
+    val detailsVisible: Boolean = true,
+    /** Fraction of the list|details split given to the list. */
+    val detailsSplitFraction: Float = 0.72f,
+    /** Whether pausing a progress-losing download asks first (persisted "do not ask again"). */
+    val warnBeforeDiscardingProgress: Boolean = true,
+    /** How the Details tool window presents itself (docked beside the list, or floated over it). */
+    val viewMode: DetailsViewMode = DetailsViewMode.DOCK_PINNED,
+    /** Which edge/corner the Details pane docks to, driving the split's orientation and order. */
+    val moveTo: DetailsMoveTo = DetailsMoveTo.RIGHT_TOP,
+    /** When true the pane stacks its tabs into one continuous view instead of a tab strip. */
+    val groupTabs: Boolean = false,
 )
 
 /**
@@ -105,4 +128,7 @@ private fun comparatorFor(field: DownloadSortField): Comparator<Download> = when
     // Order by how advanced the lifecycle is, so grouping by status reads top-to-bottom.
     DownloadSortField.STATE -> compareBy { it.state.ordinal }
     DownloadSortField.DATE_ADDED -> compareBy { it.addedAt }
+    DownloadSortField.PROGRESS -> compareBy { it.progress }
+    // Rows with no live estimate sort together (null), then by whichever ETA is nearer.
+    DownloadSortField.ETA -> compareBy<Download> { it.eta == null }.thenBy { it.eta ?: 0L }
 }

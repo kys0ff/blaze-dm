@@ -13,9 +13,12 @@ import androidx.compose.ui.window.WindowState
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
 import org.blaze.platform.tray.AppTrayIcon
+import org.blaze.presentation.components.LocalShortcutLabels
+import org.blaze.presentation.components.LocalWindowActive
 import org.blaze.presentation.components.notifications.LocalNotifications
 import org.blaze.presentation.components.notifications.NotificationHost
 import org.blaze.presentation.components.notifications.NotificationsState
+import org.blaze.presentation.components.platformShortcutLabels
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.koin.compose.koinInject
 import java.awt.Dimension
@@ -95,7 +98,15 @@ fun BlazeWindow(
         val parser = koinInject<ExternalOpenParser>()
         val drop = rememberWindowDropTarget(inbox, parser, notifications)
 
-        CompositionLocalProvider(LocalNotifications provides notifications) {
+        // Window activity and the platform keymap are surfaced app-wide: rows switch to the IDE's
+        // gray inactive-window selection when the frame loses focus, and every tooltip/menu reads
+        // the same OS-formatted accelerator labels instead of hard-coding "Ctrl"/"Cmd".
+        val shortcutLabels = remember { platformShortcutLabels() }
+        CompositionLocalProvider(
+            LocalNotifications provides notifications,
+            LocalWindowActive provides state.isActive,
+            LocalShortcutLabels provides shortcutLabels,
+        ) {
             Box(modifier = Modifier.fillMaxSize().then(drop.modifier)) {
                 BlazeContent()
                 WindowDropOverlay(drop)

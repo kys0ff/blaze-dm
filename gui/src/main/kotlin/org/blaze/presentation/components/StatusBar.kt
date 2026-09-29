@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.BlazeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -26,6 +25,7 @@ import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.jetbrains.jewel.ui.typography
 
 @Composable
 fun StatusBar(
@@ -40,14 +40,14 @@ fun StatusBar(
     trailing: @Composable RowScope.() -> Unit = {}
 ) {
     val strings = blazeStrings
-    val small = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+    val small = JewelTheme.typography.small
 
     Column(modifier = modifier.fillMaxWidth()) {
         Divider(Orientation.Horizontal)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp)
+                .height(BlazeLayout.StatusBarHeight)
                 .background(JewelTheme.globalColors.panelBackground)
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,

@@ -1,3 +1,6 @@
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
+import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -188,4 +191,27 @@ val blazeCleanup = tasks.register<JavaExec>("blazeCleanup") {
     (project.findProperty("blazeHome") as String?)?.let {
         systemProperty("user.home", it)
     }
+}
+
+/**
+ * `./gradlew :gui:uiScreenshots` renders the redesigned presentational composables offscreen (Compose
+ * `renderComposeScene` on skia software raster - no window, no display) into PNGs under
+ * `build/ui-screenshots/`, in both the light and dark Blaze themes, for visual verification.
+ */
+val uiScreenshots = tasks.register<JavaExec>("uiScreenshots") {
+    group = "blaze"
+    description = "Render headless UI screenshots (light + dark) into build/ui-screenshots/."
+    dependsOn("classes")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.blaze.tools.ScreenshotHarnessKt")
+    systemProperty("java.awt.headless", "true")
+    // Write to the repo-root build/ui-screenshots/ regardless of which subproject dir Gradle runs in.
+    workingDir = rootDir
+
+    // Jewel 0.41.0 is built for Java 25 (class file version 69); run the harness on a 25 launcher so
+    // the offscreen scene can load it, independent of the jvmToolchain(21) the app itself targets.
+    javaLauncher.set(project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(25))
+        vendor.set(JvmVendorSpec.JETBRAINS)
+    })
 }

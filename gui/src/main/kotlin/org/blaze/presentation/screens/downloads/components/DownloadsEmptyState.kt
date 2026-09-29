@@ -9,16 +9,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.icons.BlazeFlame
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Link
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.typography
 
 /**
  * The first screen a new user meets. Beyond the call to action it teaches the other two ways in:
@@ -44,12 +43,12 @@ fun DownloadsEmptyState(
             )
             Text(
                 text = strings.downloads.emptyTitle,
-                style = JewelTheme.defaultTextStyle.copy(fontSize = 16.sp),
+                style = JewelTheme.typography.medium,
                 color = JewelTheme.globalColors.text.normal,
             )
             Text(
                 text = strings.downloads.emptyDescription,
-                style = JewelTheme.defaultTextStyle.copy(fontSize = 13.sp),
+                style = JewelTheme.typography.small,
                 color = JewelTheme.globalColors.text.info,
                 textAlign = TextAlign.Center,
             )
@@ -61,8 +60,8 @@ fun DownloadsEmptyState(
             }
             Text(
                 text = strings.downloads.emptyDropHint,
-                style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
-                color = Color.Gray,
+                style = JewelTheme.typography.small,
+                color = JewelTheme.globalColors.text.info,
                 textAlign = TextAlign.Center,
             )
         }

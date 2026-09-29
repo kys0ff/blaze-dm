@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadsEvent
@@ -45,8 +46,12 @@ fun DownloadsToolbar(
     onBulkResume: () -> Unit,
     onBulkCancel: () -> Unit,
     onBulkRemove: () -> Unit,
+    /** Whether the Details tool window is currently shown; drives the toggle button below. */
+    detailsVisible: Boolean,
+    onToggleDetails: (visible: Boolean) -> Unit,
 ) {
     val strings = blazeStrings
+    val shortcuts = LocalShortcutLabels.current
     // While rows are selected the toolbar swaps its per-command buttons for a bulk-action cluster, so
     // the same space always shows the actions relevant to the current context.
     ToolWindowHeader(
@@ -80,7 +85,8 @@ fun DownloadsToolbar(
                 ToolbarIconButton(
                     key = AllIconsKeys.General.Add,
                     tooltip = strings.downloads.toolbar.add,
-                    onClick = onAddDownload
+                    onClick = onAddDownload,
+                    shortcut = shortcuts.newDownload,
                 )
                 ToolbarIconButton(
                     key = AllIconsKeys.Actions.Download,
@@ -115,6 +121,11 @@ fun DownloadsToolbar(
                     value = snailModeEnabled,
                     onValueChange = { onEvent(DownloadsEvent.ToggleSnailMode(it)) },
                     tooltip = { Text(strings.downloads.toolbar.snailMode) }
+                )
+                ToolbarIconButton(
+                    key = AllIconsKeys.General.ShowInfos,
+                    tooltip = if (detailsVisible) strings.downloads.detailsPane.hide else strings.downloads.detailsPane.show,
+                    onClick = { onToggleDetails(!detailsVisible) },
                 )
             }
         }
