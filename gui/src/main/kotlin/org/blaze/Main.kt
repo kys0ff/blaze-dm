@@ -25,6 +25,7 @@ import org.blaze.osintegration.platform.WindowsUrlSchemeRegistrar
 import org.blaze.osintegration.singleinstance.SingleInstanceCoordinator
 import org.blaze.osintegration.singleinstance.SingleInstanceOutcome
 import org.blaze.platform.BlazePlatformIdentity
+import org.blaze.notifications.di.notificationsModule
 import org.blaze.platform.api.OsType
 import org.blaze.platform.api.detectOsType
 import org.blaze.platform.autostart.AutoStartController
@@ -80,6 +81,7 @@ fun main(rawArgs: Array<String>) {
             loggingModule,
             desktopPlatformModule(BlazePlatformIdentity),
             platformModule,
+            notificationsModule(appName = BlazePlatformIdentity.appName),
             repositoryModule,
             resolverModule,
             themeModule,

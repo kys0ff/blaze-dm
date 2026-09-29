@@ -13,8 +13,6 @@ import org.jetbrains.jewel.window.newFullscreenControls
 @OptIn(ExperimentalJewelApi::class)
 @Composable
 fun DecoratedWindowScope.BlazeTitleBar() {
-    // The ambient glow follows the brand color pulled from the app icon; the theme accent takes
-    // over until (or unless) that extraction is available.
     val brandAccent = rememberBrandIconAccent()
     TitleBar(
         modifier = Modifier.newFullscreenControls(),

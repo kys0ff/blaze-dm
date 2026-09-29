@@ -2,7 +2,6 @@ package org.blaze.presentation.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.blaze.presentation.theme.BrandIconAccent.color
 import org.blaze.theming.color.AccentSelector
 import org.blaze.theming.color.DominantColorExtractor
 import org.blaze.theming.color.DominantColorOptions
@@ -85,5 +85,5 @@ internal object BrandIconAccent {
 @Composable
 internal fun rememberBrandIconAccent(): Color? {
     BrandIconAccent.ensureLoaded()
-    return BrandIconAccent.color.collectAsState().value
+    return color.collectAsState().value
 }

@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":theming"))
     implementation(project(":tray"))
     implementation(project(":platform"))
+    implementation(project(":notifications"))
     implementation(project(":i18n"))
     implementation(project(":filepicker"))
 

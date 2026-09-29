@@ -26,6 +26,8 @@ import org.koin.compose.koinInject
  * - [AppTrayHost]           - system-tray wiring on top of the `:tray` library,
  * - [AppTaskbarProgress]    - aggregate download progress on the taskbar / dock icon,
  * - [AppClipboardMonitor]   - optional clipboard watching that feeds the external-open inbox,
+ * - [AppSystemNotifications] - desktop notifications for download lifecycle changes, gated
+ *      to fire only while the window is out of sight,
  * - [AppTheme]              - theme-mode + palette resolution on top of `BlazeTheme`.
  */
 @Composable
@@ -46,6 +48,7 @@ fun ApplicationScope.BlazeApplication() {
     AppTrayHost(strings = strings, shell = shell)
     AppTaskbarProgress()
     AppClipboardMonitor()
+    AppSystemNotifications(shell = shell, strings = strings)
 
     // Language is persisted in the app settings (the same buffered draft the settings screen
     // edits), so Apply/OK - and the revert when leaving without committing - all flow through

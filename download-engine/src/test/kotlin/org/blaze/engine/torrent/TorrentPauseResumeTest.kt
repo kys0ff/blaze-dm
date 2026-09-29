@@ -17,6 +17,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTime
 
@@ -78,7 +79,7 @@ class TorrentPauseResumeTest {
                 val second = launch {
                     client.download(request).collect { events.add(it) }
                 }
-                delay(6_000) // generous multiple of the observed collision latency
+                delay(6_000.milliseconds) // generous multiple of the observed collision latency
                 second.cancelAndJoin()
 
                 val error = events.filterIsInstance<TorrentNetworkEvent.Error>().firstOrNull()
