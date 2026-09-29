@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import org.blaze.data.AppSettingsRepository
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.settings.EngineSettingsRepository
+import org.blaze.notifications.api.NotificationService
 import org.blaze.platform.autostart.AutoStartCoordinator
 import org.blaze.tray.api.TrayService
 import org.blaze.presentation.screens.settings.state.HandlerUiState
@@ -33,6 +34,7 @@ class SettingsScreenModel(
     private val appSettingsRepository: AppSettingsRepository,
     private val autoStartCoordinator: AutoStartCoordinator,
     private val trayService: TrayService,
+    private val notificationService: NotificationService,
     private val resolverRegistry: LinkResolverRegistry,
     private val resolverSettingsRepository: LinkResolverSettingsRepository,
     private val themeRegistry: ThemeRegistry,
@@ -122,6 +124,7 @@ class SettingsScreenModel(
                 savedAppSettings = currentAppSettings,
                 traySupported = trayService.isSupported,
                 autoStartSupported = autoStartCoordinator.isSupported,
+                notificationsSupported = notificationService.isSupported,
                 maxConcurrentDownloadsText = TextFieldValue(currentSettings.maxConcurrentDownloads.toString()),
                 maxConnectionsPerDownloadText = TextFieldValue(currentSettings.maxConnectionsPerDownload.toString()),
                 globalSpeedLimitKbpsText = TextFieldValue(currentSettings.globalSpeedLimitKbps.toString()),
@@ -302,6 +305,21 @@ class SettingsScreenModel(
             }
             is SettingsEvent.UpdateClipboardMonitoring -> _state.update {
                 it.copy(appSettings = it.appSettings.copy(clipboardMonitoringEnabled = event.enabled))
+            }
+            is SettingsEvent.UpdateDesktopNotificationsEnabled -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(desktopNotificationsEnabled = event.enabled))
+            }
+            is SettingsEvent.UpdateNotifyOnCompleted -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(notifyOnCompleted = event.enabled))
+            }
+            is SettingsEvent.UpdateNotifyOnFailed -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(notifyOnFailed = event.enabled))
+            }
+            is SettingsEvent.UpdateNotifyOnRestarted -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(notifyOnRestarted = event.enabled))
+            }
+            is SettingsEvent.UpdateNotifyWhileInSight -> _state.update {
+                it.copy(appSettings = it.appSettings.copy(notifyWhileWindowInSight = event.enabled))
             }
             is SettingsEvent.UpdateDefaultDownloadDir -> _state.update {
                 it.copy(settings = it.settings.copy(defaultDownloadDir = event.path))

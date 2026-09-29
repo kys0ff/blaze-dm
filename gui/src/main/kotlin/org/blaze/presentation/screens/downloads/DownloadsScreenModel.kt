@@ -209,7 +209,16 @@ class DownloadsScreenModel(
 
             is DownloadsEvent.SetPriority -> op("Failed to change priority") { setPriority(event.id, event.priority) }
             is DownloadsEvent.Pause -> op("Failed to pause download") { pauseDownload(event.id) }
-            is DownloadsEvent.Resume -> op("Failed to resume download") { resumeDownload(event.id) }
+            // A resume only makes sense for a row parked mid-flight. Handing a finished or failed
+            // task to the engine would silently restart it and re-fetch bytes the user already has,
+            // so the command is dropped when the row cannot obey it; fetching a finished file again
+            // is the separate, explicitly offered Retry.
+            is DownloadsEvent.Resume -> {
+                val target = state.value.downloads.find { it.id == event.id }
+                if (target != null && target.canResume()) {
+                    op("Failed to resume download") { resumeDownload(event.id) }
+                }
+            }
             is DownloadsEvent.Remove -> op("Failed to remove download") { removeDownload(id = event.id, deleteFile = event.deleteFile) }
             is DownloadsEvent.Retry -> op("Failed to retry download") { retryDownload(event.id) }
 

@@ -12,19 +12,19 @@ chunking, Ktor/JDK internals, persistence — is an implementation detail client
 ## 1. Layered architecture
 
 ```
-                    ┌──────────────────────────────────────┐
-                    │  Download Engine (HTTP/HTTPS/Torrent) │   internal, not client-visible
+                    ┌────────────────────────────────────────┐
+                    │  Download Engine (HTTP/HTTPS/Torrent)  │   internal, not client-visible
                     └──────────────────────┬─────────────────┘
                                            │  DownloadEngine SPI
                               Application Download Service
                                            │  implements DownloadsApi
-                              ┌────────────┴─────────────┐
+                              ┌────────────┴──────────────┐
                               │   Public Download API     │   org.blaze.download.api.*
                               │  (DTOs, states, errors,   │   serializable, engine-free
                               │   events, capabilities)   │
-                              └────────────┬─────────────┘
-             ┌───────────────┬────────────┼───────────────┬────────────────┐
-             │               │            │               │                │
+                              └────────────┬──────────────┘
+             ┌───────────────┬─────────────┼───────────────┬────────────────┐
+             │               │             │               │                │
         In-process      Loopback HTTP  (future) Unix   (future) remote   browser
         (GUI, CLI       transport       socket / named  API              bridge
          direct)        /api/v1         pipe
@@ -36,7 +36,7 @@ chunking, Ktor/JDK internals, persistence — is an implementation detail client
   loopback HTTP transport (`LocalApiServer`), authentication, path validation, the single-instance lock, and
   the headless daemon (`HeadlessDownloader`).
 * **Clients** (`gui`, `cli`, future extension) depend on `download-api` types, and reach a running service
-  over a transport. They never construct an engine.
+  over transport. They never construct an engine.
 
 **Transport independence:** the same `DownloadsApi` backs the in-process GUI, the loopback HTTP server, and
 any future socket/pipe/remote transport. Adding a transport never duplicates download logic.
@@ -50,10 +50,10 @@ There is exactly **one** engine per data directory, guarded by an OS file lock
 
 The service runs in one of two ways:
 
-| Mode | How | Notes |
-|------|-----|-------|
-| **GUI** | Launch the desktop app. It starts the engine and, best-effort, the local API on the same engine. | If the API is disabled or the directory is already owned, the GUI still works; it just does not publish a second endpoint. |
-| **Headless daemon** | `blaze-serve` (module `download-service`, main class `org.blaze.service.headless.HeadlessDownloaderKt`). | Runs the engine + loopback API with **no UI** — for CLI-over-service, scripts, servers, kiosks. |
+| Mode                | How                                                                                                      | Notes                                                                                                                      |
+|---------------------|----------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
+| **GUI**             | Launch the desktop app. It starts the engine and, best-effort, the local API on the same engine.         | If the API is disabled or the directory is already owned, the GUI still works; it just does not publish a second endpoint. |
+| **Headless daemon** | `blaze-serve` (module `download-service`, main class `org.blaze.service.headless.HeadlessDownloaderKt`). | Runs the engine + loopback API with **no UI** — for CLI-over-service, scripts, servers, kiosks.                            |
 
 `blaze-serve` flags: `--storage-dir/-d PATH`, `--port/-p N`, `--no-auth`, `--allow-origin ORIGIN`.
 
@@ -124,20 +124,20 @@ prompted again) instead of the service silently storing a stale secret.
 
 Content type is `application/json; charset=utf-8` for all bodies unless noted.
 
-| Method & path | Auth | Purpose | Success |
-|---|---|---|---|
-| `GET /api/v1/health` | no | Liveness/version probe | `200 {apiVersion, status}` |
-| `GET /api/v1/capabilities` | no | Feature discovery | `200 Capabilities` |
-| `GET /api/v1/downloads` | yes | List all downloads | `200 [DownloadDto]` |
-| `POST /api/v1/downloads` | yes | Create (see body below) | `201 DownloadDto` |
-| `GET /api/v1/downloads/{id}` | yes | Fetch one | `200 DownloadDto` / `404` |
-| `DELETE /api/v1/downloads/{id}?deleteFiles=true` | yes | Remove (optionally delete data) | `200 {ok}` |
-| `POST /api/v1/downloads/{id}/start` | yes | Start | `200 {ok}` |
-| `POST /api/v1/downloads/{id}/resume` | yes | Resume | `200 {ok}` |
-| `POST /api/v1/downloads/{id}/pause` | yes | Pause | `200 {ok}` |
-| `POST /api/v1/downloads/{id}/cancel` | yes | Cancel | `200 {ok}` |
-| `POST /api/v1/downloads/{id}/retry` | yes | Retry a failed download | `200 {ok}` |
-| `GET /api/v1/events` | yes | SSE live event stream | `200 text/event-stream` |
+| Method & path                                    | Auth | Purpose                         | Success                    |
+|--------------------------------------------------|------|---------------------------------|----------------------------|
+| `GET /api/v1/health`                             | no   | Liveness/version probe          | `200 {apiVersion, status}` |
+| `GET /api/v1/capabilities`                       | no   | Feature discovery               | `200 Capabilities`         |
+| `GET /api/v1/downloads`                          | yes  | List all downloads              | `200 [DownloadDto]`        |
+| `POST /api/v1/downloads`                         | yes  | Create (see body below)         | `201 DownloadDto`          |
+| `GET /api/v1/downloads/{id}`                     | yes  | Fetch one                       | `200 DownloadDto` / `404`  |
+| `DELETE /api/v1/downloads/{id}?deleteFiles=true` | yes  | Remove (optionally delete data) | `200 {ok}`                 |
+| `POST /api/v1/downloads/{id}/start`              | yes  | Start                           | `200 {ok}`                 |
+| `POST /api/v1/downloads/{id}/resume`             | yes  | Resume                          | `200 {ok}`                 |
+| `POST /api/v1/downloads/{id}/pause`              | yes  | Pause                           | `200 {ok}`                 |
+| `POST /api/v1/downloads/{id}/cancel`             | yes  | Cancel                          | `200 {ok}`                 |
+| `POST /api/v1/downloads/{id}/retry`              | yes  | Retry a failed download         | `200 {ok}`                 |
+| `GET /api/v1/events`                             | yes  | SSE live event stream           | `200 text/event-stream`    |
 
 `start` and `resume` both map to the API's `resume` operation (starting a queued or resuming a paused
 download is the same engine action). Unknown action → `400 INVALID_REQUEST`; unknown version/path → `404`.
@@ -164,18 +164,24 @@ Exactly one source key (`url`, `magnet`, or `torrentFile`) is required, plus `de
 }
 ```
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `url` / `magnet` / `torrentFile` | string | one of | HTTP(S) URL, `magnet:` URI, or a server-readable `.torrent` path |
-| `destination` | string | yes | Directory; validated against allowed roots |
-| `filename` | string | no | Override the derived name |
-| `autoStart` | bool | no (default `true`) | `false` → queued only |
-| `connections` | int | no | Parallel HTTP connections |
-| `bandwidthLimitBytesPerSecond` | long | no | Per-transfer ceiling |
-| `expectedSizeBytes` | long | no | Known size (e.g. from browser) for progress/ETA |
-| `referer`,`userAgent`,`accept`,`headers` | string/map | no | Transfer headers (persisted as needed for resume) |
-| `credentials` | map | no | **Ephemeral only** — never persisted (§3) |
-| `idempotencyKey` | string | no | Also accepted via the `Idempotency-Key` header |
+| Field                                    | Type       | Required            | Notes                                                            |
+|------------------------------------------|------------|---------------------|------------------------------------------------------------------|
+| `url` / `magnet` / `torrentFile`         | string     | one of              | HTTP(S) URL, `magnet:` URI, or a server-readable `.torrent` path |
+| `destination`                            | string     | yes                 | Directory; validated against allowed roots                       |
+| `filename`                               | string     | no                  | Override the derived name                                        |
+| `autoStart`                              | bool       | no (default `true`) | `false` → queued only                                            |
+| `connections`                            | int        | no                  | Parallel HTTP connections                                        |
+| `bandwidthLimitBytesPerSecond`           | long       | no                  | Per-transfer ceiling                                             |
+| `expectedSizeBytes`                      | long       | no                  | Known size (e.g. from browser) for progress/ETA                  |
+| `referer`,`userAgent`,`accept`,`headers` | string/map | no                  | Transfer headers (persisted as needed for resume)                |
+| `credentials`                            | map        | no                  | **Ephemeral only** — never persisted (§3)                        |
+| `idempotencyKey`                         | string     | no                  | Also accepted via the `Idempotency-Key` header                   |
+
+`destination` is the directory to write *into*; the target is always named after the download
+(`filename` when supplied). An HTTP file becomes `…/Downloads/file.zip`; a torrent becomes a folder
+`…/Downloads/Big.Buck/` whose contents are laid out exactly as the torrent's metainfo describes them
+— there is no second folder named after the torrent. `remove(id, deleteFiles = true)` deletes that
+folder for a torrent, and the file plus its partial/resume sidecars for HTTP.
 
 ### Create download — response (`201`)
 
@@ -195,27 +201,27 @@ FAILED, CANCELLED`
 * `COMPLETING` is reserved for a future finalize phase; clients may ignore it. `SEEDING` is torrent-only.
 
 ### `DownloadDto`
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string | Opaque download id |
-| `name` | string | Filename / torrent display name |
-| `state` | DownloadState | |
-| `source` | `SourceInfo{kind, locator, mayRequireCredentials}` | `kind` ∈ `HTTP, HTTPS, MAGNET, TORRENT_FILE` |
-| `destination` | string | |
-| `totalBytes` | long? | `null` if unknown |
-| `downloadedBytes` | long | |
-| `progress` | float? | 0.0–1.0, `null` if size unknown |
-| `speedBytesPerSecond` | long | instantaneous |
-| `averageSpeedBytesPerSecond` | long? | |
-| `etaSeconds` | long? | |
-| `peers` | int | torrent peers (0 for HTTP) |
-| `error` | `ApiErrorBody`? | present when failed / error-changed |
-| `createdAtEpochMs` | long | |
-| `completedAtEpochMs` | long? | |
-| `scheduledAtEpochMs` | long? | scheduled start |
-| `resumable` | bool | |
-| `portable` | bool | portable-download artifact present |
-| `files` | `DownloadFile[]`? | torrent file selection (`path, size, selected`) |
+| Field                        | Type                                               | Notes                                           |
+|------------------------------|----------------------------------------------------|-------------------------------------------------|
+| `id`                         | string                                             | Opaque download id                              |
+| `name`                       | string                                             | Filename / torrent display name                 |
+| `state`                      | DownloadState                                      |                                                 |
+| `source`                     | `SourceInfo{kind, locator, mayRequireCredentials}` | `kind` ∈ `HTTP, HTTPS, MAGNET, TORRENT_FILE`    |
+| `destination`                | string                                             |                                                 |
+| `totalBytes`                 | long?                                              | `null` if unknown                               |
+| `downloadedBytes`            | long                                               |                                                 |
+| `progress`                   | float?                                             | 0.0–1.0, `null` if size unknown                 |
+| `speedBytesPerSecond`        | long                                               | instantaneous                                   |
+| `averageSpeedBytesPerSecond` | long?                                              |                                                 |
+| `etaSeconds`                 | long?                                              |                                                 |
+| `peers`                      | int                                                | torrent peers (0 for HTTP)                      |
+| `error`                      | `ApiErrorBody`?                                    | present when failed / error-changed             |
+| `createdAtEpochMs`           | long                                               |                                                 |
+| `completedAtEpochMs`         | long?                                              |                                                 |
+| `scheduledAtEpochMs`         | long?                                              | scheduled start                                 |
+| `resumable`                  | bool                                               |                                                 |
+| `portable`                   | bool                                               | portable-download artifact present              |
+| `files`                      | `DownloadFile[]`?                                  | torrent file selection (`path, size, selected`) |
 
 ### `Capabilities` (`GET /api/v1/capabilities`)
 ```json
@@ -246,17 +252,17 @@ the version mismatch via `apiVersion`.
 { "error": { "code": "DOWNLOAD_NOT_FOUND", "message": "no such download", "details": {} } }
 ```
 
-| `ApiErrorCode` | HTTP | Meaning |
-|---|---|---|
-| `INVALID_REQUEST` | 400 | Malformed body/path/params |
-| `INVALID_URL` / `INVALID_TORRENT` / `UNSUPPORTED_SOURCE` | 400 | Bad source |
-| `AUTH_REQUIRED` | 401 | Missing/invalid token |
-| `PERMISSION_DENIED` | 403 | Origin/host rejected, destination outside roots |
-| `DOWNLOAD_NOT_FOUND` | 404 | Unknown id |
-| `ALREADY_EXISTS` / `CONFLICT` | 409 | Duplicate / directory owned by another service |
-| `PAYLOAD_TOO_LARGE` | 413 | Body over cap |
-| `RATE_LIMITED` | 429 | Too many requests |
-| `NETWORK_ERROR` / `DESTINATION_UNAVAILABLE` / `DOWNLOAD_FAILED` / `SERVICE_UNAVAILABLE` / `INTERNAL_ERROR` | 4xx/5xx | Operation/transfer failure |
+| `ApiErrorCode`                                                                                             | HTTP    | Meaning                                         |
+|------------------------------------------------------------------------------------------------------------|---------|-------------------------------------------------|
+| `INVALID_REQUEST`                                                                                          | 400     | Malformed body/path/params                      |
+| `INVALID_URL` / `INVALID_TORRENT` / `UNSUPPORTED_SOURCE`                                                   | 400     | Bad source                                      |
+| `AUTH_REQUIRED`                                                                                            | 401     | Missing/invalid token                           |
+| `PERMISSION_DENIED`                                                                                        | 403     | Origin/host rejected, destination outside roots |
+| `DOWNLOAD_NOT_FOUND`                                                                                       | 404     | Unknown id                                      |
+| `ALREADY_EXISTS` / `CONFLICT`                                                                              | 409     | Duplicate / directory owned by another service  |
+| `PAYLOAD_TOO_LARGE`                                                                                        | 413     | Body over cap                                   |
+| `RATE_LIMITED`                                                                                             | 429     | Too many requests                               |
+| `NETWORK_ERROR` / `DESTINATION_UNAVAILABLE` / `DOWNLOAD_FAILED` / `SERVICE_UNAVAILABLE` / `INTERNAL_ERROR` | 4xx/5xx | Operation/transfer failure                      |
 
 Engine exceptions are always mapped to these stable codes; internal class/exception names never leak.
 
@@ -273,13 +279,13 @@ Polling is discouraged. Two equivalent streams expose the same `DownloadEvent`s:
 data: {"type":"progress","downloadId":"8f3a…","downloadedBytes":4509715660,"totalBytes":5485760000,"speedBytesPerSecond":75916902,"etaSeconds":12,"progress":0.82}
 ```
 
-| Event `type` | Payload |
-|---|---|
-| `created` / `completed` | `download: DownloadDto` |
-| `started` / `paused` / `resumed` / `cancelled` / `removed` | `downloadId` |
-| `progress` | `downloadedBytes, totalBytes?, speedBytesPerSecond, etaSeconds?, progress?` |
-| `failed` | `error: ApiErrorBody` |
-| `errorChanged` | `error: ApiErrorBody?` |
+| Event `type`                                               | Payload                                                                     |
+|------------------------------------------------------------|-----------------------------------------------------------------------------|
+| `created` / `completed`                                    | `download: DownloadDto`                                                     |
+| `started` / `paused` / `resumed` / `cancelled` / `removed` | `downloadId`                                                                |
+| `progress`                                                 | `downloadedBytes, totalBytes?, speedBytesPerSecond, etaSeconds?, progress?` |
+| `failed`                                                   | `error: ApiErrorBody`                                                       |
+| `errorChanged`                                             | `error: ApiErrorBody?`                                                      |
 
 **Back-pressure:** progress events are **coalesced and rate-limited** at the application layer
 (`eventMinIntervalMillis`, default 400 ms). A chatty observer cannot force the engine to emit faster than
@@ -376,14 +382,14 @@ Global options
 
 ### Exit codes (the scripting contract)
 
-| Code | Meaning |
-|---|---|
-| `0` | Success |
-| `1` | General failure |
-| `2` | Invalid arguments / usage |
-| `3` | API/service unavailable (not running, unreachable) |
-| `4` | Download failed (from `wait`) |
-| `5` | Authentication failure (missing/invalid token) |
+| Code | Meaning                                            |
+|------|----------------------------------------------------|
+| `0`  | Success                                            |
+| `1`  | General failure                                    |
+| `2`  | Invalid arguments / usage                          |
+| `3`  | API/service unavailable (not running, unreachable) |
+| `4`  | Download failed (from `wait`)                      |
+| `5`  | Authentication failure (missing/invalid token)     |
 
 Scripts must branch on exit codes and `--json`; never parse human-readable text.
 
@@ -393,18 +399,18 @@ Scripts must branch on exit codes and `--json`; never parse human-readable text.
 
 Stored at `<storageDir>/api.json`, deserialized as `LocalApiSettings`:
 
-| Key | Default | Purpose |
-|---|---|---|
-| `enabled` | `true` | Master switch for the local API |
-| `host` | `"127.0.0.1"` | Bind address (keep loopback) |
-| `port` | `0` | `0` = ephemeral; the bound port is published in the descriptor |
-| `requireAuth` | `true` | When false → `AuthMode.NONE` (trusted single-user machines only) |
-| `allowedOrigins` | `[]` | Empty = no browser-origin requests accepted (safe default) |
-| `allowedDownloadRoots` | `[]` | Empty = trusted (GUI) mode; set to confine external clients |
-| `maxRequestBytes` | `1 MiB` | Body cap |
-| `eventMinIntervalMillis` | `400` | Progress coalescing window |
-| `apiLoggingEnabled` | `false` | Verbose API logging (secrets are never logged regardless) |
-| `startOnBoot` | `true` | Start the API alongside the app |
+| Key                      | Default       | Purpose                                                          |
+|--------------------------|---------------|------------------------------------------------------------------|
+| `enabled`                | `true`        | Master switch for the local API                                  |
+| `host`                   | `"127.0.0.1"` | Bind address (keep loopback)                                     |
+| `port`                   | `0`           | `0` = ephemeral; the bound port is published in the descriptor   |
+| `requireAuth`            | `true`        | When false → `AuthMode.NONE` (trusted single-user machines only) |
+| `allowedOrigins`         | `[]`          | Empty = no browser-origin requests accepted (safe default)       |
+| `allowedDownloadRoots`   | `[]`          | Empty = trusted (GUI) mode; set to confine external clients      |
+| `maxRequestBytes`        | `1 MiB`       | Body cap                                                         |
+| `eventMinIntervalMillis` | `400`         | Progress coalescing window                                       |
+| `apiLoggingEnabled`      | `false`       | Verbose API logging (secrets are never logged regardless)        |
+| `startOnBoot`            | `true`        | Start the API alongside the app                                  |
 
 Defaults are secure: **localhost, authenticated, no allowed browser origins, no arbitrary destinations.**
 

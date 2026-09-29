@@ -30,6 +30,7 @@ import org.blaze.presentation.screens.downloads.components.add.AddDownloadListVi
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadFetchOutcome
+import org.blaze.presentation.screens.downloads.components.add.isHttpSource
 import org.blaze.presentation.screens.downloads.components.add.loadSourceFile
 import org.blaze.presentation.screens.downloads.components.add.resolveDestinationStatus
 import org.blaze.resolver.core.LinkResolverRegistry
@@ -109,10 +110,8 @@ fun AddDownloadDialog(
     // links never route through a handler, so clear the list for those.
     LaunchedEffect(state.url.text) {
         val source = state.source
-        val isHttp = source.startsWith("http://", ignoreCase = true) ||
-                source.startsWith("https://", ignoreCase = true)
         state.detectedHandlers =
-            if (isHttp && !state.isBatch) registry.enabledHandlers(source) else emptyList()
+            if (isHttpSource(source) && !state.isBatch) registry.enabledHandlers(source) else emptyList()
     }
 
     // Defined before fetch() because fetch() references it (Kotlin local functions must be
@@ -138,6 +137,38 @@ fun AddDownloadDialog(
                     state.fetchError = e.message ?: "Couldn't resolve the link"
                 }
             state.isFetching = false
+        }
+    }
+
+    // A probe answers in one of three ways, and each has its own contract with the user:
+    // resolved -> normal review; unresolved torrent -> review degraded but queueable (a cold
+    // magnet is normal, not an error); rejected HTTP -> stay on the input step, because a
+    // link that refused to answer only queues a download that is born failing.
+    fun applyOutcome(source: String, metadata: DownloadMetadata?, probeError: String?) {
+        when (val outcome = AddDownloadFetchOutcome.of(source, metadata, probeError)) {
+            is AddDownloadFetchOutcome.Resolved -> {
+                state.metadata = outcome.metadata
+                state.metadataUnresolved = false
+                state.step = 2
+            }
+            is AddDownloadFetchOutcome.Unresolved -> {
+                state.metadata = null
+                state.metadataUnresolved = true
+                state.step = 2
+            }
+            is AddDownloadFetchOutcome.Rejected ->
+                // [reason] carries the offending source (or the probe's exception message).
+                state.fetchError = dStrings.httpProbeFailed(outcome.reason)
+        }
+    }
+
+    /** Fetch [source] exactly as typed: the no-handler path, which saves the server's response. */
+    fun probeDirectly(source: String) {
+        state.isFetching = true
+        scope.launch {
+            val metadata = runCatching { onFetchMetadata(source) }
+            state.isFetching = false
+            applyOutcome(source, metadata.getOrNull(), metadata.exceptionOrNull()?.message)
         }
     }
 
@@ -172,42 +203,16 @@ fun AddDownloadDialog(
         }
 
         val source = state.source
-        val isHttp = source.startsWith("http://", ignoreCase = true) ||
-                source.startsWith("https://", ignoreCase = true)
-        val handlers = if (isHttp) registry.enabledHandlers(source) else emptyList()
-
-        // A probe answers in one of three ways, and each has its own contract with the user:
-        // resolved -> normal review; unresolved torrent -> review degraded but queueable (a cold
-        // magnet is normal, not an error); rejected HTTP -> stay on the input step, because a
-        // link that refused to answer only queues a download that is born failing.
-        fun applyOutcome(metadata: DownloadMetadata?, probeError: String?) {
-            when (val outcome = AddDownloadFetchOutcome.of(source, metadata, probeError)) {
-                is AddDownloadFetchOutcome.Resolved -> {
-                    state.metadata = outcome.metadata
-                    state.metadataUnresolved = false
-                    state.step = 2
-                }
-                is AddDownloadFetchOutcome.Unresolved -> {
-                    state.metadata = null
-                    state.metadataUnresolved = true
-                    state.step = 2
-                }
-                is AddDownloadFetchOutcome.Rejected ->
-                    // [reason] carries the offending source (or the probe's exception message).
-                    state.fetchError = dStrings.httpProbeFailed(outcome.reason)
-            }
-        }
+        val handlers = if (isHttpSource(source)) registry.enabledHandlers(source) else emptyList()
 
         when {
-            // No handler claims this link: resolve it the normal way (direct HTTP / torrent).
-            handlers.isEmpty() -> {
-                state.isFetching = true
-                scope.launch {
-                    val metadata = runCatching { onFetchMetadata(source) }
-                    state.isFetching = false
-                    applyOutcome(metadata.getOrNull(), metadata.exceptionOrNull()?.message)
-                }
-            }
+            // No handler claims this link, so it is fetched as it stands. When the link reads like
+            // a web page rather than a file, that fetch saves the page — HTML the user almost
+            // certainly didn't want — so the outcome is confirmed before a request is spent, and
+            // only a "yes" turns it into the plain-page download they asked for.
+            handlers.isEmpty() ->
+                if (state.looksLikeWebPage) state.pendingPlainPageSource = source
+                else probeDirectly(source)
             // A single match is never worth interrupting the user for: use it directly.
             // The AddDownloadInputView already shows an inline notice naming the extension.
             handlers.size == 1 -> resolveAndFetch(source, handlers[0])
@@ -340,6 +345,17 @@ fun AddDownloadDialog(
             handlers = state.handlerChoices,
             onDismiss = { state.showHandlerChoice = false },
             onConfirm = { handler -> resolveAndFetch(state.source, handler) }
+        )
+    }
+
+    state.pendingPlainPageSource?.let { source ->
+        PlainPageDownloadDialog(
+            url = source,
+            onDismiss = { state.pendingPlainPageSource = null },
+            onProceed = {
+                state.pendingPlainPageSource = null
+                probeDirectly(source)
+            }
         )
     }
 }

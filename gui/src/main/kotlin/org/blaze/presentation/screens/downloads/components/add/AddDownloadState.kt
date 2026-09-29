@@ -50,6 +50,13 @@ class AddDownloadState(
     var fetchError by mutableStateOf<String?>(null)
 
     /**
+     * The source awaiting the user's "download the page anyway" answer, or null when nothing is
+     * pending. Held as a captured string rather than read back from [url] at confirm time, so the
+     * link described by the warning is exactly the one that gets fetched.
+     */
+    var pendingPlainPageSource by mutableStateOf<String?>(null)
+
+    /**
      * Enabled handlers that currently claim they can process [source]. Recomputed on every
      * URL edit by the parent dialog; drives the inline "this extension will be used" notice
      * so the user learns the outcome before pressing Fetch.
@@ -66,6 +73,13 @@ class AddDownloadState(
 
     val canFetch: Boolean get() = source.isNotEmpty() && (isBatch || source.isSupportedSource())
     val looksSupported: Boolean get() = source.isEmpty() || isBatch || source.isSupportedSource()
+
+    /**
+     * True when the typed link is an http(s) page rather than a file — the shape that needs a
+     * handler to dig a download out of it. Batch lists are exempt: each of their entries is judged
+     * on its own.
+     */
+    val looksLikeWebPage: Boolean get() = !isBatch && isHttpSource(source) && looksLikeWebPageLink(source)
 
     /** Total size of everything about to be queued, or null while any part of it is unknown. */
     val announcedBytes: Long?
@@ -92,6 +106,7 @@ class AddDownloadState(
         handlerChoices = emptyList()
         fetchError = null
         detectedHandlers = emptyList()
+        pendingPlainPageSource = null
     }
 
     private fun String.isSupportedSource(): Boolean {

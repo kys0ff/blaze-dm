@@ -210,6 +210,7 @@ private fun SettingsSidebar(
             SettingsCategory.FILES to strings.settings.filesCategory,
             SettingsCategory.EXTENSIONS to strings.settings.handlers.category,
             SettingsCategory.THEMES to strings.settings.themes.category,
+            SettingsCategory.NOTIFICATIONS to strings.settings.notifications.category,
             SettingsCategory.LOGS to strings.settings.logsCategory
         )
 
@@ -243,6 +244,7 @@ private fun SettingsContent(
         SettingsCategory.EXTENSIONS ->
             ExtensionsSection(state, strings, onEvent, resolverRegistry, onInstallHandler)
         SettingsCategory.THEMES -> ThemesSection(state, strings, onEvent, onInstallTheme)
+        SettingsCategory.NOTIFICATIONS -> NotificationsSection(state, strings, onEvent)
         SettingsCategory.LOGS -> LogsSection(state, strings, onEvent, logConfigurator)
     }
 }

@@ -3,7 +3,7 @@ package org.blaze.data
 import kotlinx.serialization.Serializable
 
 /**
- * App-shell settings: how Blaze integrates with the desktop (tray, autostart).
+ * App-shell settings: how Blaze integrates with the desktop (tray, autostart, notifications).
  * Deliberately separate from the engine's [org.blaze.engine.settings.DownloadSettings] —
  * these are GUI concerns, not download-engine concerns.
  */
@@ -25,5 +25,21 @@ data class AppSettings(
      * as downloads. Off by default: reading the clipboard is a user-visible side effect, so it
      * must be opted into, not granted silently.
      */
-    val clipboardMonitoringEnabled: Boolean = false
+    val clipboardMonitoringEnabled: Boolean = false,
+    /**
+     * Master switch for desktop (toast / notification-center) notices about download lifecycle
+     * changes. In-app balloons are unaffected — they belong to the window, not the desktop.
+     */
+    val desktopNotificationsEnabled: Boolean = true,
+    /** Post a notice when a download finishes. */
+    val notifyOnCompleted: Boolean = true,
+    /** Post a notice when a download fails for good (after its retries are spent). */
+    val notifyOnFailed: Boolean = true,
+    /** Post a notice when an unfinished transfer is forced to start over from zero. */
+    val notifyOnRestarted: Boolean = true,
+    /**
+     * Also notify while the Blaze window is visible and focused. Off by default: a user staring
+     * at the list has already seen the row change, so a desktop banner would only repeat it.
+     */
+    val notifyWhileWindowInSight: Boolean = false
 )

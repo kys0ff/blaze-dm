@@ -531,7 +531,11 @@ class DownloadManager(
                 try {
                     val dest = task.request.destination
                     if (task.request is DownloadRequest.Torrent) {
-                        storage.deleteRecursively(dest.resolve(task.name))
+                        // A torrent's destination *is* its folder - the content sits directly inside
+                        // it (see org.blaze.engine.storage.TorrentContentStorage), along with the
+                        // portable marker - so removing the download means removing that folder, and
+                        // nothing above it.
+                        storage.deleteRecursively(dest)
                     } else {
                         storage.delete(dest)
                         storage.delete(storage.getPartialFile(dest).toPath())

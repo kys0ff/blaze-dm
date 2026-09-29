@@ -22,6 +22,11 @@ sealed interface DownloadRequest {
     data class Torrent(
         override val name: String,
         val torrentSource: TorrentSource,
+        /**
+         * The folder that holds this torrent's content - not the directory to put that folder in.
+         * Files land inside it exactly as the torrent describes them, with no extra level named
+         * after the torrent, and it is what the portable marker travels with and the UI reveals.
+         */
         override val destination: Path,
         val fileIndices: List<Int>? = null
     ) : DownloadRequest

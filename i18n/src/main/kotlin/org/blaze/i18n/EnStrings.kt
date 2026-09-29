@@ -152,6 +152,16 @@ object EnStrings : BlazeStrings {
             override fun handlerWillAsk(count: Int) =
                 "$count extensions can process this link — you'll be asked which one to use."
 
+            override val plainPage = object : BlazeStrings.Downloads.Dialogs.PlainPage {
+                override val title = "No handler for this link"
+                override fun message(url: String) =
+                    "No installed extension can take this link apart, so Blaze can't find a file inside it: $url"
+                override val detail =
+                    "If you go ahead, Blaze saves exactly what the site returns for this link — the page " +
+                        "itself, usually an HTML file, rather than the file the page points at."
+                override val confirm = "Download the page anyway"
+            }
+
             override val details = object : BlazeStrings.Downloads.Dialogs.Details {
                 override val title = "Download details"
                 override val name = "Name"
@@ -179,6 +189,22 @@ object EnStrings : BlazeStrings {
                     "This server can't continue an interrupted download, so it will start over from zero."
                 }
                 override val confirm = "Pause anyway"
+            }
+
+            override val clearCompleted = object : BlazeStrings.Downloads.Dialogs.ClearCompleted {
+                override val title = "Clear completed downloads"
+                override fun message(count: Int) = if (count == 1) {
+                    "Remove 1 finished download from the list?"
+                } else {
+                    "Remove $count finished downloads from the list?"
+                }
+                override val detail = "The files themselves stay on disk; only their entries leave the list."
+                override fun seedingDetail(count: Int) = if (count == 1) {
+                    "1 of them is still seeding; clearing it stops sharing that file."
+                } else {
+                    "$count of them are still seeding; clearing them stops those shares."
+                }
+                override val confirm = "Clear the list"
             }
 
             override val destinationNotWritable = "The save folder can't be written to. Go back and choose another one."
@@ -450,6 +476,20 @@ object EnStrings : BlazeStrings {
             override val removeAction = "Remove"
             override val builtinTag = "Built-in"
             override val pluginTag = "Extension"
+        }
+
+        override val notifications = object : BlazeStrings.Settings.Notifications {
+            override val category = "Notifications"
+            override val header = "Desktop Notifications"
+            override val enabledLabel = "Post download events to the desktop"
+            override val enabledDesc = "System toasts and notification-center entries, on top of the notices shown inside the window."
+            override val completedLabel = "A download finished"
+            override val failedLabel = "A download failed"
+            override val restartedLabel = "An unfinished download had to start over"
+            override val attentionHeader = "When Blaze Should Speak"
+            override val whileInSightLabel = "Also notify while the Blaze window is visible and focused"
+            override val whileInSightDesc = "Left off, notices only go out when Blaze is hidden to the tray or in the background - the list already shows what happened while you are looking at it."
+            override val unsupportedNote = "This desktop offers no notification surface, so Blaze cannot post system notices."
         }
     }
     

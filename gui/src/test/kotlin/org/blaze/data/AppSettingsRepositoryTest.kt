@@ -30,6 +30,31 @@ class AppSettingsRepositoryTest {
         assertEquals(AppSettings(), repository.persisted)
         assertTrue(repository.settings.value.trayEnabled)
         assertFalse(repository.settings.value.runAtStartup)
+        // Desktop notices are on by default, but only while Blaze is out of sight.
+        assertTrue(repository.settings.value.desktopNotificationsEnabled)
+        assertTrue(repository.settings.value.notifyOnCompleted)
+        assertTrue(repository.settings.value.notifyOnFailed)
+        assertTrue(repository.settings.value.notifyOnRestarted)
+        assertFalse(repository.settings.value.notifyWhileWindowInSight)
+    }
+
+    @Test
+    fun notificationPreferencesSurviveAReload(): Unit = runBlocking {
+        val repository = AppSettingsRepository(tempDir)
+
+        repository.updateSettings {
+            it.copy(
+                notifyOnCompleted = false,
+                notifyOnRestarted = false,
+                notifyWhileWindowInSight = true,
+            )
+        }
+
+        val reloaded = AppSettingsRepository(tempDir).settings.value
+        assertFalse(reloaded.notifyOnCompleted)
+        assertTrue(reloaded.notifyOnFailed)
+        assertFalse(reloaded.notifyOnRestarted)
+        assertTrue(reloaded.notifyWhileWindowInSight)
     }
 
     @Test

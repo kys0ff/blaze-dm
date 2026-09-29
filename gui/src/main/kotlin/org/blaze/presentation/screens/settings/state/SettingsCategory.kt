@@ -6,5 +6,6 @@ enum class SettingsCategory {
     FILES,
     EXTENSIONS,
     THEMES,
+    NOTIFICATIONS,
     LOGS
 }

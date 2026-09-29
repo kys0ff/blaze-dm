@@ -35,6 +35,7 @@ val screenModelModule = module {
             appSettingsRepository = get(),
             autoStartCoordinator = get(),
             trayService = get(),
+            notificationService = get(),
             resolverRegistry = get(),
             resolverSettingsRepository = get(),
             themeRegistry = get(),

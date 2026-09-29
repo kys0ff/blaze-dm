@@ -121,7 +121,7 @@ class FreedesktopNotificationService(
 }
 
 /**
- * Hand-written binding for `org.freedesktop.Notifications` (spec version 1.2).
+ * Handwritten binding for `org.freedesktop.Notifications` (spec version 1.2).
  *
  * Method names keep the wire casing because dbus-java reflects on `Method.getName()`
  * to derive the D-Bus member - `Notify` is spelled with its capital N for exactly that

@@ -53,19 +53,23 @@ class DownloadManagerTest {
         )
 
         val torrentName = "my_torrent"
+        // The destination of a torrent request is the download's own folder, which is how the
+        // service builds it (`chosen dir / name`) - not the directory it sits in.
+        val torrentFolder = downloadsDir.resolve(torrentName)
         val request = DownloadRequest.Torrent(
             name = torrentName,
             torrentSource = TorrentSource.Magnet("magnet:?xt=urn:btih:123"),
-            destination = downloadsDir
+            destination = torrentFolder
         )
 
         val id = manager.enqueue(request)
 
         try {
-            val torrentFolder = downloadsDir.resolve(torrentName)
-            Files.createDirectories(torrentFolder)
+            Files.createDirectories(torrentFolder.resolve("subs"))
             val torrentFile = torrentFolder.resolve("data.txt")
             Files.writeString(torrentFile, "torrent data")
+            val nestedFile = torrentFolder.resolve("subs/en.srt")
+            Files.writeString(nestedFile, "subtitles")
 
             val unrelatedFile = downloadsDir.resolve("important_user_file.txt")
             Files.writeString(unrelatedFile, "do not delete me")
@@ -88,6 +92,7 @@ class DownloadManagerTest {
 
             assertTrue(deleted, "Torrent folder should be deleted")
             assertFalse(Files.exists(torrentFile), "Torrent file should be deleted")
+            assertFalse(Files.exists(nestedFile), "A file in a torrent subfolder should be deleted")
             assertTrue(Files.exists(unrelatedFile), "Unrelated file in parent folder must not be deleted!")
         } finally {
             manager.shutdown()

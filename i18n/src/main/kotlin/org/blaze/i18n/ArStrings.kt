@@ -158,6 +158,16 @@ object ArStrings : BlazeStrings {
             override fun handlerWillAsk(count: Int) =
                 "$count امتدادات تستطيع معالجة هذا الرابط — سيُطلب منك اختيار أحدها."
 
+            override val plainPage = object : BlazeStrings.Downloads.Dialogs.PlainPage {
+                override val title = "لا يوجد معالج لهذا الرابط"
+                override fun message(url: String) =
+                    "لا يستطيع أي امتداد مثبّت تفكيك هذا الرابط، لذا لا يمكن لـ Blaze العثور على ملف داخله: $url"
+                override val detail =
+                    "إذا تابعت فسيحفظ Blaze ما يردّه الموقع على هذا الرابط تمامًا — الصفحة نفسها، " +
+                        "أي ملف HTML في العادة، وليس الملف الذي تشير إليه الصفحة."
+                override val confirm = "تنزيل الصفحة على أي حال"
+            }
+
             override val details = object : BlazeStrings.Downloads.Dialogs.Details {
                 override val title = "تفاصيل التنزيل"
                 override val name = "الاسم"
@@ -185,6 +195,22 @@ object ArStrings : BlazeStrings {
                     "هذا الخادم لا يستطيع متابعة تنزيل متقطع، لذا سيبدأ من الصفر."
                 }
                 override val confirm = "الإيقاف على أي حال"
+            }
+
+            override val clearCompleted = object : BlazeStrings.Downloads.Dialogs.ClearCompleted {
+                override val title = "مسح التنزيلات المكتملة"
+                override fun message(count: Int) = if (count == 1) {
+                    "إزالة تنزيل مكتمل واحد من القائمة؟"
+                } else {
+                    "إزالة $count تنزيلات مكتملة من القائمة؟"
+                }
+                override val detail = "تبقى الملفات نفسها على القرص؛ ما يغادر القائمة هو مدخلاتها فقط."
+                override fun seedingDetail(count: Int) = if (count == 1) {
+                    "واحد منها ما زال يشارك؛ مسحه سيوقف مشاركة هذا الملف."
+                } else {
+                    "$count منها ما زالت تشارك؛ مسحها سيوقف تلك المشاركات."
+                }
+                override val confirm = "مسح القائمة"
             }
 
             override val destinationNotWritable = "لا يمكن الكتابة إلى مجلد الحفظ. عُد واختر مجلدًا آخر."
@@ -456,6 +482,20 @@ object ArStrings : BlazeStrings {
             override val removeAction = "إزالة"
             override val builtinTag = "مضمّن"
             override val pluginTag = "امتداد"
+        }
+
+        override val notifications = object : BlazeStrings.Settings.Notifications {
+            override val category = "الإشعارات"
+            override val header = "إشعارات سطح المكتب"
+            override val enabledLabel = "نشر أحداث التنزيل على سطح المكتب"
+            override val enabledDesc = "رسوم منبثقة للنظام وعناصر في مركز الإشعارات، إضافةً إلى التنبيهات المعروضة داخل النافذة."
+            override val completedLabel = "اكتمل تنزيل"
+            override val failedLabel = "فشل تنزيل"
+            override val restartedLabel = "تنزيل غير مكتمل اضطر للبدء من جديد"
+            override val attentionHeader = "متى يجب أن يُبلّغ Blaze"
+            override val whileInSightLabel = "أشعر أيضًا عندما تكون نافذة Blaze ظاهرة ومركَّزة"
+            override val whileInSightDesc = "عند التعطيل تُنشر الإشعارات فقط عندما يكون Blaze مخفيًا في الدرج أو في الخلفية — فالقائمة تعرض ما يحدث بالفعل أثناء النظر إليها."
+            override val unsupportedNote = "لا يوفّر هذا السطح أي قناة إشعارات، لذلك لا يستطيع Blaze نشر إشعارات نظام."
         }
     }
 

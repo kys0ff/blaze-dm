@@ -2,13 +2,12 @@ package org.blaze.engine.network
 
 import bt.Bt
 import bt.bencoding.model.BEObject
-import bt.event.EventSink
 import bt.bencoding.serializers.BEEncoder
 import bt.bencoding.serializers.BEParser
 import bt.bencoding.types.BEList
 import bt.bencoding.types.BEMap
 import bt.bencoding.types.BEString
-import bt.data.file.FileSystemStorage
+import bt.event.EventSink
 import bt.metainfo.MetadataConstants
 import bt.metainfo.Torrent
 import bt.metainfo.TorrentId
@@ -36,17 +35,18 @@ import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.portable.PortableManifest
 import org.blaze.engine.portable.PortableTorrentFile
 import org.blaze.engine.portable.TorrentPortableFile
+import org.blaze.engine.storage.TorrentContentStorage
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.BitSet
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
-import java.util.BitSet
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration
@@ -118,7 +118,10 @@ class TorrentNetworkClient(
 
             val destination = request.destination.toAbsolutePath().normalize()
             Files.createDirectories(destination)
-            val storage = FileSystemStorage(destination)
+            // Blaze's storage, not bt's: `FileSystemStorage` would root a multi-file torrent at
+            // `<destination>/<name from the metainfo>` and give the download a second folder level
+            // inside the one the service already made for it.
+            val storage = TorrentContentStorage(destination)
 
             // Shared with every other torrent in the app: one DHT node, one acceptor, and no
             // re-bootstrap when a download is retried or started right after another finished.
@@ -368,7 +371,7 @@ class TorrentNetworkClient(
                     // way to the real transfer - dies with "Torrent already registered and data
                     // descriptor created". The scheduler joins this job before it will start the
                     // next one, so waiting the teardown out here (non-cancellably: when pausing,
-                    // the job is already cancelled) turns pause -> resume from a race into a
+                    // the job is already canceled) turns pause -> resume from a race into a
                     // deterministic sequence.
                     withContext(NonCancellable + Dispatchers.IO) {
                         refreshPortableMarker(lastObservedPieces.get())
@@ -472,7 +475,7 @@ class TorrentNetworkClient(
      * are independent; whichever is reached first wins. Returns null to keep seeding.
      */
     private fun Monitor.seedingStop(now: Long): Pair<StopReason, Duration>? {
-        val timeUp = seedDeadlineMs > 0 && now > seedDeadlineMs
+        val timeUp = seedDeadlineMs in 1..<now
         if (timeUp) return StopReason.SEED_COMPLETE to seedTimeLimitMinutes.minutes
 
         val ratioUp = seedRatioLimit > 0.0 && totalSizeBytes > 0 &&

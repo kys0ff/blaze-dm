@@ -330,6 +330,7 @@ private fun FieldHint(text: String, level: HintLevel) {
  * Reactive notice explaining what will happen to a typed link:
  *  - exactly one enabled handler claims it: name that extension (with its icon),
  *  - several handlers claim it: hint that the picker will show,
+ *  - none claims it and it reads as a web page: say so, because the fetch will save the page,
  *  - otherwise: nothing (the engine will fetch it directly).
  */
 @Composable
@@ -359,6 +360,11 @@ private fun HandlerNotice(
                 dStrings.handlerWillAsk(state.detectedHandlers.size),
                 HintLevel.Info
             )
+
+        // Seen while typing, not only after pressing Fetch: a page link no handler recognises is
+        // going to be saved as a page, and the user should know that before spending the request.
+        state.looksLikeWebPage ->
+            FieldHint(dStrings.noHandlerForLink, HintLevel.Warning)
     }
 }
 

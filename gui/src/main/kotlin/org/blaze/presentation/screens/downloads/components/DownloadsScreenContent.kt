@@ -32,6 +32,11 @@ import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.presentation.components.notifications.NotificationType
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsState
+import org.blaze.presentation.screens.downloads.SelectionActions
+import org.blaze.presentation.screens.downloads.canCancel
+import org.blaze.presentation.screens.downloads.canPause
+import org.blaze.presentation.screens.downloads.canRemove
+import org.blaze.presentation.screens.downloads.canResume
 import org.blaze.presentation.screens.downloads.findDuplicateOf
 import org.blaze.presentation.screens.downloads.pauseLosesProgress
 import org.blaze.presentation.screens.downloads.percentDone
@@ -40,6 +45,7 @@ import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.koin.compose.koinInject
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 
 @Composable
@@ -64,6 +70,9 @@ fun DownloadsScreenContent(
     var downloadToRemove by remember { mutableStateOf<Download?>(null) }
     // Set when pausing would cost the download its progress, so the user confirms the loss first.
     var downloadToPause by remember { mutableStateOf<Download?>(null) }
+    // Non-null while the bulk "clear completed" confirmation is up; the value is the scope captured
+    // when the button was pressed, so the dialog can name exactly what it is about to drop.
+    var clearCompletedPrompt by remember { mutableStateOf<ClearCompletedScope?>(null) }
     var detailsId by remember { mutableStateOf<String?>(null) }
     var conflictData by remember { mutableStateOf<ConflictData?>(null) }
     // A set (not a single id) so the leading checkboxes can build a multi-selection for bulk actions.
@@ -103,7 +112,7 @@ fun DownloadsScreenContent(
                     )
                 } else {
                     // A folder resumes in place; a loose partial file resumes in its parent folder.
-                    importDestination = if (java.nio.file.Files.isDirectory(request.path)) artifactPath
+                    importDestination = if (Files.isDirectory(request.path)) artifactPath
                     else request.path.parent?.toString() ?: artifactPath
                     pendingImport = artifactPath to info
                 }
@@ -117,6 +126,11 @@ fun DownloadsScreenContent(
     val hasActive = remember(state.downloads) { state.downloads.any { it.state == DownloadState.DOWNLOADING } }
     val hasPaused = remember(state.downloads) { state.downloads.any { it.state == DownloadState.PAUSED } }
     val hasCompleted = remember(state.downloads) { state.downloads.any { it.state == DownloadState.COMPLETED } }
+
+    // Every concurrency slot is busy, so resuming a queued row would not actually start it; the
+    // resume affordance is withheld for queued rows (single row, selection and bulk alike).
+    val activeCount = remember(state.downloads) { state.downloads.count { it.state == DownloadState.DOWNLOADING } }
+    val hideResumeForQueued = activeCount >= state.maxConcurrentDownloads
 
     val handleRemoveRequest: (Download) -> Unit = { download ->
         val currentBehavior = defaultDeleteBehavior
@@ -176,31 +190,37 @@ fun DownloadsScreenContent(
         selectedIds = if (visibleIds.isNotEmpty() && selectedIds.containsAll(visibleIds)) emptySet() else visibleIds
     }
     // Bulk transport controls reuse the single-id commands the model already handles, applied to each
-    // selected row. Bulk removal is list-only (never deletes files) so it stays reversible and needs no
-    // per-row confirmation dialog.
+    // selected row *that can obey them*: a button is only offered when some selected row would act on
+    // it, and pressing it leaves the rows that cannot (a finished download, say) alone rather than
+    // restarting or cancelling them. Bulk removal is list-only (never deletes files) so it stays
+    // reversible and needs no per-row confirmation dialog.
+    val selectedDownloads = state.downloads.filter { it.id in selectedIds }
+    val selectionActions = SelectionActions.of(selectedDownloads, queuedResumeBlocked = hideResumeForQueued)
     val bulkRemove: () -> Unit = {
-        selectedIds.forEach { onEvent(DownloadsEvent.Remove(it, deleteFile = false)) }
+        selectedDownloads.filter { it.canRemove() }.forEach { onEvent(DownloadsEvent.Remove(it.id, deleteFile = false)) }
         clearSelection()
     }
     val bulkPause: () -> Unit = {
-        selectedIds.forEach { id -> onEvent(DownloadsEvent.Pause(id)) }
+        selectedDownloads.filter { it.canPause() }.forEach { id -> onEvent(DownloadsEvent.Pause(id.id)) }
         clearSelection()
     }
     val bulkResume: () -> Unit = {
-        selectedIds.forEach { id -> onEvent(DownloadsEvent.Resume(id)) }
+        selectedDownloads
+            .filter { it.canResume(hideResumeForQueued) }
+            .forEach { id -> onEvent(DownloadsEvent.Resume(id.id)) }
         clearSelection()
     }
     val bulkCancel: () -> Unit = {
-        selectedIds.forEach { id -> onEvent(DownloadsEvent.Cancel(id)) }
+        selectedDownloads.filter { it.canCancel() }.forEach { id -> onEvent(DownloadsEvent.Cancel(id.id)) }
         clearSelection()
     }
     val toggleSelectedPauseResume: () -> Unit = {
         if (selectedIds.size == 1) {
             val id = selectedIds.first()
             state.downloads.find { it.id == id }?.let { download ->
-                when (download.state) {
-                    DownloadState.DOWNLOADING, DownloadState.SEEDING -> handlePauseRequest(download)
-                    DownloadState.PAUSED, DownloadState.QUEUED -> handleResumeRequest(download)
+                when {
+                    download.canPause() -> handlePauseRequest(download)
+                    download.canResume(hideResumeForQueued) -> handleResumeRequest(download)
                     else -> {}
                 }
             }
@@ -319,6 +339,19 @@ fun DownloadsScreenContent(
         )
     }
 
+    // Clearing is the only list edit that acts on rows the user never selected, so it is confirmed
+    // with the exact scope it covers. Files on disk are untouched by design; seeds are stopped.
+    clearCompletedPrompt?.let { scope ->
+        ClearCompletedDialog(
+            scope = scope,
+            onDismiss = { clearCompletedPrompt = null },
+            onConfirm = {
+                onEvent(DownloadsEvent.ClearCompleted)
+                clearCompletedPrompt = null
+            }
+        )
+    }
+
     // Resolve by id so the dialog keeps showing live progress while the download runs; if the
     // download is removed/cleared meanwhile, nothing renders and the dialog effectively closes.
     detailsId?.let { id ->
@@ -386,7 +419,7 @@ fun DownloadsScreenContent(
             },
             mode = FilePickerMode.Directory,
             initialPath = runCatching { Path.of(importDestination) }.getOrNull()
-                ?.takeIf { java.nio.file.Files.isDirectory(it) }
+                ?.takeIf { Files.isDirectory(it) }
         )
     }
 
@@ -413,12 +446,14 @@ fun DownloadsScreenContent(
             hasCompletedDownloads = hasCompleted,
             hasSelection = selectedIds.isNotEmpty(),
             selectedCount = selectedIds.size,
+            selectionActions = selectionActions,
             searchQuery = state.searchQuery,
             snailModeEnabled = state.snailModeEnabled,
             searchFocusRequester = searchFocusRequester,
             onEvent = handleEvent,
             onAddDownload = openAddDialog,
             onImportPortable = { showArtifactPicker = true },
+            onClearCompleted = { clearCompletedPrompt = ClearCompletedScope(state.counts.completed, state.counts.seeding) },
             onSelectAll = selectAllVisible,
             onClearSelection = clearSelection,
             onBulkPause = bulkPause,
@@ -440,11 +475,6 @@ fun DownloadsScreenContent(
                 sortAscending = state.sortAscending,
                 onEvent = onEvent,
             )
-
-            val activeCount = remember(state.downloads) {
-                state.downloads.count { it.state == DownloadState.DOWNLOADING }
-            }
-            val hideResumeForQueued = activeCount >= state.maxConcurrentDownloads
 
             DownloadsList(
                 downloads = state.filteredDownloads,

@@ -1,8 +1,10 @@
 package org.blaze.engine.portable
 
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 
 /**
  * Self-describing container that lets a torrent download be resumed on a fresh machine without the
@@ -14,7 +16,7 @@ import java.nio.file.StandardCopyOption
  * away on completion. A torrent is different on both counts, and the difference is fundamental
  * rather than incidental:
  *
- * - `FileSystemStorage` writes the torrent's *real* content files straight into a directory, exactly
+ * - Blaze's torrent storage writes the torrent's *real* content files straight into a directory, exactly
  *   as the final layout must be. There is no `.part` to append a trailer to, and appending bytes to
  *   a content file would both break `bt`'s length/hash checks and violate the byte-for-byte rule.
  * - `bt` already treats "bytes exist on disk" as *unverified*: on restart it re-hashes every piece
@@ -72,9 +74,9 @@ object TorrentPortableFile {
         tmp.parent?.let { Files.createDirectories(it) }
         java.nio.channels.FileChannel.open(
             tmp,
-            java.nio.file.StandardOpenOption.WRITE,
-            java.nio.file.StandardOpenOption.CREATE,
-            java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
+            StandardOpenOption.WRITE,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING
         ).use { ch ->
             ch.write(buffer)
             ch.force(true)
@@ -82,8 +84,8 @@ object TorrentPortableFile {
         runCatching {
             Files.move(tmp, marker, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         }.onFailure {
-            if (it is java.nio.file.AtomicMoveNotSupportedException ||
-                it.cause is java.nio.file.AtomicMoveNotSupportedException
+            if (it is AtomicMoveNotSupportedException ||
+                it.cause is AtomicMoveNotSupportedException
             ) {
                 Files.move(tmp, marker, StandardCopyOption.REPLACE_EXISTING)
             } else throw it

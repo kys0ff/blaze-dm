@@ -1,6 +1,7 @@
 package org.blaze.presentation.screens.downloads.components.add
 
 import org.blaze.domain.repository.DownloadMetadata
+import java.net.URI
 
 /** A source that names a local `.torrent` file: a path, not a web link (any `://` makes it a URL). */
 internal fun isLocalTorrentPath(source: String): Boolean {
@@ -13,6 +14,33 @@ internal fun isLocalTorrentPath(source: String): Boolean {
 /** The torrent family: magnets plus local `.torrent` files. */
 internal fun isTorrentFamilySource(source: String): Boolean =
     source.trim().startsWith("magnet:", ignoreCase = true) || isLocalTorrentPath(source)
+
+/** Endings that name a served *page*, never a file worth saving blindly. */
+private val WEB_PAGE_EXTENSIONS = setOf(
+    "html", "htm", "xhtml", "shtml", "asp", "aspx", "php", "jsp", "jspx", "cfm", "do", "action",
+)
+
+/** True when an http(s) source is worth asking the page-link question about. */
+internal fun isHttpSource(source: String): Boolean =
+    source.startsWith("http://", ignoreCase = true) || source.startsWith("https://", ignoreCase = true)
+
+/**
+ * True when an http(s) link reads as a **page** rather than a file: its path is empty (a site root),
+ * its last segment carries no extension (a route such as `/share/abc123` or `/download?id=5`), or it
+ * ends in a page/script extension.
+ *
+ * Shape only — no network, no probe — so it is safe to evaluate on every keystroke. It deliberately
+ * errs towards "page": a false positive costs one confirmation click, a false negative costs a
+ * silently saved lump of HTML. A URL that cannot even be parsed is left alone, since the probe and
+ * the unsupported-source hint already cover garbage input.
+ */
+internal fun looksLikeWebPageLink(source: String): Boolean {
+    val path = runCatching { URI(source.trim()).rawPath }.getOrNull() ?: return false
+    val segment = path.substringAfterLast('/').trim()
+    if (segment.isEmpty()) return true
+    val extension = segment.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    return extension.isEmpty() || extension in WEB_PAGE_EXTENSIONS
+}
 
 /**
  * What a metadata probe answered, and what the dialog may conclude from it. The decision table

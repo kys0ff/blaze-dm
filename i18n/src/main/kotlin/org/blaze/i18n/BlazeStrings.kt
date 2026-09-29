@@ -193,6 +193,20 @@ interface BlazeStrings {
             /** Shown inline under the URL field when several handlers match and picker is on. */
             fun handlerWillAsk(count: Int): String
 
+            /**
+             * Shown before saving a page link that no installed handler can take apart. Blaze can
+             * still fetch it — the response just isn't the file the user was after — so the outcome
+             * is stated and accepted rather than discovered afterwards.
+             */
+            val plainPage: PlainPage
+            interface PlainPage {
+                val title: String
+                fun message(url: String): String
+                /** What proceeding really buys: the server's response body, saved as a file. */
+                val detail: String
+                val confirm: String
+            }
+
             val details: Details
             /** Field labels for the read-only "Download details" dialog. */
             interface Details {
@@ -220,6 +234,23 @@ interface BlazeStrings {
                 fun message(name: String): String
                 /** Explains the cost of pausing, in the progress that will be thrown away. */
                 fun detail(percent: Int): String
+                val confirm: String
+            }
+
+            /**
+             * Shown before dropping every finished download from the list at once. Clearing is bulk
+             * and irreversible for the list (the history, speed and completion time are gone), and it
+             * also stops torrents that are still seeding, so the user confirms that scope first.
+             */
+            val clearCompleted: ClearCompleted
+            interface ClearCompleted {
+                val title: String
+                /** Names how many entries are about to leave the list (completed + seeding). */
+                fun message(count: Int): String
+                /** Says what clearing does *not* touch, so the decision is an informed one. */
+                val detail: String
+                /** Warns that finished-but-sharing torrents are stopped by the same action. */
+                fun seedingDetail(count: Int): String
                 val confirm: String
             }
 
@@ -518,6 +549,26 @@ interface BlazeStrings {
             val removeAction: String
             val builtinTag: String
             val pluginTag: String
+        }
+
+        val notifications: Notifications
+        /**
+         * Copy for the desktop-notifications category: which download lifecycle events may post a
+         * system notice, and whether Blaze may speak while its window is already in sight.
+         */
+        interface Notifications {
+            val category: String
+            val header: String
+            val enabledLabel: String
+            val enabledDesc: String
+            val completedLabel: String
+            val failedLabel: String
+            val restartedLabel: String
+            val attentionHeader: String
+            val whileInSightLabel: String
+            val whileInSightDesc: String
+            /** Shown instead of the controls when the desktop offers no notification surface. */
+            val unsupportedNote: String
         }
     }
     

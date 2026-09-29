@@ -1,5 +1,6 @@
 package org.blaze.presentation.application
 
+import org.blaze.data.AppSettings
 import org.blaze.download.api.ApiErrorBody
 import org.blaze.download.api.ApiErrorCode
 import org.blaze.domain.models.Download
@@ -67,6 +68,56 @@ class AppSystemNotificationsTest {
         assertFalse(attention.gate.shouldDeliver(spec()))
         visible = false
         assertTrue(attention.gate.shouldDeliver(spec()))
+    }
+
+    // ---- the notifications settings ----
+
+    /**
+     * The user's checkboxes as the delivery path sees them: settings and window state stay mutable
+     * so a test can prove both are read live rather than captured at startup.
+     */
+    private class PreferenceFixture {
+        var settings = AppSettings()
+        var windowVisible = false
+        var appInFocus = false
+
+        val preferences: AppNotificationPreferences
+            get() = AppNotificationPreferences({ settings }, AppWindowAttention({ windowVisible }, { appInFocus }))
+    }
+
+    @Test
+    fun `a switched-off event kind is dropped before anything is sent`() {
+        val fixture = PreferenceFixture().apply { settings = settings.copy(notifyOnCompleted = false) }
+
+        assertFalse(fixture.preferences.isWanted(DownloadAdvisory.Completed(download())))
+        assertTrue(fixture.preferences.isWanted(DownloadAdvisory.Failed(download(state = DownloadState.FAILED))))
+    }
+
+    @Test
+    fun `the master switch drops every kind, even a critical failure`() {
+        val fixture = PreferenceFixture().apply { settings = settings.copy(desktopNotificationsEnabled = false) }
+
+        assertFalse(fixture.preferences.isWanted(DownloadAdvisory.Completed(download())))
+        assertFalse(fixture.preferences.isWanted(DownloadAdvisory.Restarted(download(), lostPercent = 10)))
+        assertFalse(fixture.preferences.isWanted(DownloadAdvisory.Failed(download(state = DownloadState.FAILED))))
+        assertFalse(fixture.preferences.gate.shouldDeliver(spec()))
+    }
+
+    @Test
+    fun `an in-sight window stays quiet unless the user opted into it`() {
+        val fixture = PreferenceFixture().apply { windowVisible = true; appInFocus = true }
+        assertFalse(fixture.preferences.gate.shouldDeliver(spec()))
+
+        fixture.settings = fixture.settings.copy(notifyWhileWindowInSight = true)
+        assertTrue(fixture.preferences.gate.shouldDeliver(spec()))
+    }
+
+    @Test
+    fun `a backgrounded window delivers whatever the kind settings allow`() {
+        val fixture = PreferenceFixture().apply { windowVisible = true; appInFocus = false }
+
+        assertTrue(fixture.preferences.gate.shouldDeliver(spec()))
+        assertTrue(fixture.preferences.isWanted(DownloadAdvisory.Completed(download())))
     }
 
     // ---- advisory -> localized notice mapping ----

@@ -9,6 +9,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import org.blaze.data.AppSettings
+import org.blaze.data.AppSettingsRepository
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadRepository
@@ -49,6 +51,45 @@ class AppWindowAttention(
 }
 
 /**
+ * Blaze's desktop-notice policy: the notifications checkboxes from [AppSettings] translated into
+ * the two questions the delivery path asks - *is this kind of event wanted at all*, and *may the
+ * desktop be spoken to right now*.
+ *
+ * Settings are read through a lambda instead of captured, so ticking a box takes effect on the very
+ * next event without restarting the watcher, and an unpersisted Apply is honoured exactly like the
+ * other shell options.
+ */
+internal class AppNotificationPreferences(
+    private val currentSettings: () -> AppSettings,
+    private val attention: AppWindowAttention,
+) {
+    /**
+     * Whether the user asked for [advisory]'s kind of event. Checked before anything is waited on,
+     * so a kind that was switched off never costs the failure retry grace.
+     */
+    fun isWanted(advisory: DownloadAdvisory): Boolean {
+        val settings = currentSettings()
+        if (!settings.desktopNotificationsEnabled) return false
+        return when (advisory) {
+            is DownloadAdvisory.Completed -> settings.notifyOnCompleted
+            is DownloadAdvisory.Failed -> settings.notifyOnFailed
+            is DownloadAdvisory.Restarted -> settings.notifyOnRestarted
+        }
+    }
+
+    /**
+     * The gate consulted at send time: the master switch, plus the "keep quiet while Blaze is in
+     * sight" preference - [attention] decides that silence unless the user opted into being
+     * notified with the window right in front of them.
+     */
+    val gate: NotificationGate = NotificationGate { notification ->
+        val settings = currentSettings()
+        settings.desktopNotificationsEnabled &&
+            (settings.notifyWhileWindowInSight || attention.gate.shouldDeliver(notification))
+    }
+}
+
+/**
  * Mirrors the downloads list's lifecycle transitions (completed / failed / restarted)
  * onto the *desktop* notification surface through the reusable `:notifications`
  * library, complementing the in-window balloons the downloads screen shows.
@@ -60,19 +101,28 @@ class AppWindowAttention(
  * must never reach the desktop.
  *
  * Wording comes from the same localized advisories strings the in-app balloons use, so
- * a notice reads identically wherever it lands.
+ * a notice reads identically wherever it lands. Which of those transitions may go out at all is
+ * the user's call, made in the Notifications settings category and applied by
+ * [AppNotificationPreferences].
  */
 @Composable
 fun AppSystemNotifications(shell: AppShell, strings: BlazeStrings) {
     val service = koinInject<NotificationService>()
     val repository = koinInject<DownloadRepository>()
+    val appSettingsRepository = koinInject<AppSettingsRepository>()
 
-    val publisher = remember(service) {
-        NotificationPublisher(service, AppWindowAttention({ shell.windowVisible.value }).gate)
+    val preferences = remember(appSettingsRepository, shell) {
+        AppNotificationPreferences(
+            currentSettings = { appSettingsRepository.settings.value },
+            attention = AppWindowAttention({ shell.windowVisible.value }),
+        )
+    }
+    val publisher = remember(service, preferences) {
+        NotificationPublisher(service, preferences.gate)
     }
 
     LaunchedEffect(publisher, repository, strings) {
-        watchTransitions(repository, publisher, strings, this)
+        watchTransitions(repository, publisher, strings, preferences, this)
     }
 }
 
@@ -85,6 +135,7 @@ internal suspend fun watchTransitions(
     repository: DownloadRepository,
     publisher: NotificationPublisher,
     strings: BlazeStrings,
+    preferences: AppNotificationPreferences,
     scope: CoroutineScope,
 ) {
     val latest = MutableStateFlow<List<Download>>(emptyList())
@@ -98,9 +149,11 @@ internal suspend fun watchTransitions(
         if (before == null) return@collect
 
         for (advisory in diffDownloadTransitions(before, current)) {
+            // A kind the user switched off is dropped here, not after the retry grace.
+            if (!preferences.isWanted(advisory)) continue
             // Gate check happens inside the job, at delivery time: a notice held back by
             // the retry grace may see the window raised or hidden while it waits.
-            jobs += scope.launch { deliver(advisory, latest, publisher, strings) }
+            jobs += scope.launch { deliver(advisory, latest, publisher, strings, preferences) }
         }
     }
     // Notices still in flight when the stream ends (app leaving composition) get a moment
@@ -113,6 +166,7 @@ private suspend fun deliver(
     latest: MutableStateFlow<List<Download>>,
     publisher: NotificationPublisher,
     strings: BlazeStrings,
+    preferences: AppNotificationPreferences,
 ) {
     var notice = advisory
     if (advisory is DownloadAdvisory.Failed) {
@@ -121,6 +175,8 @@ private suspend fun deliver(
         if (live.state != DownloadState.FAILED) return
         // Re-word the notice from the fresh row: its name/error may have settled during the grace.
         notice = advisory.copy(download = live)
+        // Still unwanted by the time the grace ran out? Say nothing.
+        if (!preferences.isWanted(notice)) return
     }
     publisher.publish(notice.systemNotificationFor(strings))
 }

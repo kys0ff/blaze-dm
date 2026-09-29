@@ -46,7 +46,8 @@ data class SettingsState(
     val savedAppSettings: AppSettings = AppSettings(),
     // Environment capabilities: the corresponding options are hidden when unsupported.
     val traySupported: Boolean = false,
-    val autoStartSupported: Boolean = false
+    val autoStartSupported: Boolean = false,
+    val notificationsSupported: Boolean = false
 ) {
     /** Enabled state of a handler with any pending override folded in. */
     fun effectiveHandlerEnabled(handler: HandlerUiState): Boolean =

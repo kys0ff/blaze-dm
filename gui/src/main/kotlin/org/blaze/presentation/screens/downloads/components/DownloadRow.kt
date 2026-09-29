@@ -51,6 +51,9 @@ import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
+import org.blaze.presentation.screens.downloads.canCancel
+import org.blaze.presentation.screens.downloads.canPause
+import org.blaze.presentation.screens.downloads.canResume
 import org.blaze.presentation.screens.downloads.isTorrentSource
 import org.blaze.presentation.screens.downloads.isUnresumableInProgress
 import org.blaze.presentation.screens.downloads.isWaitingForPeers
@@ -391,33 +394,24 @@ fun DownloadRow(
                                 { showFileList = !showFileList }
                             )
                         }
-                        when (download.state) {
-                            DownloadState.DOWNLOADING, DownloadState.SEEDING ->
+                        // The same eligibility the bulk cluster and the right-click menu read, so a
+                        // row never offers a command its state cannot obey.
+                        when {
+                            download.canPause() ->
                                 ToolbarIconButton(AllIconsKeys.Actions.Pause, strings.downloads.actions.pause, actions.pause)
 
-                            DownloadState.PAUSED, DownloadState.QUEUED -> {
-                                if (!hideResume || download.state != DownloadState.QUEUED) {
-                                    ToolbarIconButton(AllIconsKeys.Actions.Resume, strings.downloads.actions.resume, actions.resume)
-                                }
-                            }
+                            download.canResume(hideResume) ->
+                                ToolbarIconButton(AllIconsKeys.Actions.Resume, strings.downloads.actions.resume, actions.resume)
 
-                            DownloadState.FAILED ->
+                            download.state == DownloadState.FAILED ->
                                 ToolbarIconButton(AllIconsKeys.Actions.Restart, strings.downloads.actions.retry, actions.retry)
 
-                            DownloadState.COMPLETED ->
-                                // The file was deleted after finishing, so fetching it again is the one
-                                // useful thing to offer right on the row.
-                                if (fileMissing) {
-                                    ToolbarIconButton(AllIconsKeys.Actions.Download, strings.downloads.actions.reDownload, actions.reDownload)
-                                }
-
-                            else -> {}
+                            // The file was deleted after finishing, so fetching it again is the one
+                            // useful thing to offer right on the row.
+                            download.state == DownloadState.COMPLETED && fileMissing ->
+                                ToolbarIconButton(AllIconsKeys.Actions.Download, strings.downloads.actions.reDownload, actions.reDownload)
                         }
-                        if (download.state == DownloadState.DOWNLOADING ||
-                            download.state == DownloadState.SEEDING ||
-                            download.state == DownloadState.PAUSED ||
-                            download.state == DownloadState.QUEUED
-                        ) {
+                        if (download.canCancel()) {
                             ToolbarIconButton(AllIconsKeys.Actions.Cancel, strings.downloads.actions.cancel, actions.cancel)
                         }
                         if (fileMissing) {

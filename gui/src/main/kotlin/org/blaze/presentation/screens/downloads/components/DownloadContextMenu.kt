@@ -6,6 +6,9 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
+import org.blaze.presentation.screens.downloads.canCancel
+import org.blaze.presentation.screens.downloads.canPause
+import org.blaze.presentation.screens.downloads.canResume
 import org.jetbrains.jewel.ui.component.ContextMenuDivider
 import org.jetbrains.jewel.ui.component.ContextMenuItemOption
 import org.jetbrains.jewel.ui.component.ContextSubmenu
@@ -35,10 +38,10 @@ fun buildDownloadContextMenu(
     // A finished row whose file has since been deleted can neither be opened nor revealed; it can
     // only be fetched again or cleared off the list.
     val isGone = isCompleted && fileMissing
-    val isResumable = state == DownloadState.PAUSED ||
-        (state == DownloadState.QUEUED && !hideResumeForQueued)
-    val isCancellable = state == DownloadState.DOWNLOADING || state == DownloadState.SEEDING ||
-        state == DownloadState.PAUSED || state == DownloadState.QUEUED
+    // Transport eligibility comes from the shared predicates so the menu, the row buttons and the
+    // bulk cluster read the same rule: a finished row is neither resumable nor cancellable.
+    val isResumable = download.canResume(hideResumeForQueued)
+    val isCancellable = download.canCancel()
     val isFailed = state == DownloadState.FAILED
     // Priority only steers work that still has queue time ahead of it; a terminal row can't be re-ranked.
     val canSetPriority = state == DownloadState.QUEUED ||
@@ -63,7 +66,7 @@ fun buildDownloadContextMenu(
 
         // ── Transport controls ────────────────────────────────────────────────
         when {
-            state == DownloadState.DOWNLOADING || state == DownloadState.SEEDING ->
+            download.canPause() ->
                 add(option(labels.pause, AllIconsKeys.Actions.Pause, actions.pause))
 
             isResumable ->

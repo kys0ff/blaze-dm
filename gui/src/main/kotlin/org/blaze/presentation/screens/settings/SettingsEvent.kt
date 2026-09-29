@@ -52,6 +52,14 @@ sealed interface SettingsEvent {
     data class UpdateMinimizeToTrayOnClose(val enabled: Boolean) : SettingsEvent
     data class UpdateRunAtStartup(val enabled: Boolean) : SettingsEvent
     data class UpdateClipboardMonitoring(val enabled: Boolean) : SettingsEvent
+
+    // Desktop notifications — all buffered in the app-settings draft like the rest of the shell
+    // options, so nothing reaches the notification service before Apply/OK.
+    data class UpdateDesktopNotificationsEnabled(val enabled: Boolean) : SettingsEvent
+    data class UpdateNotifyOnCompleted(val enabled: Boolean) : SettingsEvent
+    data class UpdateNotifyOnFailed(val enabled: Boolean) : SettingsEvent
+    data class UpdateNotifyOnRestarted(val enabled: Boolean) : SettingsEvent
+    data class UpdateNotifyWhileInSight(val enabled: Boolean) : SettingsEvent
     
     // Destination & Conflicts
     data class UpdateDefaultDownloadDir(val path: String) : SettingsEvent

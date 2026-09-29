@@ -66,6 +66,8 @@ The main window, the way it's meant to be seen. Drop your captures into the
   usable while Blaze hammers it.
 - **Deep desktop integration** — system tray, close-to-tray, taskbar progress
   (Linux & Windows), run-at-startup, and native packages.
+- **Desktop notifications** — native cross-platform banners for finished,
+  failed and restarted downloads, fired only while the window isn't in sight.
 - **Theming & i18n** — plugin-based themes and a locale-driven UI.
 - **Link-handler extensions** — register custom resolvers so more link types
   "just work".
@@ -85,7 +87,7 @@ Blaze is a JVM desktop app, and the stack is very much on purpose:
 - **Voyager** — screen navigation for the app shell.
 - **kotlinx.serialization** — for settings and session persistence.
 - **dbus-java** — talking to the Linux desktop (StatusNotifierItem tray, launcher
-  entries) without leaving the JVM.
+  entries, Freedesktop notifications) without leaving the JVM.
 - **Logback / SLF4J** — logging you can configure and control at runtime.
 
 ## Project Layout
@@ -100,6 +102,7 @@ Blaze is a JVM desktop app, and the stack is very much on purpose:
 | `theming`         | Plugin-based theme registry and provider safety.                                   |
 | `tray`            | App-agnostic system-tray library.                                                  |
 | `platform`        | App-agnostic desktop integration (files, clipboard, autostart, taskbar).           |
+| `notifications`   | App-agnostic, copy-able desktop-notification library (Linux/Windows/macOS).        |
 | `i18n`            | Locale management and UI strings.                                                  |
 | `filepicker`      | Reusable file-picker UI and shared presentation components.                        |
 | `gui`             | The Blaze application itself — wires everything into the desktop UI.               |
@@ -152,13 +155,14 @@ The local API is **localhost-only and token-authenticated by default**. Full tra
 exit codes, security model and browser-extension readiness are documented in
 **[`docs/DOWNLOAD_API.md`](docs/DOWNLOAD_API.md)**.
 
-### OS integration
+## Extending Blaze (themes & link handlers)
 
-The packaged app registers itself with the operating system as the handler for `.torrent` files and
-`magnet:` links: clicking one in a browser, double-clicking a downloaded file, or `xdg-open`ing a link
-launches Blaze (or wakes the running instance — never a second one) and routes the resource through the
-same Add-download workflow as a manual paste. Platform registration, the single-instance IPC design and
-security assumptions are documented in **[`docs/OS_INTEGRATION.md`](docs/OS_INTEGRATION.md)**.
+Blaze is pluggable without forking it: a **colour theme** is one `BlazeThemeProvider` class in a jar, and a
+**link handler** (teach Blaze a new file-host) is one `LinkResolver` class in a jar. Drop either into
+Settings → Themes / Link Handlers and it's live.
+
+Author guide — contracts, project setup, worked examples, sandboxing model and checklists — is documented in
+**[`docs/EXTENSIONS.md`](docs/EXTENSIONS.md)**.
 
 ## License
 
