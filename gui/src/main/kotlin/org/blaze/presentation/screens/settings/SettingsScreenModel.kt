@@ -320,6 +320,10 @@ class SettingsScreenModel(
             it.copy(enabledHandlerOverrides = it.enabledHandlerOverrides + (event.id to event.enabled))
         }
 
+        is SettingsEvent.UpdateHandlerOptions -> _state.update {
+            it.copy(optionOverrides = it.optionOverrides + (event.id to event.values))
+        }
+
         is SettingsEvent.UpdateAlwaysAskHandler -> _state.update {
             it.copy(alwaysAskOverride = event.enabled)
         }
@@ -382,6 +386,7 @@ class SettingsScreenModel(
                     savedAppSettings = snapshot.appSettings,
                     appSettings = snapshot.appSettings,
                     enabledHandlerOverrides = emptyMap(),
+                    optionOverrides = emptyMap(),
                     alwaysAskOverride = null,
                     selectedThemeOverride = null
                 )
@@ -410,6 +415,7 @@ class SettingsScreenModel(
         appSettings = appSettings,
         savedAppSettings = savedAppSettings,
         enabledHandlerOverrides = enabledHandlerOverrides,
+        optionOverrides = optionOverrides,
         alwaysAskOverride = alwaysAskOverride,
         installedHandlerIds = handlers.mapTo(HashSet()) { it.id },
         themeIds = themes.mapTo(HashSet()) { it.id },

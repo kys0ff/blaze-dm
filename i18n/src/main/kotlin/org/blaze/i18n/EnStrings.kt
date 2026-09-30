@@ -227,6 +227,14 @@ object EnStrings : BlazeStrings {
             override fun handlerWillAsk(count: Int) =
                 "$count extensions can process this link — you'll be asked which one to use."
 
+            override val resolvedLinksTitle = "Choose which links to download"
+            override val resolvedLinksPrompt =
+                "This page holds more than one downloadable link. Pick the ones you want — pick several to review them as a batch."
+            override val pickLinksAction = "Download"
+            override val downloadAllAction = "Download all"
+            override val noLinksResolved = "The handler found no downloadable link on this page."
+            override fun selectedLinkCount(count: Int, total: Int) = "$count of $total selected"
+
             override val plainPage = object : BlazeStrings.Downloads.Dialogs.PlainPage {
                 override val title = "No handler for this link"
                 override fun message(url: String) =
@@ -467,6 +475,24 @@ object EnStrings : BlazeStrings {
         override val sectionSettings = "Settings"
     }
 
+    override val extensions = object : BlazeStrings.Extensions {
+        override val title = "Extensions"
+        override val subtitle = "Link handlers turn page links into direct downloads. Changes here take effect immediately."
+        override val installAction = "Install extension..."
+        override val reloadAction = "Reload"
+        override val removeAction = "Remove"
+        override val optionsAction = "Options..."
+        override val emptyTitle = "No extensions installed"
+        override val emptyDescription = "Built-in handlers are always available. Install a handler jar to teach Blaze new sites, or manage them all in Settings."
+        override val builtinTag = "Built-in"
+        override val pluginTag = "Extension"
+        override val enabledLabel = "Enabled"
+        override fun handlesSites(count: Int) = if (count == 1) "1 link type handled" else "$count handlers available"
+        override fun removeConfirm(name: String) =
+            "Remove the $name extension? Its jar is deleted from the extensions folder; downloads already queued are unaffected."
+        override val removeConfirmTitle = "Remove extension"
+    }
+
     override val settings = object : BlazeStrings.Settings {
         override val title = "Settings"
         override val placeholder = "App configuration will appear here."
@@ -570,6 +596,13 @@ object EnStrings : BlazeStrings {
             override val emptyHandlers = "No handlers are installed."
             override val builtinTag = "Built-in"
             override val pluginTag = "Extension"
+            override val optionsAction = "Options..."
+            override fun optionsTitle(name: String) = "$name extension options"
+            override val priorityLabel = "Handler priority"
+            override val priorityDesc = "When several handlers match a link, the one with the higher priority is used first."
+            override val restoreDefaultsAction = "Restore defaults"
+            override val requestTimeoutLabel = "Handler request timeout (seconds)"
+            override val requestTimeoutDesc = "How long a link handler may spend fetching a page before Blaze gives up."
         }
 
         override val themes = object : BlazeStrings.Settings.Themes {

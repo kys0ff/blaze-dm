@@ -9,7 +9,7 @@ Blaze has exactly two user-facing extension points, each a plain Java `interface
 | Extension        | Contract module  | Interface                                  | Dropped into                | Managed from                 |
 |------------------|------------------|--------------------------------------------|-----------------------------|------------------------------|
 | **Colour theme** | `:theming`       | `org.blaze.theming.api.BlazeThemeProvider` | `~/.blaze/themes/*.jar`     | Settings → **Themes**        |
-| **Link handler** | `:link-resolver` | `org.blaze.resolver.api.LinkResolver`      | `~/.blaze/extensions/*.jar` | Settings → **Link Handlers** |
+| **Link handler** | `:link-resolver` | `org.blaze.resolver.api.LinkResolver`      | `~/.blaze/extensions/*.jar` | Extensions stripe · Settings → **Link Handlers** |
 
 Both are **in-process, untrusted-but-plain-JVM code**: no manifest metadata, no sandbox process, no
 activation API. You build a jar, the user installs it, Blaze loads it.
@@ -37,7 +37,7 @@ activation API. You build a jar, the user installs it, Blaze loads it.
 ```
 ~/.blaze/
 ├── themes/            ← theme jars            (config: themes.json   → extensionDir, selectedThemeId)
-├── extensions/        ← link-handler jars     (config: resolvers.json → extensionDir, disabledHandlers, alwaysAskHandler)
+├── extensions/        ← link-handler jars     (config: resolvers.json → extensionDir, disabledHandlers, alwaysAskHandler, requestTimeoutSeconds, handlerOptions{})
 ├── settings.json      ← engine settings
 ├── app.json           ← shell settings
 └── …
@@ -304,7 +304,9 @@ Registered via `META-INF/services/org.blaze.resolver.api.LinkResolver`.
 
 ### 4.4 How it's used at runtime
 
-When the user pastes a link, Blaze lists the **enabled** handlers whose `canResolve` returns true:
+When the user pastes a link, Blaze lists the **enabled** handlers whose `canResolve` returns true,
+ordered best-first (a user-set **priority** wins, display name breaks ties). The top of that list is
+the one used silently when "always ask" is off:
 
 * one match → resolved automatically;
 * several matches → the user is asked which to use (and "always ask" in Settings → **Link Handlers**
@@ -317,8 +319,11 @@ When the user pastes a link, Blaze lists the **enabled** handlers whose `canReso
 The last case is why a handler matters: without one, the only thing Blaze can do with a share page is
 fetch the page. A handler turns it into the file behind it.
 
-A disabled handler stays loaded; it just stops matching. Enable/disable is buffered with the rest of
-the Settings draft and written to `resolvers.json` on OK.
+A disabled handler stays loaded; it just stops matching. Handlers are managed from two places: the
+**Extensions** tool-window stripe (enable/disable, install/remove, per-handler options and priority —
+every edit takes effect **immediately**) and Settings → **Link Handlers** (the buffered draft with
+Apply/OK, plus the global always-ask and extensions-folder preferences). Both write the same
+`resolvers.json`.
 
 ### 4.5 Testing without the app
 
@@ -338,6 +343,71 @@ class AcmeShareResolverTest {
 Keep the HTML fixtures as strings so you can assert on the *error* paths too — the messages you throw
 are the messages your users read.
 
+### 4.6 Configurable handlers: options, multiple links & priority
+
+A plain `LinkResolver` is single-link and option-free. To publish user-editable settings, return
+several links from one page, or honour the subsystem's HTTP timeout, implement the
+`ConfigurableLinkResolver` sub-interface instead. It **extends** `LinkResolver`, so it is discovered
+through the same `META-INF/services/org.blaze.resolver.api.LinkResolver` file — you do **not** add a
+second service entry — and existing single-link jars keep working untouched.
+
+```kotlin
+interface ConfigurableLinkResolver : LinkResolver {
+    val optionDescriptors: List<ResolverOption> get() = emptyList()
+    fun settings(): ResolverConfig                = ResolverSettingsDefaults.fromDescriptors(optionDescriptors)
+    fun applySettings(settings: ResolverConfig)   {}
+    fun resolveAll(url: String, context: ResolverContext): List<ResolvedLink> = listOf(resolve(url))
+}
+```
+
+Every member has a default, so a configurable handler overrides only what it needs. The registry
+calls `resolveAll` for you: it invokes `applySettings(...)` with the handler's **persisted option
+values merged over the declared defaults**, then `resolveAll(url, ResolverContext(timeoutSeconds))`.
+Your `resolve` is only used for a plain handler, so the two paths never overlap.
+
+**Declare typed options.** `ResolverOption` is a `@Serializable` descriptor the app renders into a
+form without running your code. Use the helper constructors; labels/descriptions are plain strings
+(you own the wording — extensions have no access to Blaze's translations):
+
+```kotlin
+import org.blaze.resolver.api.*
+
+class AcmeShareResolver : ConfigurableLinkResolver {
+    override val optionDescriptors = listOf(
+        textOption("userAgent", "User-Agent", default = "Blaze/AcmeHandler"),
+        integerOption("minFreeKb", "Min free space (KB)", range = 0L..1_048_576L, default = 0L),
+        booleanOption("followRedirects", "Follow redirects", default = true),
+        selectOption("quality", "Quality", choices = listOf("auto", "1080", "720"), default = "auto"),
+    )
+
+    @Volatile private var config = ResolverSettingsDefaults.fromDescriptors(optionDescriptors)
+    override fun applySettings(settings: ResolverConfig) { config = settings }
+
+    override fun resolveAll(url: String, context: ResolverContext): List<ResolvedLink> {
+        val agent = config.value("userAgent", "Blaze/AcmeHandler")
+        val timeout = context.requestTimeoutSeconds   // seconds, from the subsystem ResolverContext
+        // ...fetch with agent/timeout, return ONE link:
+        return listOf(resolve(url))
+    }
+    // resolve(url) still satisfies the LinkResolver contract for the plain single-link fallback.
+}
+```
+
+`ResolverConfig` reads back type-safely: `value(key, default)`, `booleanValue`, `intValue(key,
+default, range)` (clamped), and `selectValue(key, choices, default)`. Values are stored in the
+handler's slice of `resolvers.json` (`handlerOptions[id].optionValues`); a key the user never touched
+falls back to the descriptor's `defaultValue`, so shipping a new option never breaks an existing
+install.
+
+**Return several links.** A page that offers mirrors or multiple files can return them all from
+`resolveAll`. The add-download flow then lets the user tick which to grab — one chosen continues the
+normal single-file review, several become a batch. There is no ordering requirement, but put the
+best/default candidate first: a handler whose `resolve` fallback the plain path uses returns `listOf(resolve(url))`.
+
+**Keep it coroutine-free.** `optionDescriptors` must be a cheap, stable list of data — it is read on
+the UI thread to build the form. Do no network or disk work in the descriptors or in
+`applySettings`; treat them as pure get/set.
+
 ---
 
 ## 5. Failure & sandboxing model
@@ -350,6 +420,8 @@ Plugin code is untrusted, so Blaze wraps every entry point (`SafeThemeProvider`,
 | Constructor throws, missing class       | That provider is skipped; other providers **in the same jar** still load.    |
 | `id`/`displayName`/`description` throws | Listed under a synthetic `invalid:<jar-name>` id so it can still be removed. |
 | `canResolve` throws                     | Treated as `false` — the handler simply never matches.                       |
+| `optionDescriptors`/`settings()` throws | Falls back to an empty form / default config — the config gear just shows nothing to edit. |
+| `applySettings` throws                  | Swallowed; the handler resolves with whatever config it last held.           |
 | `provide` throws                        | `ThemePalette.Empty` — the app keeps its stock look.                         |
 | `resolve` throws                        | The exception message is surfaced as the download error (not swallowed).     |
 | Selected/installed jar deleted          | Theme falls back to `default`; handler disappears on next reload.            |
@@ -383,4 +455,5 @@ Consequences worth internalizing:
 - [ ] Required `Referer`/`User-Agent` returned in `ResolvedLink.headers`.
 - [ ] `fileName`/`sizeBytes` omitted rather than guessed.
 - [ ] Icon is PNG (or left out), read from your own jar.
+- [ ] Configurable handlers: descriptors are cheap/stable data, values read via `ResolverConfig`, no I/O in `applySettings`.
 - [ ] Verified against a real page *and* a page that no longer exists.

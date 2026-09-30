@@ -10,6 +10,7 @@ interface BlazeStrings {
     val tray: Tray
     val menu: Menu
     val search: Search
+    val extensions: Extensions
 
     interface Common {
         val ok: String
@@ -301,6 +302,21 @@ interface BlazeStrings {
             /** Shown inline under the URL field when several handlers match and picker is on. */
             fun handlerWillAsk(count: Int): String
 
+            // Multi-link resolution: one page can yield several downloadable links, and the
+            // user picks which to queue (single -> normal review, several -> batch review).
+            /** Title of the pick-the-links dialog. */
+            val resolvedLinksTitle: String
+            /** Prompt above the checkbox list of resolved links. */
+            val resolvedLinksPrompt: String
+            /** Confirm label when the pick should start right away. */
+            val pickLinksAction: String
+            /** Action that queues every resolved link at once. */
+            val downloadAllAction: String
+            /** Error shown when a handler answered with no downloadable link. */
+            val noLinksResolved: String
+            /** Footer naming how many of the offered links are selected. */
+            fun selectedLinkCount(count: Int, total: Int): String
+
             /**
              * Shown before saving a page link that no installed handler can take apart. Blaze can
              * still fetch it — the response just isn't the file the user was after — so the outcome
@@ -590,6 +606,30 @@ interface BlazeStrings {
         val sectionSettings: String
     }
 
+    /**
+     * Copy for the in-window Extensions tool-window panel (the stripe tab next to Downloads).
+     * The panel manages handler lifecycle live; global preferences stay in Settings.
+     */
+    interface Extensions {
+        val title: String
+        /** Sub-line under the title explaining what an extension does. */
+        val subtitle: String
+        val installAction: String
+        val reloadAction: String
+        val removeAction: String
+        val optionsAction: String
+        val emptyTitle: String
+        val emptyDescription: String
+        val builtinTag: String
+        val pluginTag: String
+        val enabledLabel: String
+        /** Tooltip naming the handler that will resolve a link. */
+        fun handlesSites(count: Int): String
+        /** Confirm-body when removing a plugin jar from disk. */
+        fun removeConfirm(name: String): String
+        val removeConfirmTitle: String
+    }
+
     interface Settings {
         val title: String
         val placeholder: String
@@ -698,6 +738,18 @@ interface BlazeStrings {
             val emptyHandlers: String
             val builtinTag: String
             val pluginTag: String
+            /** Label of the per-handler gear that opens its option editor. */
+            val optionsAction: String
+            /** Title of a handler's option dialog, naming the handler. */
+            fun optionsTitle(name: String): String
+            /** Header of the priority field inside the option dialog. */
+            val priorityLabel: String
+            val priorityDesc: String
+            /** Button that clears every edited option back to its declared default. */
+            val restoreDefaultsAction: String
+            /** Timeout preference shared by all handlers. */
+            val requestTimeoutLabel: String
+            val requestTimeoutDesc: String
         }
 
         val themes: Themes

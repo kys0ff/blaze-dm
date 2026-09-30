@@ -35,6 +35,10 @@ data class SettingsState(
     // overrides here so they only reach the registry on Apply/OK (mirroring the draft settings).
     val handlers: List<HandlerUiState> = emptyList(),
     val enabledHandlerOverrides: Map<String, Boolean> = emptyMap(),
+    // Per-handler option values (handler id -> option key -> value) staged in the draft; only
+    // the keys the user actually touched appear here, so an untouched handler keeps reading its
+    // persisted/defaulted values. Committed to the slice on Apply/OK.
+    val optionOverrides: Map<String, Map<String, String>> = emptyMap(),
     val alwaysAskHandler: Boolean = true,
     val alwaysAskOverride: Boolean? = null,
     val extensionDir: String = "",
@@ -52,6 +56,10 @@ data class SettingsState(
     /** Enabled state of a handler with any pending override folded in. */
     fun effectiveHandlerEnabled(handler: HandlerUiState): Boolean =
         enabledHandlerOverrides[handler.id] ?: handler.enabled
+
+    /** A handler's option values as the draft would write them, falling back to the persisted effective set. */
+    fun effectiveHandlerOptions(id: String, persisted: Map<String, String>): Map<String, String> =
+        optionOverrides[id]?.let { persisted + it } ?: persisted
 
     /** Whether to always ask which handler to use, with any pending override folded in. */
     val effectiveAlwaysAsk: Boolean get() = alwaysAskOverride ?: alwaysAskHandler
@@ -86,6 +94,7 @@ data class SettingsState(
         get() = settings != savedSettings ||
                 appSettings != savedAppSettings ||
                 enabledHandlerOverrides.isNotEmpty() ||
+                optionOverrides.isNotEmpty() ||
                 alwaysAskOverride != null ||
                 selectedThemeOverride != null
 }

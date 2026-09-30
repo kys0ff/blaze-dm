@@ -75,6 +75,8 @@ sealed interface SettingsEvent {
     // Link handlers / extensions (enable/disable and always-ask are buffered until Apply/OK;
     // install/remove/reload act on the extensions directory immediately)
     data class ToggleHandler(val id: String, val enabled: Boolean) : SettingsEvent
+    /** Buffer a handler's whole option map in the draft (the option dialog's OK). */
+    data class UpdateHandlerOptions(val id: String, val values: Map<String, String>) : SettingsEvent
     data class UpdateAlwaysAskHandler(val enabled: Boolean) : SettingsEvent
     data class InstallExtension(val jarPath: String) : SettingsEvent
     data class RemoveExtension(val id: String) : SettingsEvent

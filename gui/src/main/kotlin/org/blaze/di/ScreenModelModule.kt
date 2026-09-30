@@ -1,6 +1,7 @@
 package org.blaze.di
 
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
+import org.blaze.presentation.screens.extensions.ExtensionsScreenModel
 import org.blaze.presentation.screens.settings.SettingsScreenModel
 import org.blaze.presentation.screens.settings.SettingsUseCases
 import org.koin.dsl.module
@@ -49,6 +50,13 @@ val screenModelModule = module {
     factory {
         SettingsScreenModel(
             useCases = get()
+        )
+    }
+
+    factory {
+        ExtensionsScreenModel(
+            registry = get(),
+            settingsRepository = get(),
         )
     }
 }

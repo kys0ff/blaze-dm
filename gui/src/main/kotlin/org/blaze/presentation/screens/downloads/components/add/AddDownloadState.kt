@@ -10,6 +10,7 @@ import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.osintegration.ExternalOpenParser
+import org.blaze.resolver.api.ResolvedLink
 import org.blaze.resolver.core.LoadedResolver
 import java.io.File
 import java.nio.file.Path
@@ -65,6 +66,17 @@ class AddDownloadState(
     var fetchError by mutableStateOf<String?>(null)
 
     /**
+     * Extra request headers the resolved link carries (e.g. a required Referer). Folded into
+     * [effectiveCredentials] so the metadata probe and the queued transfer both send them; a
+     * page that resolves to nothing leaves this empty and behaves exactly like a direct URL.
+     */
+    var resolvedHeaders by mutableStateOf<Map<String, String>>(emptyMap())
+
+    /** Every link a handler extracted from the page, pending the user's pick when there are several. */
+    var resolvedLinks by mutableStateOf<List<ResolvedLink>>(emptyList())
+    var showLinkChoice by mutableStateOf(false)
+
+    /**
      * The source awaiting the user's "download the page anyway" answer, or null when nothing is
      * pending. Held as a captured string rather than read back from [url] at confirm time, so the
      * link described by the warning is exactly the one that gets fetched.
@@ -85,6 +97,9 @@ class AddDownloadState(
 
     /** The URL actually handed to the engine: a resolved direct link when present. */
     val effectiveSource: String get() = resolvedDirectUrl ?: source
+
+    /** User credentials plus any headers the resolved link demanded; what the transfer is sent. */
+    val effectiveCredentials: Map<String, String> get() = credentials + resolvedHeaders
 
     val canFetch: Boolean get() = source.isNotEmpty() && (isBatch || source.isSupportedSource())
     val looksSupported: Boolean get() = source.isEmpty() || isBatch || source.isSupportedSource()
@@ -118,6 +133,9 @@ class AddDownloadState(
         selectedFileIndices = emptySet()
         batchItems.clear()
         resolvedDirectUrl = null
+        resolvedHeaders = emptyMap()
+        resolvedLinks = emptyList()
+        showLinkChoice = false
         handlerChoices = emptyList()
         fetchError = null
         detectedHandlers = emptyList()

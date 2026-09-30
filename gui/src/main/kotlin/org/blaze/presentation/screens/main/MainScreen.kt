@@ -42,6 +42,7 @@ import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.screens.downloads.attention
+import org.blaze.presentation.screens.extensions.ExtensionsPanel
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSpeed
@@ -99,6 +100,11 @@ class MainScreen : Screen {
                             count = downloads.size.takeIf { it > 0 }
                         ),
                         SidebarItem(
+                            label = strings.extensions.title,
+                            icon = AllIconsKeys.Nodes.Plugin,
+                            id = "extensions",
+                        ),
+                        SidebarItem(
                             label = strings.menu.settings,
                             icon = AllIconsKeys.General.Settings,
                             id = "settings",
@@ -108,9 +114,10 @@ class MainScreen : Screen {
                     )
 
                     val currentScreen = navigator.lastItem
-                    // Downloads is the only view the stripe switches between: Settings is a modal
-                    // window, not a route, and opening a dialog never changes tool-window selection.
-                    val selectedItem = sidebarItems[0]
+                    // Downloads and Extensions are the two views the stripe switches between; Settings
+                    // is a modal window, not a route, so opening a dialog never changes the selection.
+                    val selectedItem =
+                        if (currentScreen is ExtensionsPanel) sidebarItems[1] else sidebarItems[0]
 
                     ToolWindowStripe(
                         items = sidebarItems,
@@ -119,6 +126,10 @@ class MainScreen : Screen {
                             when (item.id) {
                                 "downloads" -> if (currentScreen !is DownloadsScreen) navigator.replaceAll(
                                     DownloadsScreen()
+                                )
+
+                                "extensions" -> if (currentScreen !is ExtensionsPanel) navigator.replaceAll(
+                                    ExtensionsPanel()
                                 )
 
                                 "settings" -> commandBus.send(AppCommand.OpenSettings)

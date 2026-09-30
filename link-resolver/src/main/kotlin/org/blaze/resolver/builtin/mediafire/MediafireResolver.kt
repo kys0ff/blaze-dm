@@ -1,7 +1,12 @@
 package org.blaze.resolver.builtin.mediafire
 
-import org.blaze.resolver.api.LinkResolver
+import org.blaze.resolver.api.ConfigurableLinkResolver
 import org.blaze.resolver.api.ResolvedLink
+import org.blaze.resolver.api.ResolverConfig
+import org.blaze.resolver.api.ResolverContext
+import org.blaze.resolver.api.ResolverOption
+import org.blaze.resolver.api.integerOption
+import org.blaze.resolver.api.textOption
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -17,8 +22,13 @@ import java.time.Duration
  *        -> filename
  *        -> size
  *        -> ResolvedLink
+ *
+ * It demonstrates the configurable facet: two user-editable options (a request user agent
+ * and a per-handler timeout) declared through [optionDescriptors] and folded into the
+ * resolve via [applySettings]; the subsystem-wide [ResolverContext.requestTimeoutSeconds]
+ * backs the timeout when the handler's own option is left at its default.
  */
-class MediafireResolver : LinkResolver {
+class MediafireResolver : ConfigurableLinkResolver {
 
     override val id: String = "mediafire"
     override val iconBase64: String
@@ -27,19 +37,57 @@ class MediafireResolver : LinkResolver {
     override val description: String =
         "Resolves MediaFire share pages into a direct download link"
 
-    private val client: HttpClient by lazy {
-        HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .connectTimeout(Duration.ofSeconds(15))
-            .build()
+    override val optionDescriptors: List<ResolverOption> = listOf(
+        textOption(
+            key = OPTION_USER_AGENT,
+            label = "Request user agent",
+            description = "User-Agent header sent while reading the share page.",
+            default = DEFAULT_USER_AGENT,
+        ),
+        integerOption(
+            key = OPTION_TIMEOUT,
+            label = "Request timeout (seconds)",
+            description = "How long a single page fetch may take before it is abandoned.",
+            range = TIMEOUT_RANGE,
+            default = 15,
+        ),
+    )
+
+    @Volatile
+    private var config: ResolverConfig = ResolverConfig()
+
+    override fun settings(): ResolverConfig = config
+
+    override fun applySettings(settings: ResolverConfig) {
+        config = settings
     }
 
     override fun canResolve(url: String): Boolean =
         parseHost(url)?.let(::isMediafireShareHost) == true
 
-    override fun resolve(url: String): ResolvedLink {
+    override fun resolveAll(url: String, context: ResolverContext): List<ResolvedLink> =
+        listOf(resolveWith(url, effectiveUserAgent(), effectiveTimeout(context)))
+
+    // The legacy single-link entry point; retained so the handler still satisfies LinkResolver
+    // directly (the registry always routes through resolveAll, but tests and callers may not).
+    override fun resolve(url: String): ResolvedLink =
+        resolveWith(url, effectiveUserAgent(), DEFAULT_TIMEOUT_SECONDS.toInt())
+
+    private fun effectiveUserAgent(): String =
+        config.value(OPTION_USER_AGENT, DEFAULT_USER_AGENT)
+
+    private fun effectiveTimeout(context: ResolverContext): Int {
+        val own = config.intValue(OPTION_TIMEOUT, DEFAULT_TIMEOUT_SECONDS, TIMEOUT_RANGE)
+        // A handler timeout left at its default defers to the subsystem preference; an
+        // explicit value always wins.
+        val seconds = if (own != DEFAULT_TIMEOUT_SECONDS) own
+        else context.requestTimeoutSeconds.toLong()
+        return seconds.coerceIn(TIMEOUT_RANGE.first, TIMEOUT_RANGE.last).toInt()
+    }
+
+    private fun resolveWith(url: String, userAgent: String, timeoutSeconds: Int): ResolvedLink {
         val normalizedUrl = url.trim()
-        val html = fetchPage(normalizedUrl)
+        val html = fetchPage(normalizedUrl, userAgent, timeoutSeconds)
 
         val directUrl = extractDirectUrl(html)
         val fileName = extractFileName(directUrl)
@@ -53,10 +101,17 @@ class MediafireResolver : LinkResolver {
         )
     }
 
-    private fun fetchPage(url: String): String {
+    private fun fetchPage(url: String, userAgent: String, timeoutSeconds: Int): String {
+        val timeout = Duration.ofSeconds(timeoutSeconds.toLong())
+        val client: HttpClient = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(timeout)
+            .build()
+
         val request = HttpRequest.newBuilder(URI(url))
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", userAgent)
             .header("Accept", "text/html,application/xhtml+xml")
+            .timeout(timeout)
             .GET()
             .build()
 
@@ -206,7 +261,12 @@ class MediafireResolver : LinkResolver {
                 !host.startsWith("download")
 
     private companion object {
-        const val USER_AGENT =
+        const val OPTION_USER_AGENT = "userAgent"
+        const val OPTION_TIMEOUT = "timeoutSeconds"
+        const val DEFAULT_TIMEOUT_SECONDS = 15L
+        val TIMEOUT_RANGE = 5L..120L
+
+        const val DEFAULT_USER_AGENT =
             "Mozilla/5.0 (X11; Linux x86_64) " +
                     "AppleWebKit/537.36 (KHTML, like Gecko) " +
                     "Chrome/120.0.0.0 Safari/537.36"

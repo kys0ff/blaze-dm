@@ -89,7 +89,6 @@ fun ImportPortableDialog(
 
 @Composable
 private fun Field(label: String, value: String) {
-    val strings = blazeStrings
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)

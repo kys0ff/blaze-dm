@@ -6,8 +6,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+import org.blaze.resolver.api.ConfigurableLinkResolver
 import org.blaze.resolver.api.LinkResolver
 import org.blaze.resolver.api.ResolvedLink
+import org.blaze.resolver.api.ResolverConfig
+import org.blaze.resolver.api.ResolverContext
+import org.blaze.resolver.api.ResolverOption
+import org.blaze.resolver.api.mergedWith
 import org.slf4j.LoggerFactory
 import java.net.URLClassLoader
 import java.nio.file.Files
@@ -57,17 +62,65 @@ class LinkResolverRegistry(
         Path.of(settingsRepository.settings.value.extensionDir)
 
     fun isEnabled(id: String): Boolean =
-        id !in settingsRepository.settings.value.disabledHandlers
+        settingsRepository.settings.value.isEnabled(id)
 
-    /** Enabled handlers that claim they can resolve [url]. */
+    /**
+     * Enabled handlers that claim they can resolve [url], best-first: a user-set priority
+     * orders them, display name breaks ties stably. The "use the first one silently" path
+     * of always-ask-off therefore honours the handler the user prefers.
+     */
     fun enabledHandlers(url: String): List<LoadedResolver> =
-        _handlers.value.filter { isEnabled(it.resolver.id) && runCatching { it.resolver.canResolve(url) }.getOrDefault(false) }
+        _handlers.value
+            .filter { isEnabled(it.resolver.id) && runCatching { it.resolver.canResolve(url) }.getOrDefault(false) }
+            .sortedWith(
+                compareByDescending<LoadedResolver> { priority(it.resolver.id) }
+                    .thenBy { it.resolver.displayName }
+            )
 
-    /** Run a handler's blocking resolve off the UI thread, wrapping any failure. */
-    suspend fun resolve(handler: LoadedResolver, url: String): Result<ResolvedLink> =
+    /** The user's ordering weight for a handler; higher runs first. */
+    fun priority(id: String): Int = settingsRepository.settings.value.slice(id).priority
+
+    /**
+     * The option descriptors a handler publishes, read defensively: a plugin that is not
+     * configurable simply declares none, and one whose getter throws must not take the
+     * Extensions panel down.
+     */
+    fun optionDescriptors(handler: LoadedResolver): List<ResolverOption> =
+        (handler.resolver as? ConfigurableLinkResolver)
+            ?.let { runCatching { it.optionDescriptors }.getOrDefault(emptyList()) }
+            ?: emptyList()
+
+    /** The handler's effective config: every descriptor default, overlaid with stored values. */
+    fun handlerSettings(id: String): ResolverConfig {
+        val descriptors = _handlers.value
+            .firstOrNull { it.resolver.id == id }
+            ?.let(::optionDescriptors)
+            ?: emptyList()
+        return ResolverConfig(settingsRepository.settings.value.slice(id).optionValues).mergedWith(descriptors)
+    }
+
+    /**
+     * Run a handler's blocking multi-link extraction off the UI thread, wrapping any failure.
+     *
+     * A [ConfigurableLinkResolver] is handed its persisted [ResolverConfig] and the
+     * subsystem context immediately before resolving, so plugin code never touches
+     * storage; a plain handler takes the legacy single-link path unchanged.
+     */
+    suspend fun resolveAll(handler: LoadedResolver, url: String): Result<List<ResolvedLink>> =
         withContext(Dispatchers.IO) {
-            runCatching { handler.resolver.resolve(url) }
+            runCatching {
+                val configurable = handler.resolver as? ConfigurableLinkResolver
+                if (configurable != null) {
+                    configurable.applySettings(handlerSettings(configurable.id))
+                    configurable.resolveAll(url, ResolverContext(requestTimeout()))
+                } else {
+                    listOf(handler.resolver.resolve(url))
+                }
+            }
         }
+
+    private fun requestTimeout(): Int =
+        settingsRepository.settings.value.requestTimeoutSeconds.coerceIn(1, 300)
 
     /**
      * Load the bytes of the handler's icon, preferring the inline [LinkResolver.iconBase64]
@@ -103,15 +156,29 @@ class LinkResolverRegistry(
     }
 
     suspend fun setEnabled(id: String, enabled: Boolean) {
-        settingsRepository.updateSettings { settings ->
-            val disabled = settings.disabledHandlers.toMutableSet()
-            if (enabled) disabled.remove(id) else disabled.add(id)
-            settings.copy(disabledHandlers = disabled.toList())
-        }
+        settingsRepository.setEnabled(id, enabled)
+    }
+
+    /** Store one option value for a handler, effective on its next resolve. */
+    suspend fun setOptionValue(id: String, key: String, value: String) {
+        settingsRepository.setOptionValue(id, key, value)
+    }
+
+    /** Drop an option back to its descriptor default. */
+    suspend fun clearOptionValue(id: String, key: String) {
+        settingsRepository.clearOptionValue(id, key)
+    }
+
+    suspend fun setPriority(id: String, priority: Int) {
+        settingsRepository.setPriority(id, priority)
     }
 
     suspend fun setAlwaysAsk(enabled: Boolean) {
         settingsRepository.updateSettings { it.copy(alwaysAskHandler = enabled) }
+    }
+
+    suspend fun setRequestTimeout(seconds: Int) {
+        settingsRepository.updateSettings { it.copy(requestTimeoutSeconds = seconds.coerceIn(1, 300)) }
     }
 
     /** Copy [jar] into the extensions directory and reload. */

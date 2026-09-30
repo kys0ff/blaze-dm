@@ -1,5 +1,6 @@
 package org.blaze.cli
 
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -11,7 +12,6 @@ import org.blaze.download.api.DownloadDto
 import org.blaze.download.api.ServiceDescriptor
 import org.blaze.download.api.ServicePaths
 import java.net.URI
-import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -146,7 +146,7 @@ class BlazeApiClient(
     // ---- decoding -----------------------------------------------------------------------------
 
     fun decodeList(body: String): List<DownloadDto> =
-        json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(DownloadDto.serializer()), body)
+        json.decodeFromString(ListSerializer(DownloadDto.serializer()), body)
 
     fun decodeDto(body: String): DownloadDto = json.decodeFromString(DownloadDto.serializer(), body)
 

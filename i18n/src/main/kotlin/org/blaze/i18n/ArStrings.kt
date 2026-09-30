@@ -233,6 +233,14 @@ object ArStrings : BlazeStrings {
             override fun handlerWillAsk(count: Int) =
                 "$count امتدادات تستطيع معالجة هذا الرابط — سيُطلب منك اختيار أحدها."
 
+            override val resolvedLinksTitle = "اختر الروابط المراد تنزيلها"
+            override val resolvedLinksPrompt =
+                "تحتوي هذه الصفحة على أكثر من رابط قابل للتنزيل. اختر ما تريده — اختيار عدة روابط يراجعها كدفعة."
+            override val pickLinksAction = "تنزيل"
+            override val downloadAllAction = "تنزيل الكل"
+            override val noLinksResolved = "لم يجد المعالج أي رابط قابل للتنزيل في هذه الصفحة."
+            override fun selectedLinkCount(count: Int, total: Int) = "$count من $total محدّدة"
+
             override val plainPage = object : BlazeStrings.Downloads.Dialogs.PlainPage {
                 override val title = "لا يوجد معالج لهذا الرابط"
                 override fun message(url: String) =
@@ -473,6 +481,24 @@ object ArStrings : BlazeStrings {
         override val sectionSettings = "الإعدادات"
     }
 
+    override val extensions = object : BlazeStrings.Extensions {
+        override val title = "الامتدادات"
+        override val subtitle = "تحوّل معالجات الروابط روابط الصفحات إلى تنزيلات مباشرة؛ التغييرات هنا تسري فورًا."
+        override val installAction = "تثبيت امتداد..."
+        override val reloadAction = "إعادة تحميل"
+        override val removeAction = "إزالة"
+        override val optionsAction = "خيارات..."
+        override val emptyTitle = "لا توجد امتدادات مثبّتة"
+        override val emptyDescription = "المعالجات المضمّنة متاحة دائمًا. ثبّت ملف jar لمعالج لتعليم Blaze مواقع جديدة، أو أدرها كلها من الإعدادات."
+        override val builtinTag = "مضمّن"
+        override val pluginTag = "امتداد"
+        override val enabledLabel = "مفعّل"
+        override fun handlesSites(count: Int) = if (count == 1) "نوع روابط واحد مدعوم" else "$count معالجات متاحة"
+        override fun removeConfirm(name: String) =
+            "إزالة امتداد $name؟ يُحذف ملف jar من مجلد الامتدادات؛ التنزيلات المُدرجة مسبقًا لا تتأثر."
+        override val removeConfirmTitle = "إزالة الامتداد"
+    }
+
     override val settings = object : BlazeStrings.Settings {
         override val title = "الإعدادات"
         override val placeholder = "ستظهر إعدادات التطبيق هنا."
@@ -576,6 +602,13 @@ object ArStrings : BlazeStrings {
             override val emptyHandlers = "لا توجد معالجات مثبّتة."
             override val builtinTag = "مضمّن"
             override val pluginTag = "امتداد"
+            override val optionsAction = "خيارات..."
+            override fun optionsTitle(name: String) = "خيارات امتداد $name"
+            override val priorityLabel = "أولوية المعالج"
+            override val priorityDesc = "عند تطابق عدة معالجات مع رابط، يُستخدم صاحب الأولوية الأعلى أولًا."
+            override val restoreDefaultsAction = "استعادة الافتراضيات"
+            override val requestTimeoutLabel = "مهلة طلب المعالج (ثوانٍ)"
+            override val requestTimeoutDesc = "المدة التي يُسمح لمعالج الروابط بقضائها في جلب صفحة قبل أن يتخلى Blaze عنها."
         }
 
         override val themes = object : BlazeStrings.Settings.Themes {

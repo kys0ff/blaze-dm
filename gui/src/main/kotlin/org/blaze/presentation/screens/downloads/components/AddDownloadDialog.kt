@@ -29,9 +29,13 @@ import org.blaze.presentation.screens.downloads.components.add.AddDownloadListVi
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadFetchOutcome
+import org.blaze.presentation.screens.downloads.components.add.ResolvedPick
 import org.blaze.presentation.screens.downloads.components.add.isHttpSource
 import org.blaze.presentation.screens.downloads.components.add.loadSourceFile
+import org.blaze.presentation.screens.downloads.components.add.resolvedLinkToMetadata
+import org.blaze.presentation.screens.downloads.components.add.resolvedLinksToBatchItems
 import org.blaze.presentation.screens.downloads.components.add.resolveDestinationStatus
+import org.blaze.resolver.api.ResolvedLink
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
 import org.blaze.resolver.core.LoadedResolver
@@ -115,29 +119,56 @@ fun AddDownloadDialog(
             if (isHttpSource(source) && !state.isBatch) registry.enabledHandlers(source) else emptyList()
     }
 
-    // Defined before fetch() because fetch() references it (Kotlin local functions must be
-    // declared before their first use). Resolves a page link to a direct URL, then fetches.
+    // Declared before resolveAndFetch because that function calls it from inside a coroutine
+    // (Kotlin local functions must be declared before their first use). It probes the network, so
+    // it is suspend: every caller runs it inside the dialog scope.
+    /** Reviews a single resolved link: probe it, falling back to what the handler announced. */
+    suspend fun reviewResolvedLink(resolved: ResolvedLink) {
+        state.resolvedDirectUrl = resolved.directUrl
+        state.resolvedHeaders = resolved.headers
+        val fetched = onFetchMetadata(resolved.directUrl, state.effectiveCredentials)
+        state.metadata = fetched ?: resolvedLinkToMetadata(resolved)
+        state.step = 2
+    }
+
+    // Resolves a page link to one or more direct URLs, then either reviews a single link or
+    // offers a multi-link pick.
     fun resolveAndFetch(source: String, handler: LoadedResolver) {
         state.showHandlerChoice = false
         state.isFetching = true
         scope.launch {
-            registry.resolve(handler, source)
-                .onSuccess { resolved ->
-                    state.resolvedDirectUrl = resolved.directUrl
-                    val fetched = onFetchMetadata(resolved.directUrl, state.credentials)
-                    state.metadata = fetched ?: DownloadMetadata(
-                        name = resolved.fileName
-                            ?: source.substringAfterLast('/').substringBefore('?')
-                                .ifBlank { "download" },
-                        totalSize = resolved.sizeBytes,
-                        files = null
-                    )
-                    state.step = 2
+            registry.resolveAll(handler, source)
+                .onSuccess { links ->
+                    when {
+                        links.isEmpty() -> state.fetchError = dStrings.noLinksResolved
+                        links.size == 1 -> reviewResolvedLink(links.first())
+                        else -> {
+                            state.resolvedLinks = links
+                            state.showLinkChoice = true
+                        }
+                    }
                 }
                 .onFailure { e ->
                     state.fetchError = e.message ?: "Couldn't resolve the link"
                 }
             state.isFetching = false
+        }
+    }
+
+    /** Turns the user's multi-link pick into either a single review or a batch review list. */
+    fun applyResolvedPick(pick: ResolvedPick) {
+        state.showLinkChoice = false
+        when (pick) {
+            ResolvedPick.None -> Unit
+            is ResolvedPick.Single -> scope.launch { reviewResolvedLink(pick.link) }
+            is ResolvedPick.Many -> {
+                // Several links from one page share its headers (the same Referer).
+                state.resolvedHeaders = pick.links.firstOrNull()?.headers ?: emptyMap()
+                state.batchItems.clear()
+                state.batchItems.addAll(resolvedLinksToBatchItems(pick.links))
+                state.url = TextFieldValue(dStrings.linkCount(pick.links.size))
+                state.step = 2
+            }
         }
     }
 
@@ -167,7 +198,7 @@ fun AddDownloadDialog(
     fun probeDirectly(source: String) {
         state.isFetching = true
         scope.launch {
-            val metadata = runCatching { onFetchMetadata(source, state.credentials) }
+            val metadata = runCatching { onFetchMetadata(source, state.effectiveCredentials) }
             state.isFetching = false
             applyOutcome(source, metadata.getOrNull(), metadata.exceptionOrNull()?.message)
         }
@@ -186,7 +217,7 @@ fun AddDownloadDialog(
                     launch {
                         item.isFetching = true
                         try {
-                            item.metadata = onFetchMetadata(item.url, state.credentials)
+                            item.metadata = onFetchMetadata(item.url, state.effectiveCredentials)
                             // A freshly resolved multi-file torrent starts fully selected; the
                             // submit step sends this set as the download's file indices.
                             item.selectedFileIndices =
@@ -265,7 +296,7 @@ fun AddDownloadDialog(
                     item.metadata?.files,
                     scheduledAt,
                     state.priority,
-                    state.credentials
+                    state.effectiveCredentials
                 )
             }
         } else {
@@ -279,7 +310,7 @@ fun AddDownloadDialog(
                 state.metadata?.files,
                 scheduledAt,
                 state.priority,
-                state.credentials
+                state.effectiveCredentials
             )
         }
         onDismiss()
@@ -349,6 +380,14 @@ fun AddDownloadDialog(
             handlers = state.handlerChoices,
             onDismiss = { state.showHandlerChoice = false },
             onConfirm = { handler -> resolveAndFetch(state.source, handler) }
+        )
+    }
+
+    if (state.showLinkChoice) {
+        ResolvedLinksChoiceDialog(
+            links = state.resolvedLinks,
+            onDismiss = { state.showLinkChoice = false },
+            onConfirm = ::applyResolvedPick
         )
     }
 

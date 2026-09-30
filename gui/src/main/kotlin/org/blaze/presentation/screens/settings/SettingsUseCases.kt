@@ -54,6 +54,7 @@ data class SettingsDraft(
     val appSettings: AppSettings,
     val savedAppSettings: AppSettings,
     val enabledHandlerOverrides: Map<String, Boolean>,
+    val optionOverrides: Map<String, Map<String, String>>,
     val alwaysAskOverride: Boolean?,
     val installedHandlerIds: Set<String>,
     val themeIds: Set<String>,
@@ -102,7 +103,7 @@ class SettingsUseCases(
                         id = loaded.resolver.id,
                         displayName = loaded.resolver.displayName,
                         description = loaded.resolver.description,
-                        enabled = loaded.resolver.id !in settings.disabledHandlers,
+                        enabled = settings.isEnabled(loaded.resolver.id),
                         isPlugin = loaded.source == ResolverSource.PLUGIN,
                         resolver = loaded
                     )
@@ -175,15 +176,26 @@ class SettingsUseCases(
         appSettingsRepository.updateSettingsInMemory { draft.appSettings }
         autoStartCoordinator.applyLive(draft.appSettings.runAtStartup)
 
-        // Link-handler enable/disable and always-ask.
-        if (draft.enabledHandlerOverrides.isNotEmpty() || draft.alwaysAskOverride != null) {
+        // Link-handler enable/disable, per-handler option values and always-ask. The slice is the
+        // per-handler record, so an enable must clear BOTH the legacy list and the slice's flag or
+        // disabledHandlerIds would keep reporting the handler off.
+        if (draft.enabledHandlerOverrides.isNotEmpty() ||
+            draft.optionOverrides.isNotEmpty() ||
+            draft.alwaysAskOverride != null
+        ) {
             resolverSettingsRepository.updateSettingsInMemory { settings ->
                 val disabled = settings.disabledHandlers.toMutableSet()
+                val slices = settings.handlerOptions.toMutableMap()
                 draft.enabledHandlerOverrides.forEach { (id, enabled) ->
                     if (enabled) disabled.remove(id) else disabled.add(id)
+                    slices[id] = settings.slice(id).copy(enabled = enabled)
+                }
+                draft.optionOverrides.forEach { (id, values) ->
+                    slices[id] = (slices[id] ?: settings.slice(id)).copy(optionValues = values)
                 }
                 settings.copy(
                     disabledHandlers = disabled.toList(),
+                    handlerOptions = slices,
                     alwaysAskHandler = draft.alwaysAskOverride ?: settings.alwaysAskHandler
                 )
             }
@@ -212,6 +224,9 @@ class SettingsUseCases(
         // Only replay overrides for handlers still installed (a removed one has no target).
         draft.enabledHandlerOverrides.forEach { (id, enabled) ->
             if (id in draft.installedHandlerIds) resolverRegistry.setEnabled(id, enabled)
+        }
+        draft.optionOverrides.forEach { (id, values) ->
+            if (id in draft.installedHandlerIds) resolverSettingsRepository.setOptionValues(id, values)
         }
         draft.alwaysAskOverride?.let { resolverRegistry.setAlwaysAsk(it) }
         draft.selectedThemeOverride
