@@ -384,7 +384,7 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
     fun onPointerPosition(position: Offset) {
         for (level in depth - 1 downTo 0) {
             val bounds = _levelBounds[level] ?: continue
-            if (position isIn bounds.withTolerance(Tolerance)) {
+            if (position isIn bounds.withTolerance(TOLERANCE)) {
                 if (!pointerInside) pointerInside = true
                 val index = rowAt(level, position) ?: return
                 highlight(level, index, openImmediately = false)
@@ -402,7 +402,7 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
         val entries = entriesAt(level)
         for (index in entries.indices) {
             val bounds = _rowBounds[level to index] ?: continue
-            if (position isIn bounds.withTolerance(Tolerance)) return index
+            if (position isIn bounds.withTolerance(TOLERANCE)) return index
         }
         return null
     }
@@ -475,7 +475,7 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
 
     private companion object {
         /** Hover tolerance, in px, applied to every measured level and row. */
-        const val Tolerance = 12f
+        const val TOLERANCE = 12f
     }
 }
 

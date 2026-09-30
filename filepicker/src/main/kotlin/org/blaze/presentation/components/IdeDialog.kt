@@ -1,7 +1,6 @@
 package org.blaze.presentation.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,13 +11,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
@@ -26,21 +27,21 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogWindow
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.rememberDialogState
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 
-/**
- * Shared IDE-style dialog shell: a fixed-width panel with a subtle border, comfortable
- * padding, and Escape-to-dismiss. Every dialog in the app builds on this so surfaces stay
- * visually identical (corner radius, border, background, spacing).
- */
 @Composable
 fun IdeDialog(
     onDismiss: () -> Unit,
@@ -51,19 +52,37 @@ fun IdeDialog(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-    val shape = RoundedCornerShape(8.dp)
+    val density = LocalDensity.current
+
+    var height by remember { mutableStateOf(230.dp) }
+    val state = rememberDialogState(
+        position = WindowPosition(Alignment.Center),
+        width = width,
+        height = height,
+    )
+
+    // rememberDialogState treats its args as initial values only, so push updates in manually.
+    LaunchedEffect(width, height) {
+        state.size = DpSize(width, height)
+    }
 
     if (requestFocus) {
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    DialogWindow(
+        onCloseRequest = onDismiss,
+        state = state,
+        resizable = false,
+    ) {
         Column(
             modifier = modifier
                 .width(width)
-                .clip(shape)
+                // Measure the content with unbounded height so it reports its natural size
+                // instead of being clamped to the current window height.
+                .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                .onSizeChanged { height = with(density) { it.height.toDp() + 20.dp } }
                 .background(JewelTheme.globalColors.panelBackground)
-                .border(1.dp, JewelTheme.globalColors.borders.normal, shape)
                 .focusRequester(focusRequester)
                 .onPreviewKeyEvent { event ->
                     if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {

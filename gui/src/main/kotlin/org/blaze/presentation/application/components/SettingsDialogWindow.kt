@@ -19,7 +19,7 @@ import java.awt.Dimension
  *
  * Compose's `DialogWindow` takes its owner from the window it is composed in (see [BlazeWindow]), so
  * this is document-modal: input to the main frame is blocked while it is open, it stays above that
- * frame and it gets no taskbar entry. Decorations are the platform's own - the title bar is the OS's,
+ * frame, and it gets no taskbar entry. Decorations are the platform's own - the title bar is the OS's,
  * not Blaze's - which is what a modal is, and the title text moves there, which is why the content has
  * no header strip of its own.
  *
@@ -42,16 +42,10 @@ fun SettingsDialogWindow(
         resizable = true,
     ) {
         LaunchedEffect(window) {
-            // A JDialog has no minimum from its content; without this the user can shrink the window
-            // until the footer buttons disappear.
             window.minimumSize = Dimension(720, 420)
         }
 
         CompositionLocalProvider(LocalSettingsDialogDismiss provides onDismiss) {
-            // Settings is still hosted by a Voyager screen on purpose: that is what keeps its screen
-            // model (ten injected collaborators, buffered draft, revert-on-dispose) alive for exactly
-            // as long as the window is open and torn down when it closes. One stable instance means a
-            // recomposition can never re-create the screen and reset the draft.
             Navigator(remember { SettingsScreen() })
         }
     }
