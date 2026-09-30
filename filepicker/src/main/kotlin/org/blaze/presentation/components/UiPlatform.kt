@@ -9,7 +9,7 @@ package org.blaze.presentation.components
  * [CurrentUiPlatform] instead of sniffing `os.name` again, so there is exactly one switch to audit.
  *
  * It lives in the module every screen module already depends on (`Island`, `BlazeLayout`,
- * `IdeDialog` are here) so a `:gui`-only helper could not be the one place both the dialogs and the
+ * `BaseDialog` are here) so a `:gui`-only helper could not be the one place both the dialogs and the
  * chrome consult.
  */
 enum class UiPlatform { Windows, MacOS, Linux }

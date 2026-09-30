@@ -43,7 +43,7 @@ import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 
 @Composable
-fun IdeDialog(
+fun BaseDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = 460.dp,

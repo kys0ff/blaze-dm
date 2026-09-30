@@ -11,7 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogTitle
 import org.blaze.presentation.icons.BlazeFlame
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -32,7 +32,7 @@ private const val APP_VERSION = "1.0.0"
 @Composable
 fun AboutDialog(onDismiss: () -> Unit) {
     val menu = blazeStrings.menu
-    IdeDialog(onDismiss = onDismiss, width = 380.dp) {
+    BaseDialog(onDismiss = onDismiss, width = 380.dp) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),

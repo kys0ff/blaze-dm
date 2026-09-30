@@ -7,7 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -31,7 +31,7 @@ fun BulkRemoveDialog(
     val selection = strings.downloads.selection
     val dialogs = strings.downloads.dialogs
 
-    IdeDialog(onDismiss = onDismiss, width = 420.dp) {
+    BaseDialog(onDismiss = onDismiss, width = 420.dp) {
         IdeDialogTitle(selection.bulkRemoveTitle)
         Text(text = selection.bulkRemoveMessage(count))
 

@@ -21,7 +21,7 @@ import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.download.api.DownloadPriority
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputView
@@ -300,7 +300,7 @@ fun AddDownloadDialog(
     }
 
     // Focus stays on the source field (managed above), so the shell must not grab it.
-    IdeDialog(onDismiss = onDismiss, requestFocus = false) {
+    BaseDialog(onDismiss = onDismiss, requestFocus = false) {
         IdeDialogTitle(if (state.isBatch) dStrings.batchTitle else dStrings.addTitle)
 
         when {

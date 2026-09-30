@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.sp
 import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.repository.PortableKind
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.blaze.presentation.util.formatSize
@@ -50,7 +50,7 @@ fun ImportPortableDialog(
         PortableKind.TORRENT -> p.kindTorrent(info.suggestedName)
     }
 
-    IdeDialog(onDismiss = onDismiss, width = 480.dp) {
+    BaseDialog(onDismiss = onDismiss, width = 480.dp) {
         IdeDialogTitle(p.dialogTitle)
         Text(kindLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
 

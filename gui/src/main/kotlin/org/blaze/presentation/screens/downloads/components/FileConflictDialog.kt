@@ -13,7 +13,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -33,7 +33,7 @@ fun FileConflictDialog(
     val dStrings = strings.downloads.dialogs
     val sStrings = strings.settings
 
-    IdeDialog(onDismiss = onDismiss, width = 440.dp) {
+    BaseDialog(onDismiss = onDismiss, width = 440.dp) {
         IdeDialogTitle(dStrings.conflictTitle)
 
         Text(

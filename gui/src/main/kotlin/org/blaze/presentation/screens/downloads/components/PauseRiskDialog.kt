@@ -8,7 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.blaze.presentation.screens.downloads.percentDone
@@ -37,7 +37,7 @@ fun PauseRiskDialog(
     val percent = download.percentDone()
     var doNotAskAgain by remember { mutableStateOf(false) }
 
-    IdeDialog(onDismiss = onDismiss, width = 440.dp) {
+    BaseDialog(onDismiss = onDismiss, width = 440.dp) {
         IdeDialogTitle(risk.title)
         Text(text = risk.message(download.name))
 

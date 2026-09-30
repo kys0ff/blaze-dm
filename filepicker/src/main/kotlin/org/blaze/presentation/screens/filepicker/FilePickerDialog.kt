@@ -14,7 +14,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.blaze.presentation.screens.filepicker.components.FilePickerPathField
@@ -100,7 +100,7 @@ fun FilePickerDialog(
         } ?: Path.of(System.getProperty("user.home"))
     }
 
-    IdeDialog(onDismiss = onDismiss, width = 620.dp, requestFocus = false) {
+    BaseDialog(onDismiss = onDismiss, width = 620.dp, requestFocus = false) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             IdeDialogTitle(actualTitle)
             val desc = state.description

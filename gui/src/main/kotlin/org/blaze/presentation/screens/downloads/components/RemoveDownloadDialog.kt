@@ -14,7 +14,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -41,7 +41,7 @@ fun RemoveDownloadDialog(
     val secondary = JewelTheme.globalColors.text.info
     val hintStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-    IdeDialog(onDismiss = onDismiss, width = 440.dp) {
+    BaseDialog(onDismiss = onDismiss, width = 440.dp) {
         IdeDialogTitle(dStrings.removeTitle)
 
         // The name sits in the sentence in the same regular weight as the rest of it - the chrome is

@@ -5,7 +5,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -40,7 +40,7 @@ fun ClearCompletedDialog(
     val strings = blazeStrings
     val cStrings = strings.downloads.dialogs.clearCompleted
 
-    IdeDialog(onDismiss = onDismiss, width = 440.dp) {
+    BaseDialog(onDismiss = onDismiss, width = 440.dp) {
         IdeDialogTitle(cStrings.title)
 
         Text(

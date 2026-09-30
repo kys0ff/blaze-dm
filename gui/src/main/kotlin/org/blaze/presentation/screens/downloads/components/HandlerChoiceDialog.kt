@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ExtensionIcon
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.blaze.resolver.core.LinkResolverRegistry
@@ -48,7 +48,7 @@ fun HandlerChoiceDialog(
     var selected by remember { mutableStateOf(handlers.firstOrNull()?.resolver?.id) }
     val selectedHandler = handlers.firstOrNull { it.resolver.id == selected }
 
-    IdeDialog(onDismiss = onDismiss) {
+    BaseDialog(onDismiss = onDismiss) {
         IdeDialogTitle(dStrings.handlerChoiceTitle)
         Text(
             text = dStrings.handlerChoicePrompt,

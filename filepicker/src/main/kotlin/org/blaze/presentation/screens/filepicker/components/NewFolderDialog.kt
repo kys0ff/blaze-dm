@@ -18,7 +18,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.BlazeStrings
-import org.blaze.presentation.components.IdeDialog
+import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.IdeDialogActions
 import org.blaze.presentation.components.IdeDialogTitle
 import org.blaze.presentation.screens.filepicker.FilePickerEvent
@@ -48,7 +48,7 @@ internal fun NewFolderDialog(
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    IdeDialog(onDismiss = { onEvent(FilePickerEvent.DismissNewFolder) }, width = 420.dp, requestFocus = false) {
+    BaseDialog(onDismiss = { onEvent(FilePickerEvent.DismissNewFolder) }, width = 420.dp, requestFocus = false) {
         IdeDialogTitle(strings.filePicker.newFolderTitle)
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
