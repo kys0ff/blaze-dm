@@ -627,11 +627,7 @@ fun DownloadsScreenContent(
         }
 
         val listPane: @Composable () -> Unit = {
-            if (BlazeLayout.USE_ISLANDS) {
-                Island(modifier = Modifier.fillMaxSize()) { listContent() }
-            } else {
-                Box(modifier = Modifier.fillMaxSize()) { listContent() }
-            }
+            Island(modifier = Modifier.fillMaxSize()) { listContent() }
         }
 
         if (state.downloads.isEmpty()) {
@@ -654,15 +650,11 @@ fun DownloadsScreenContent(
                 )
             }
             val detailsPane: @Composable () -> Unit = {
-                if (BlazeLayout.USE_ISLANDS) {
-                    Island(modifier = Modifier.fillMaxSize()) { detailsContent() }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize()) { detailsContent() }
-                }
+                Island(modifier = Modifier.fillMaxSize()) { detailsContent() }
             }
 
-            // Islands: the split's divider is a transparent gap (the frame shows through) with the
-            // drag handle riding in it; classic keeps the visible hairline divider.
+            // The split's divider is a transparent gap the frame shows through, with the drag
+            // handle riding in it — the Islands way of separating two islands.
             val islandGap = BlazeLayout.IslandGap
 
             when {
@@ -686,7 +678,7 @@ fun DownloadsScreenContent(
                     val first: @Composable () -> Unit = if (moveTo.detailsFirst) detailsPane else listPane
                     val second: @Composable () -> Unit = if (moveTo.detailsFirst) listPane else detailsPane
                     val gapDivider = DividerStyle(
-                        color = if (BlazeLayout.USE_ISLANDS) Color.Transparent else JewelTheme.globalColors.borders.normal,
+                        color = Color.Transparent,
                         metrics = DividerMetrics(thickness = islandGap, startIndent = 0.dp),
                     )
                     if (moveTo.isHorizontal) {

@@ -137,14 +137,13 @@ class MainScreen : Screen {
                         }
                     )
 
-                    // Islands: the content floats on the frame with a gap on every side; the frame
-                    // shows through. Classic: the content fills edge to edge with no gap.
-                    val contentPadding = if (BlazeLayout.USE_ISLANDS) BlazeLayout.IslandGap else 0.dp
+                    // The content floats on the frame with a gap on every side; the frame shows
+                    // through it, which is what separates an island from the chrome.
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .padding(contentPadding),
+                            .padding(BlazeLayout.IslandGap),
                     ) {
                         navigator.lastItem.Content()
                     }

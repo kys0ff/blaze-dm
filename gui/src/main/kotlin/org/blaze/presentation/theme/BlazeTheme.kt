@@ -5,8 +5,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import org.blaze.presentation.components.BlazeLayout
+import org.blaze.theming.api.IslandsDefaults
+import org.blaze.theming.api.IslandsPalette
 import org.blaze.theming.api.ThemePalette
+import org.blaze.theming.api.withFallback
 import org.jetbrains.jewel.foundation.DisabledAppearanceValues
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
@@ -24,22 +26,19 @@ import org.jetbrains.jewel.window.styling.TitleBarColors
 import org.jetbrains.jewel.window.styling.TitleBarStyle
 
 /**
- * A color that paints nothing but still carries a theme's luminance, so a component that infers
- * light/dark from its background (Jewel's title bar does) keeps choosing the right glyph variants
- * even when the actual pixels come from somewhere else. `isDark()` reads RGB only, never alpha.
- */
-private val InvisibleBlack = Color(red = 0f, green = 0f, blue = 0f, alpha = 0f)
-private val InvisibleWhite = Color(red = 1f, green = 1f, blue = 1f, alpha = 0f)
-
-/**
  * The single theming entry point.
  *
- * [palette] is the theme resolved by [org.blaze.theming.core.ThemeRegistry] for the current
- * light/dark [isDark] choice. It drives two layers at once:
- *  - the Jewel surfaces, via [buildJewelGlobalColors] folded into the [ThemeDefinition]; and
+ * Blaze renders exactly one design system — the JetBrains New UI "Islands" shell — and this
+ * function is where the shell's resolved tokens and the active theme meet. [palette] is the theme
+ * resolved by [org.blaze.theming.core.ThemeRegistry] for the current light/dark [isDark] choice;
+ * it drives three layers at once:
+ *  - the Islands chrome, completed from [IslandsDefaults] and exposed through [LocalIslandsPalette]
+ *    (read by [BlazeIslandColors], the frame layer and every island);
+ *  - the Jewel surfaces, via [buildJewelGlobalColors] folded into the `ThemeDefinition`; and
  *  - the app's semantic colors, exposed through [LocalThemePalette] to [BlazeColors].
  *
- * Passing an empty palette (the default) reproduces the stock Int UI look.
+ * Passing an empty palette reproduces the stock Islands look, because resolution always ends by
+ * filling unset tokens from the design system — a theme can never leave the chrome unpainted.
  */
 @Composable
 fun BlazeTheme(
@@ -47,8 +46,14 @@ fun BlazeTheme(
     isDark: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    val themeDefinition = remember(isDark, palette) {
-        val globalColors = buildJewelGlobalColors(isDark, palette)
+    // The chrome the whole window renders with: the theme's Islands overrides, completed from the
+    // stock design-system values so no token can be left unset by a partial theme.
+    val islands = remember(palette, isDark) {
+        palette.islands.withFallback(IslandsDefaults.forMode(isDark))
+    }
+
+    val themeDefinition = remember(isDark, palette, islands) {
+        val globalColors = buildJewelGlobalColors(isDark, palette, islands)
         if (isDark) {
             JewelTheme.darkThemeDefinition(
                 colors = globalColors,
@@ -67,7 +72,13 @@ fun BlazeTheme(
     val accentStyling = remember(isDark, palette) { buildAccentStyling(palette, isDark) }
     val baseStyling = accentStyling ?: ComponentStyling.default()
 
-    CompositionLocalProvider(LocalThemePalette provides palette) {
+    // The bar's own background, in the theme's luminance: see the explanation at the call site.
+    val invisibleBar = remember(islands) { islands.frameArgb.toInvisibleColor() }
+
+    CompositionLocalProvider(
+        LocalThemePalette provides palette,
+        LocalIslandsPalette provides islands,
+    ) {
         IntUiTheme(
             theme = themeDefinition,
             styling = baseStyling.decoratedWindow(
@@ -79,45 +90,25 @@ fun BlazeTheme(
                 // "Let it through" cannot be plain Color.Transparent: Jewel feeds the bar's
                 // background into `OverrideDarkMode(background.isDark())` so the window controls pick
                 // matching glyph variants, and `isDark()` ignores alpha - a transparent black would
-                // therefore force dark glyphs onto the light bar. A zero-alpha color whose RGB *does*
-                // match the theme keeps that lookup correct while still painting nothing.
-                titleBarStyle = if (BlazeLayout.USE_ISLANDS) {
-                    if (isDark) {
-                        TitleBarStyle.dark(
-                            colors = TitleBarColors.dark(
-                                backgroundColor = InvisibleBlack,
-                                inactiveBackground = InvisibleBlack,
-                                borderColor = InvisibleBlack,
-                            ),
-                        )
-                    } else {
-                        TitleBarStyle.lightWithLightHeader(
-                            colors = TitleBarColors.lightWithLightHeader(
-                                backgroundColor = InvisibleWhite,
-                                inactiveBackground = InvisibleWhite,
-                                borderColor = InvisibleWhite,
-                            ),
-                        )
-                    }
+                // therefore force dark glyphs onto a light theme's bar. A zero-alpha color whose RGB
+                // *is* the active frame keeps that lookup correct while still painting nothing, and
+                // it follows the theme, so a plugin that repaints the chrome gets the right glyphs.
+                titleBarStyle = if (isDark) {
+                    TitleBarStyle.dark(
+                        colors = TitleBarColors.dark(
+                            backgroundColor = invisibleBar,
+                            inactiveBackground = invisibleBar,
+                            borderColor = invisibleBar,
+                        ),
+                    )
                 } else {
-                    // Classic: the stock banded header, drawn by Jewel itself over the frame color.
-                    if (isDark) {
-                        TitleBarStyle.dark(
-                            colors = TitleBarColors.dark(
-                                backgroundColor = BlazeIslandColors.frameFor(isDark = true),
-                                inactiveBackground = BlazeIslandColors.frameFor(isDark = true),
-                                borderColor = BlazeIslandColors.frameFor(isDark = true),
-                            ),
-                        )
-                    } else {
-                        TitleBarStyle.lightWithLightHeader(
-                            colors = TitleBarColors.lightWithLightHeader(
-                                backgroundColor = BlazeIslandColors.frameFor(isDark = false),
-                                inactiveBackground = BlazeIslandColors.frameFor(isDark = false),
-                                borderColor = BlazeIslandColors.frameFor(isDark = false),
-                            ),
-                        )
-                    }
+                    TitleBarStyle.lightWithLightHeader(
+                        colors = TitleBarColors.lightWithLightHeader(
+                            backgroundColor = invisibleBar,
+                            inactiveBackground = invisibleBar,
+                            borderColor = invisibleBar,
+                        ),
+                    )
                 },
             ),
             content = {
@@ -130,4 +121,13 @@ fun BlazeTheme(
             },
         )
     }
+}
+
+/**
+ * The frame color with its alpha zeroed: paints nothing, but still carries the theme's luminance
+ * for Jewel's `isDark()` glyph lookup (which reads RGB only, never alpha).
+ */
+private fun Long?.toInvisibleColor(): Color {
+    val base = this?.toColor() ?: IslandsDefaults.FRAME_DARK.toColor()
+    return Color(base.red, base.green, base.blue, alpha = 0f)
 }

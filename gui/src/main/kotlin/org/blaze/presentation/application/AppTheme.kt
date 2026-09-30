@@ -35,7 +35,10 @@ fun AppTheme(content: @Composable () -> Unit) {
     val themeRegistry = koinInject<ThemeRegistry>()
     val selectedThemeId by themeRegistry.selectedThemeId.collectAsState()
     val themes by themeRegistry.themes.collectAsState()
-    val palette = remember(selectedThemeId, themes, isDark) {
+    // Also observe the persisted+live settings so a per-theme option edit (a color the user picked
+    // in a theme's Options form) recomputes the palette on Apply, not just a change of selection.
+    val themeSettings by themeRegistry.settings.collectAsState()
+    val palette = remember(selectedThemeId, themes, themeSettings, isDark) {
         themeRegistry.paletteFor(isDark)
     }
 

@@ -1,15 +1,12 @@
 package org.blaze.presentation.application.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.navigator.Navigator
-import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.screens.main.MainScreen
 import org.blaze.presentation.theme.blazeAmbientBodyFrame
-import org.jetbrains.jewel.foundation.theme.JewelTheme
 
 /**
  * The window body: everything below the title bar.
@@ -23,13 +20,7 @@ import org.jetbrains.jewel.foundation.theme.JewelTheme
  */
 @Composable
 fun BlazeContent() {
-    val frameLayer = if (BlazeLayout.USE_ISLANDS) {
-        Modifier.blazeAmbientBodyFrame()
-    } else {
-        Modifier.background(JewelTheme.globalColors.panelBackground)
-    }
-
-    Box(modifier = Modifier.fillMaxSize().then(frameLayer)) {
+    Box(modifier = Modifier.fillMaxSize().blazeAmbientBodyFrame()) {
         Navigator(MainScreen())
     }
 }

@@ -45,6 +45,7 @@ import org.blaze.presentation.screens.settings.state.SettingsState
 import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.resolver.core.LinkResolverRegistry
+import org.blaze.theming.core.ThemeRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -78,6 +79,7 @@ class SettingsScreen : Screen {
         val state by screenModel.state.collectAsState()
         val strings = blazeStrings
         val resolverRegistry = koinInject<LinkResolverRegistry>()
+        val themeRegistry = koinInject<ThemeRegistry>()
         val logConfigurator = koinInject<LogConfigurator>()
 
         var showDirPicker by remember { mutableStateOf(false) }
@@ -219,6 +221,7 @@ class SettingsScreen : Screen {
                                         strings = strings,
                                         onEvent = onEvent,
                                         resolverRegistry = resolverRegistry,
+                                        themeRegistry = themeRegistry,
                                         logConfigurator = logConfigurator,
                                         onBrowseDownloadDir = { showDirPicker = true },
                                         onInstallHandler = { showJarPicker = true },
@@ -269,6 +272,7 @@ private fun SettingsContent(
     strings: BlazeStrings,
     onEvent: (SettingsEvent) -> Unit,
     resolverRegistry: LinkResolverRegistry,
+    themeRegistry: ThemeRegistry,
     logConfigurator: LogConfigurator,
     onBrowseDownloadDir: () -> Unit,
     onInstallHandler: () -> Unit,
@@ -280,7 +284,7 @@ private fun SettingsContent(
         SettingsCategory.FILES -> FilesSection(state, strings, onEvent, onBrowseDownloadDir)
         SettingsCategory.EXTENSIONS ->
             ExtensionsSection(state, strings, onEvent, resolverRegistry, onInstallHandler)
-        SettingsCategory.THEMES -> ThemesSection(state, strings, onEvent, onInstallTheme)
+        SettingsCategory.THEMES -> ThemesSection(state, strings, themeRegistry, onEvent, onInstallTheme)
         SettingsCategory.NOTIFICATIONS -> NotificationsSection(state, strings, onEvent)
         SettingsCategory.LOGS -> LogsSection(state, strings, onEvent, logConfigurator)
     }

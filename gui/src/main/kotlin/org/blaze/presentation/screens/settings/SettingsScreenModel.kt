@@ -342,6 +342,10 @@ class SettingsScreenModel(
             it.copy(selectedThemeOverride = event.id)
         }
 
+        is SettingsEvent.UpdateThemeOptions -> _state.update {
+            it.copy(themeOptionOverrides = it.themeOptionOverrides + (event.id to event.values))
+        }
+
         is SettingsEvent.InstallTheme -> screenModelScope.launch {
             useCases.installTheme(event.jarPath)
         }
@@ -388,7 +392,8 @@ class SettingsScreenModel(
                     enabledHandlerOverrides = emptyMap(),
                     optionOverrides = emptyMap(),
                     alwaysAskOverride = null,
-                    selectedThemeOverride = null
+                    selectedThemeOverride = null,
+                    themeOptionOverrides = emptyMap()
                 )
             }
             resetTextFieldsTo(committed)
@@ -420,6 +425,7 @@ class SettingsScreenModel(
         installedHandlerIds = handlers.mapTo(HashSet()) { it.id },
         themeIds = themes.mapTo(HashSet()) { it.id },
         selectedThemeOverride = selectedThemeOverride,
+        themeOptionOverrides = themeOptionOverrides,
     )
 
     /** Re-seed the numeric/text fields from [s] after a commit or reset. */

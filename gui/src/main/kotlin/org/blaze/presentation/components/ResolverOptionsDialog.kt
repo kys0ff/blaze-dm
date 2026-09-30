@@ -13,17 +13,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.input.TextFieldValue
+import org.blaze.resolver.api.ResolverOption
+import org.blaze.resolver.api.ResolverOptionType
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
 import org.jetbrains.jewel.ui.component.ListComboBox
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
-import org.blaze.resolver.api.ResolverOption
-import org.blaze.resolver.api.ResolverOptionType
 
 /**
  * Renders a [ConfigurableLinkResolver]'s declared option descriptors as a small editor form and
@@ -194,7 +194,7 @@ private fun ResolverOptionField(
 @OptIn(ExperimentalJewelApi::class)
 @Composable
 private fun LabeledFreeText(value: String, onValueChange: (String) -> Unit) {
-    var editor by remember { androidx.compose.runtime.mutableStateOf(TextFieldValue(value)) }
+    var editor by remember { mutableStateOf(TextFieldValue(value)) }
     TextField(
         value = editor,
         onValueChange = {

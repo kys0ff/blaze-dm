@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.blaze.theming.api.ThemeConfig
 import org.slf4j.LoggerFactory
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -23,8 +24,18 @@ data class ThemeSettings(
     /** Absolute path to the directory theme jars are loaded from. */
     val extensionDir: String = "",
     /** Id of the active colour theme. Defaults to the built-in theme. */
-    val selectedThemeId: String = ThemeRegistry.DEFAULT_THEME_ID
-)
+    val selectedThemeId: String = ThemeRegistry.DEFAULT_THEME_ID,
+    /**
+     * Per-theme answers to a [org.blaze.theming.api.ConfigurableBlazeThemeProvider]'s options,
+     * keyed by theme id then by option key. Plain strings (like the resolver slices) so a new
+     * option type never changes the file schema; a key the user never touched falls back to the
+     * descriptor's default.
+     */
+    val themeOptions: Map<String, Map<String, String>> = emptyMap(),
+) {
+    /** The stored option values for one theme, as a [ThemeConfig]. */
+    fun optionValues(themeId: String): ThemeConfig = ThemeConfig(themeOptions[themeId].orEmpty())
+}
 
 class ThemeSettingsRepository(private val storageDir: Path) {
     private val logger = LoggerFactory.getLogger(ThemeSettingsRepository::class.java)
@@ -36,6 +47,10 @@ class ThemeSettingsRepository(private val storageDir: Path) {
 
     private val _settings = MutableStateFlow(loadSettings())
     val settings: StateFlow<ThemeSettings> = _settings.asStateFlow()
+
+    // The value as it exists on disk; in-memory-only (Settings Apply) edits are reverted back to
+    // this when the screen is abandoned, so an unpersisted Apply never leaks.
+    private var persistedSettings: ThemeSettings = _settings.value
 
     private fun loadSettings(): ThemeSettings {
         if (!settingsFile.exists()) return defaults
@@ -49,8 +64,34 @@ class ThemeSettingsRepository(private val storageDir: Path) {
 
     suspend fun updateSettings(transform: (ThemeSettings) -> ThemeSettings) {
         val newSettings = transform(_settings.value)
+        persistedSettings = newSettings
         _settings.update { newSettings }
         saveSettings(newSettings)
+    }
+
+    /** Discard any in-memory (Apply) changes and restore the last persisted settings. */
+    fun revertToPersisted() {
+        _settings.update { persistedSettings }
+    }
+
+    /**
+     * Replace one theme's option values on disk. An empty [values] removes the theme's slice so a
+     * reinstalled jar starts from its declared defaults again.
+     */
+    suspend fun setOptionValues(themeId: String, values: Map<String, String>) =
+        updateSettings { settings ->
+            val slices = settings.themeOptions.toMutableMap()
+            if (values.isEmpty()) slices.remove(themeId) else slices[themeId] = values
+            settings.copy(themeOptions = slices)
+        }
+
+    /** Same write as [setOptionValues] but in memory only - a Settings Apply preview. */
+    fun setOptionValuesInMemory(themeId: String, values: Map<String, String>) {
+        _settings.update { settings ->
+            val slices = settings.themeOptions.toMutableMap()
+            if (values.isEmpty()) slices.remove(themeId) else slices[themeId] = values
+            settings.copy(themeOptions = slices)
+        }
     }
 
     private suspend fun saveSettings(settings: ThemeSettings) = withContext(Dispatchers.IO) {

@@ -624,6 +624,15 @@ object ArStrings : BlazeStrings {
             override val removeAction = "إزالة"
             override val builtinTag = "مضمّن"
             override val pluginTag = "امتداد"
+            override val optionsAction = "خيارات"
+            override fun optionsTitle(name: String) = "خيارات سمة $name"
+            override val restoreDefaultsAction = "استعادة الافتراضيات"
+            override val colorFormatHint = "لون سداسي، ‎#RRGGBB أو ‎#AARRGGBB"
+            override fun themeByline(author: String, version: String): String =
+                listOfNotNull(
+                    author.takeIf { it.isNotBlank() }?.let { "بواسطة $it" },
+                    version.takeIf { it.isNotBlank() }?.let { "الإصدار $it" },
+                ).joinToString(" · ")
             override val chromeHeader = "هيكل النافذة"
             override val ambientGlowLabel = "توهّج محيط بشريط العنوان"
             override val ambientGlowDesc = "توهّج ناعم بلون التمييز في أعلى يسار إطار النافذة، خلف شريط العنوان والشريط الجانبي."

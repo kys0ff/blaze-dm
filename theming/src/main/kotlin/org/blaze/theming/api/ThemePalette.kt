@@ -11,6 +11,9 @@ package org.blaze.theming.api
  * its built-in default for it. This lets a theme ship, say, only an accent change while
  * leaving success/warning/error and the surfaces untouched, and it lets the built-in
  * "system" theme be an entirely empty palette.
+ *
+ * The Islands chrome tokens live in their own namespace ([islands], see [IslandsPalette])
+ * because they describe the app's design system rather than Jewel's component colors.
  */
 data class ThemePalette(
     /** Primary accent used for selection, progress, links and highlighted states. */
@@ -29,7 +32,30 @@ data class ThemePalette(
     val borderArgb: Long? = null,
     /** Secondary / informational text. Overrides Jewel's `text.info` when set. */
     val infoTextArgb: Long? = null,
+    /**
+     * The Islands design-system chrome overrides (frame, island surface, stripe states, rim,
+     * ambient glow). Appended last so jars compiled against the original contract keep
+     * constructing this class unchanged.
+     */
+    val islands: IslandsPalette = IslandsPalette.Empty,
 ) {
+    /**
+     * Overlay every field [fallback] sets that this palette leaves unset — including the
+     * per-token Islands merge. The composition rule the registry applies between the selected
+     * theme, the built-in default and the stock design system.
+     */
+    fun withFallback(fallback: ThemePalette): ThemePalette = ThemePalette(
+        accentArgb = accentArgb ?: fallback.accentArgb,
+        successArgb = successArgb ?: fallback.successArgb,
+        warningArgb = warningArgb ?: fallback.warningArgb,
+        errorArgb = errorArgb ?: fallback.errorArgb,
+        hoverArgb = hoverArgb ?: fallback.hoverArgb,
+        panelBackgroundArgb = panelBackgroundArgb ?: fallback.panelBackgroundArgb,
+        borderArgb = borderArgb ?: fallback.borderArgb,
+        infoTextArgb = infoTextArgb ?: fallback.infoTextArgb,
+        islands = islands.withFallback(fallback.islands),
+    )
+
     companion object {
         /** A palette that overrides nothing — every color falls back to the built-in default. */
         val Empty = ThemePalette()

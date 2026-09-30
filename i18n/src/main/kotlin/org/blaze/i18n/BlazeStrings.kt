@@ -766,6 +766,19 @@ interface BlazeStrings {
             val removeAction: String
             val builtinTag: String
             val pluginTag: String
+            /** Label of the per-theme gear that opens its option editor (shown only when it has options). */
+            val optionsAction: String
+            /** Title of a theme's option dialog, naming the theme. */
+            fun optionsTitle(name: String): String
+            /** Button that clears every edited theme option back to its declared default. */
+            val restoreDefaultsAction: String
+            /** Hint under a color field describing the accepted hex format. */
+            val colorFormatHint: String
+            /**
+             * Byline shown under a theme's name, built from its self-declared metadata.
+             * Called only when [author] or [version] is non-blank.
+             */
+            fun themeByline(author: String, version: String): String
             /** Window-chrome group: the IDE's ambient accent glow around the frame's top-left. */
             val chromeHeader: String
             val ambientGlowLabel: String

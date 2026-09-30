@@ -16,8 +16,8 @@ private class ExplosiveResolver : LinkResolver {
     override val id: String get() = error("boom id")
     override val displayName: String get() = error("boom name")
     override val description: String get() = error("boom desc")
-    override val iconResourcePath: String? get() = error("boom icon path")
-    override val iconBase64: String? get() = error("boom icon b64")
+    override val iconResourcePath: String get() = error("boom icon path")
+    override val iconBase64: String get() = error("boom icon b64")
     override fun canResolve(url: String): Boolean = error("boom canResolve")
     override fun resolve(url: String): ResolvedLink = error("unreachable in these tests")
 }
@@ -26,7 +26,7 @@ private class GoodResolver : LinkResolver {
     override val id = "alpha"
     override val displayName = "Alpha"
     override val description = "alpha-ish"
-    override val iconBase64: String? = "AAAA"
+    override val iconBase64: String = "AAAA"
     override fun canResolve(url: String): Boolean = url.contains("alpha.com")
     override fun resolve(url: String): ResolvedLink = ResolvedLink(directUrl = "https://direct/a")
 }

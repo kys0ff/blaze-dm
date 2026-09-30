@@ -84,6 +84,8 @@ sealed interface SettingsEvent {
 
     // Themes / theme extensions (selection is buffered until Apply/OK)
     data class SelectTheme(val id: String) : SettingsEvent
+    /** Buffer a theme's whole option map in the draft (the theme options dialog's OK). */
+    data class UpdateThemeOptions(val id: String, val values: Map<String, String>) : SettingsEvent
     data class InstallTheme(val jarPath: String) : SettingsEvent
     data class RemoveTheme(val id: String) : SettingsEvent
     data object ReloadThemes : SettingsEvent

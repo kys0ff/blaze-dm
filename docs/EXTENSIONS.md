@@ -101,13 +101,26 @@ interface BlazeThemeProvider {
     val id: String                 // stable persistence key
     val displayName: String        // shown in the picker
     val description: String        // one line, shown under the name
+    val author: String   get() = ""                 // optional credit, shown as a byline
+    val version: String  get() = ""                 // optional, informational only
+    val supportedModes: Set<ThemeAppearanceMode> get() = ThemeAppearanceMode.ALL
     fun provide(dark: Boolean): ThemePalette
 }
 ```
 
-`provide(dark)` is called whenever the app resolves its colors — i.e. on theme switch and on
-light/dark change. It must be **cheap and side effect free**: no I/O, no network, no allocation-heavy
-computation, and it may be called on the UI thread.
+`provide(dark)` is called whenever the app resolves its colors — on theme switch, on a light/dark
+change, and when one of a theme's saved options is edited. It must be **cheap and side effect free**:
+no I/O, no network, no allocation-heavy computation, and it may be called on the UI thread.
+
+**Blaze renders exactly one design system** — the JetBrains New UI **Islands** shell (a neutral window
+*frame* with rounded *islands* floating on it). A theme is always an **overlay of tokens on top of the
+stock shell**, never a replacement of it: you can repaint the accent, the surfaces, the chrome — but
+the island/gap structure stays. Every unresolved token falls back, so a theme can never leave part of
+the UI unpainted.
+
+`supportedModes` declares which of light/dark the theme actually paints. A dark-only theme that
+returns `setOf(DARK)` is offered for dark mode only; when the user lands on light mode the app shows
+the built-in default instead of stretching dark tokens over light chrome.
 
 ### 3.2 The palette
 
@@ -121,6 +134,7 @@ data class ThemePalette(
     val panelBackgroundArgb: Long? = null, // sidebar, headers, dialog surfaces
     val borderArgb: Long? = null,          // hairline borders
     val infoTextArgb: Long? = null,        // secondary / informational text
+    val islands: IslandsPalette = IslandsPalette.Empty, // the shell's own chrome tokens
 )
 ```
 
@@ -133,24 +147,56 @@ Every field is **optional and independently meaningful**:
 * Light and dark are two separate calls. A theme that returns the same palette for both will look
   wrong on one of them — dark surfaces in a light window read as a rendering glitch.
 
-Fallback is per-field, so partial themes compose cleanly:
+Resolution is a strict **overlay chain**, so any subset of tokens composes cleanly:
 
 ```
-effective(color) = selectedTheme.provide(dark).color ?: defaultTheme.provide(dark).color
+user option colors  →  selected theme  →  built-in default  →  stock Islands tokens
 ```
 
-### 3.3 Complete example
+Each step only fills the tokens the step above left `null`; the last step guarantees a complete,
+renderable palette.
+
+### 3.3 Islands chrome (`IslandsPalette`)
+
+The New UI shell's own vocabulary lives beside the Jewel-mapped colors, because Jewel only knows
+"panel background" while Islands needs the whole chrome ramp:
+
+```kotlin
+data class IslandsPalette(
+    val frameArgb: Long? = null,             // window chrome behind islands (bar, stripe, gaps)
+    val surfaceArgb: Long? = null,           // island body (the floating panel surface)
+    val stripeSelectedArgb: Long? = null,    // selected tool-window stripe button
+    val stripeHoverArgb: Long? = null,       // stripe hover (a translucent wash)
+    val borderArgb: Long? = null,            // hairline that rims an island
+    val ambientAccentArgb: Long? = null,     // color of the top-left ambient glow (null = follow accent)
+    val ambientIntensityPercent: Int? = null,// glow peak, 0..100 (null = the shell's measured default)
+)
+```
+
+Leave a field `null` to keep the stock value — `IslandsDefaults.forMode(dark)` exposes the exact
+numbers the app ships with, so you can build a partial override ("keep the frame, restyle only the
+surface") without hard-coding literals you can't otherwise observe.
+
+> **Untrusted & validated.** A plugin jar's colors are run through a sanitizer before they render:
+> out-of-range longs and fully-transparent values (that aren't a deliberately translucent token
+> like hover/border) are dropped to "unset", so the fallback shows through instead of painting
+> garbage. A throwing plugin is contained the same way and simply contributes nothing.
+
+### 3.4 Complete example
 
 ```kotlin
 package com.example.blaze
 
 import org.blaze.theming.api.BlazeThemeProvider
+import org.blaze.theming.api.IslandsPalette
 import org.blaze.theming.api.ThemePalette
 
 class MidnightSlateTheme : BlazeThemeProvider {
     override val id: String = "midnight-slate"
     override val displayName: String = "Midnight Slate"
     override val description: String = "Indigo accent over cool graphite surfaces"
+    override val author: String = "Ada Example"
+    override val version: String = "1.0.0"
 
     override fun provide(dark: Boolean): ThemePalette = if (dark) {
         ThemePalette(
@@ -161,6 +207,10 @@ class MidnightSlateTheme : BlazeThemeProvider {
             panelBackgroundArgb = 0xFF23252C,
             borderArgb = 0xFF383C46,
             infoTextArgb = 0xFF8A93A0,
+            islands = IslandsPalette(
+                frameArgb = 0xFF1B1D22,     // a touch deeper than the stock frame
+                surfaceArgb = 0xFF23252C,
+            ),
         )
     } else {
         ThemePalette(
@@ -174,16 +224,76 @@ class MidnightSlateTheme : BlazeThemeProvider {
 }
 ```
 
-### 3.4 Ship, install, verify
+### 3.5 Ship, install, verify
 
 1. `./gradlew jar` → `midnight-slate-1.0.0.jar`.
 2. Settings → **Themes** → **Install** and pick the jar (it is copied into `~/.blaze/themes/`),
    or copy the file there yourself and press **Reload**.
 3. Select it, press **Apply** to preview it live, **OK** to persist. Cancelling reverts to the saved theme.
-4. The new theme appears tagged **Extension**; built-ins can be previewed but never removed.
+4. The new theme appears tagged **Extension**, with your `author` / `version` as a byline; built-ins
+   can be previewed but never removed.
 
 Tip: while developing, keep a terminal on `tail -f` of Blaze's log — a rejected jar is logged there,
 not shown in the UI.
+
+### 3.6 Making a theme configurable (options)
+
+A theme can let the user tune it from **Settings → Themes → Options** by implementing the optional
+`ConfigurableBlazeThemeProvider` facet instead of the base interface. It **extends**
+`BlazeThemeProvider`, so it is discovered through the very same `META-INF/services` file — no second
+service entry, and a plain provider keeps working untouched.
+
+```kotlin
+interface ConfigurableBlazeThemeProvider : BlazeThemeProvider {
+    val optionDescriptors: List<ThemeOption> get() = emptyList()
+    fun applySettings(settings: ThemeConfig) {}        // adopt the merged values (pure assignment)
+    fun settings(): ThemeConfig = ThemeConfigDefaults.fromDescriptors(optionDescriptors)
+}
+```
+
+The facet is deliberately **stateless at render time**: the app reads your `optionDescriptors`, builds
+the form, persists the answers itself, and folds them back into the resolved palette — a color option
+is applied straight onto its declared slot, so overriding, say, the accent needs **no plugin code in
+the render path**. `provide()` is never called with a promise that the plugin remembered an edit; if
+you keep internal state, adopt it in `applySettings()`.
+
+Descriptors are plain, serializable data — never functions — so the UI can render a form without
+running your code. Build them with the helpers in `org.blaze.theming.api`:
+
+```kotlin
+import org.blaze.theming.api.*
+
+class AuraTheme : ConfigurableBlazeThemeProvider {
+    override val id = "aura"
+    override val displayName = "Aura"
+    override val description = "Tunable accent and glow"
+
+    override val optionDescriptors = listOf(
+        // A color the app writes onto ThemePalette.accentArgb for you:
+        themeColorOption("accent", "Accent color", applyTo = ThemeColorTarget.ACCENT, defaultArgb = 0xFF7C6CFF),
+        // A color for the Islands frame surface:
+        themeColorOption("surface", "Island surface", applyTo = ThemeColorTarget.ISLANDS_SURFACE),
+        // The peak strength of the top-left ambient glow (0..100), applied onto the Islands chrome:
+        themeAmbientIntensityOption("glow", "Glow strength", defaultPercent = 15),
+        // Anything else the plugin reads itself via applySettings():
+        themeSelectOption("density", "List density", choices = listOf("Compact", "Comfortable"), default = "Comfortable"),
+    )
+
+    override fun provide(dark: Boolean): ThemePalette = ThemePalette(/* base look */) 
+}
+```
+
+`ThemeOptionType` covers **Text, Boolean, Integer(min..max), Select(choices) and Color**. A color
+option's `colorTarget` (a `ThemeColorTarget`) names which palette slot the app overrides with the
+user's value — the closed set spans the semantic colors (`ACCENT`, `SUCCESS`, …) and the Islands chrome
+(`ISLANDS_FRAME`, `ISLANDS_SURFACE`, `ISLANDS_AMBIENT_ACCENT`, …). An option flagged
+`ambientIntensityKey` (what `themeAmbientIntensityOption` produces) drives the glow strength, clamped
+to `0..100`. Values the user hasn't touched fall back to each descriptor's `defaultValue`; the answers
+persist in `themes.json` keyed by theme id, so an untouched theme reads its declared defaults.
+
+Only declare `optionDescriptors` you actually honor — a descriptor the app can't map to a rendered
+token is dead space in the form, and a non-color option must be consumed in `applySettings` /
+`provide` for it to have any effect.
 
 ---
 

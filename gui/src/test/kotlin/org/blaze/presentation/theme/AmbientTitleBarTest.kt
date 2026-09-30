@@ -6,48 +6,56 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Guards the ambient title-bar tint math: it must stay a *subtle* shift of the bar background
- * toward the accent (never past it), lean harder in dark themes like IntelliJ's darker ambient,
- * and be a no-op when there is nothing to blend.
+ * Guards the ambient glow tint math. The peak tint is a pure linear blend of the frame toward the
+ * accent by the theme's resolved intensity [fraction], so it can never leave the per-channel segment
+ * between the two colors (which is what keeps the glow a *tint* rather than a new surface), it must
+ * be a no-op at zero and reach the accent at one, and it must preserve the base's alpha.
  */
 class AmbientTitleBarTest {
 
-    private val lightBase = Color(0xFFF2F3F5) // Int UI light panel-ish title bar background
-    private val darkBase = Color(0xFF3C3F42) // Darcula-style background
+    private val darkBase = Color(0xFF26282C) // Islands dark frame
     private val accent = Color(0xFF3574F0) // Int UI blue
 
     @Test
-    fun `the ambient center is a subtle shift of the background toward the accent`() {
-        val center = ambientTitleBarCenterColor(lightBase, accent, isDark = false)
+    fun `the tint is a subtle shift of the frame toward the accent`() {
+        val tint = ambientTintColor(darkBase, accent, fraction = 0.15f)
         // A plain linear blend can never leave the per-channel segment between the two colors.
-        assertTrue(center.red in segment(lightBase.red, accent.red))
-        assertTrue(center.green in segment(lightBase.green, accent.green))
-        assertTrue(center.blue in segment(lightBase.blue, accent.blue))
-        // ...and for this concrete blue accent it reads as the expected cool cast: the warm
-        // channels recede and blue becomes the dominant one.
-        assertTrue(center.red < lightBase.red, "a blue tint must pull red down")
-        assertTrue(center.green < lightBase.green, "a blue tint must pull green down")
-        assertTrue(center.blue > center.green, "blue must become the dominant channel")
-        assertTrue(
-            (lightBase.red - center.red) < 0.20,
-            "the light-theme cast must stay subtle, got delta=${lightBase.red - center.red}",
+        assertTrue(tint.red in segment(darkBase.red, accent.red))
+        assertTrue(tint.green in segment(darkBase.green, accent.green))
+        assertTrue(tint.blue in segment(darkBase.blue, accent.blue))
+        // ...and for this concrete blue accent it reads as the expected cool cast.
+        assertTrue(tint.blue > darkBase.blue, "a blue tint must pull blue up")
+        // A small fraction must stay subtle.
+        assertTrue((darkBase.blue - tint.blue).let { kotlin.math.abs(it) } < 0.20)
+    }
+
+    @Test
+    fun `fraction interpolates linearly between frame and accent`() {
+        assertEquals(darkBase, ambientTintColor(darkBase, accent, fraction = 0f))
+        assertEquals(
+            ambientTintColor(darkBase, accent, fraction = 0.5f),
+            Color(
+                red = (darkBase.red + accent.red) / 2f,
+                green = (darkBase.green + accent.green) / 2f,
+                blue = (darkBase.blue + accent.blue) / 2f,
+                alpha = darkBase.alpha,
+            ),
         )
+        assertEquals(accent.copy(alpha = darkBase.alpha), ambientTintColor(darkBase, accent, fraction = 1f))
     }
 
     @Test
-    fun `dark themes lean harder into the tint than light ones`() {
-        val light = ambientTitleBarCenterColor(darkBase, accent, isDark = false)
-        val dark = ambientTitleBarCenterColor(darkBase, accent, isDark = true)
-        assertTrue(dark.blue > light.blue, "dark ambient must reach further toward the accent blue")
-        assertTrue(dark.red < light.red, "dark ambient must pull further away from the neutral base")
+    fun `blending with the frame itself changes nothing`() {
+        val tint = ambientTintColor(darkBase, darkBase, fraction = 0.75f)
+        assertEquals(darkBase.red.toDouble(), tint.red.toDouble(), 1e-6)
+        assertEquals(darkBase.green.toDouble(), tint.green.toDouble(), 1e-6)
+        assertEquals(darkBase.blue.toDouble(), tint.blue.toDouble(), 1e-6)
     }
 
     @Test
-    fun `blending with the background itself changes nothing`() {
-        val center = ambientTitleBarCenterColor(darkBase, darkBase, isDark = true)
-        assertEquals(darkBase.red.toDouble(), center.red.toDouble(), 1e-6)
-        assertEquals(darkBase.green.toDouble(), center.green.toDouble(), 1e-6)
-        assertEquals(darkBase.blue.toDouble(), center.blue.toDouble(), 1e-6)
+    fun `the base alpha is preserved`() {
+        val translucent = Color(0x8026282C)
+        assertEquals(translucent.alpha, ambientTintColor(translucent, accent, fraction = 0.4f).alpha)
     }
 
     /** The closed segment between the two channel values a linear blend must stay inside. */

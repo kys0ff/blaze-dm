@@ -618,6 +618,15 @@ object EnStrings : BlazeStrings {
             override val removeAction = "Remove"
             override val builtinTag = "Built-in"
             override val pluginTag = "Extension"
+            override val optionsAction = "Options"
+            override fun optionsTitle(name: String) = "$name theme options"
+            override val restoreDefaultsAction = "Restore defaults"
+            override val colorFormatHint = "Hex color, #RRGGBB or #AARRGGBB"
+            override fun themeByline(author: String, version: String): String =
+                listOfNotNull(
+                    author.takeIf { it.isNotBlank() }?.let { "by $it" },
+                    version.takeIf { it.isNotBlank() }?.let { "version $it" },
+                ).joinToString(" \u00b7 ")
             override val chromeHeader = "Window chrome"
             override val ambientGlowLabel = "Ambient title-bar glow"
             override val ambientGlowDesc = "A soft accent-colored glow at the top-left of the window frame, behind the title bar and the side stripe."

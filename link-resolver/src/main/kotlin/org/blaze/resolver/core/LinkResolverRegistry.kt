@@ -67,7 +67,7 @@ class LinkResolverRegistry(
     /**
      * Enabled handlers that claim they can resolve [url], best-first: a user-set priority
      * orders them, display name breaks ties stably. The "use the first one silently" path
-     * of always-ask-off therefore honours the handler the user prefers.
+     * of always-ask-off therefore honors the handler the user prefers.
      */
     fun enabledHandlers(url: String): List<LoadedResolver> =
         _handlers.value

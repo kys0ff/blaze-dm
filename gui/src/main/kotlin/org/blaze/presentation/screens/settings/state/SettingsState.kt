@@ -44,6 +44,10 @@ data class SettingsState(
     val extensionDir: String = "",
     val themes: List<ThemeUiState> = emptyList(),
     val selectedThemeOverride: String? = null,
+    // Per-theme option values (theme id -> option key -> value) staged in the draft; only the keys
+    // the user touched appear here, so an untouched theme keeps reading its persisted values.
+    // Committed to the themes slice on Apply/OK, exactly like the handler options above.
+    val themeOptionOverrides: Map<String, Map<String, String>> = emptyMap(),
     val themesDir: String = "",
     // App-shell (tray / autostart) draft + saved pair, persisted through their own repository.
     val appSettings: AppSettings = AppSettings(),
@@ -67,6 +71,10 @@ data class SettingsState(
     /** Whether a theme is selected, with any pending override folded in. */
     fun effectiveThemeActive(theme: ThemeUiState): Boolean =
         selectedThemeOverride?.let { it == theme.id } ?: theme.active
+
+    /** A theme's option values as the draft would write them, falling back to the persisted effective set. */
+    fun effectiveThemeOptions(id: String, persisted: Map<String, String>): Map<String, String> =
+        themeOptionOverrides[id]?.let { persisted + it } ?: persisted
 
     /**
      * Errors on fields that are currently disabled don't count: the user can neither see nor
@@ -96,5 +104,6 @@ data class SettingsState(
                 enabledHandlerOverrides.isNotEmpty() ||
                 optionOverrides.isNotEmpty() ||
                 alwaysAskOverride != null ||
-                selectedThemeOverride != null
+                selectedThemeOverride != null ||
+                themeOptionOverrides.isNotEmpty()
 }

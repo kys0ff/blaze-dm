@@ -59,6 +59,7 @@ data class SettingsDraft(
     val installedHandlerIds: Set<String>,
     val themeIds: Set<String>,
     val selectedThemeOverride: String?,
+    val themeOptionOverrides: Map<String, Map<String, String>>,
 )
 
 /**
@@ -122,12 +123,16 @@ class SettingsUseCases(
         ) { themes, selectedId, settings ->
             ThemesSnapshot(
                 themes = themes.map { loaded ->
+                    val provider = loaded.provider
                     ThemeUiState(
-                        id = loaded.provider.id,
-                        displayName = loaded.provider.displayName,
-                        description = loaded.provider.description,
-                        active = loaded.provider.id == selectedId,
-                        isPlugin = loaded.source == ThemeSource.PLUGIN
+                        id = provider.id,
+                        displayName = provider.displayName,
+                        description = provider.description,
+                        active = provider.id == selectedId,
+                        isPlugin = loaded.source == ThemeSource.PLUGIN,
+                        configurable = themeRegistry.optionDescriptors(provider.id).isNotEmpty(),
+                        author = provider.author,
+                        version = provider.version,
                     )
                 },
                 themesDir = settings.extensionDir
@@ -205,6 +210,12 @@ class SettingsUseCases(
         draft.selectedThemeOverride
             ?.takeIf { it in draft.themeIds }
             ?.let { themeRegistry.selectInMemory(it) }
+
+        // Per-theme option answers, staged into the live settings so the running app restyles
+        // (AppTheme observes the settings flow) without writing to disk; OK persists them.
+        draft.themeOptionOverrides.forEach { (id, values) ->
+            themeRegistry.setOptionValuesInMemory(id, values)
+        }
     }
 
     /**
@@ -232,6 +243,10 @@ class SettingsUseCases(
         draft.selectedThemeOverride
             ?.takeIf { it in draft.themeIds }
             ?.let { themeRegistry.select(it) }
+        // Persist theme option answers only for themes still installed (a removed jar has no target).
+        draft.themeOptionOverrides.forEach { (id, values) ->
+            if (id in draft.themeIds) themeRegistry.setOptionValues(id, values)
+        }
     }
 
     /**
@@ -244,6 +259,9 @@ class SettingsUseCases(
         appSettingsRepository.revertToPersisted()
         autoStartCoordinator.revertToPersisted()
         resolverSettingsRepository.revertToPersisted()
+        // Restore the on-disk theme settings first (this rewinds any in-memory option edits and the
+        // persisted selection), then point the live registry id back at what is actually saved.
+        themeSettingsRepository.revertToPersisted()
         themeRegistry.restoreSelectionFromSettings()
     }
 }

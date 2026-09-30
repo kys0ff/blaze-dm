@@ -55,7 +55,12 @@ class ThemePluginLoader {
                     logger.error("Failed to instantiate a theme provider from {}", jar, it); continue
                 }
                 // Wrap in a sandbox so a runtime bug inside the plugin can't crash the app.
-                themes += LoadedTheme(SafeThemeProvider(provider, jar), ThemeSource.PLUGIN, jar)
+                // The wrapper preserves the configurable facet when the jar declares one.
+                themes += LoadedTheme(
+                    SafeThemeProvider.wrap(provider, jar),
+                    ThemeSource.PLUGIN,
+                    jar,
+                )
             }
         }
 

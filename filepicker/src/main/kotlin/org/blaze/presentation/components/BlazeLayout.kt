@@ -20,14 +20,6 @@ import org.blaze.presentation.components.BlazeLayout.SettingsDialogWidth
 object BlazeLayout {
 
     /**
-     * The one switch for the JetBrains New UI "Islands" shell: when true the window paints a
-     * neutral frame and every region floats as a rounded island separated by gaps (no hairline
-     * dividers between major regions). Flip to false to restore the classic flat, divider-lined
-     * look — no other call site changes are needed.
-     */
-    const val USE_ISLANDS: Boolean = true
-
-    /**
      * Structural switch for the IDE's ambient chrome glow — the soft accent-colored field anchored
      * at the window's top-left corner that the title bar, the tool-window stripe and the island
      * gaps sit on (see [org.blaze.presentation.theme.BlazeAmbientGradient]). Flip to false to drop

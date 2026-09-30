@@ -42,16 +42,12 @@ fun StatusBar(
 ) {
     val strings = blazeStrings
     val small = BlazeTypography.statusBar
-    // The bar is part of the frame, so in the Islands shell it paints nothing and lets the frame
-    // layer (flat color + ambient glow) show through, exactly like the tool-window stripe.
-    val frameBackground =
-        if (BlazeLayout.USE_ISLANDS) Color.Transparent else JewelTheme.globalColors.panelBackground
+    // The bar is part of the Islands frame, so it paints nothing: the frame layer (flat color +
+    // ambient glow) shows through it, exactly like the tool-window stripe.
+    val frameBackground = Color.Transparent
 
     Column(modifier = modifier.fillMaxWidth()) {
-        // Islands: the frame background and the gap above do the separation, so no hairline.
-        if (!BlazeLayout.USE_ISLANDS) {
-            Divider(Orientation.Horizontal)
-        }
+        // The frame background and the gap above do the separation, so no hairline divider.
         Row(
             modifier = Modifier
                 .fillMaxWidth()

@@ -1,6 +1,8 @@
 package org.blaze.presentation.theme
 
 import androidx.compose.ui.graphics.Color
+import org.blaze.theming.api.IslandsDefaults
+import org.blaze.theming.api.IslandsPalette
 import org.blaze.theming.api.ThemePalette
 import org.jetbrains.jewel.foundation.BorderColors
 import org.jetbrains.jewel.foundation.GlobalColors
@@ -17,13 +19,18 @@ import org.jetbrains.jewel.intui.standalone.theme.light
  * Only the colors a theme actually provides are overridden; everything else keeps the stock
  * Int UI value by delegating to the framework's own builders. When a theme overrides nothing,
  * the untouched default [GlobalColors] is returned.
+ *
+ * [islands] is the resolved Islands chrome for the same mode: the shell makes the content
+ * surface (`panelBackground`) the *island* color, so every panel Jewel paints floats on the
+ * frame. A theme's own `panelBackgroundArgb` still wins over it.
  */
-internal fun buildJewelGlobalColors(isDark: Boolean, palette: ThemePalette): GlobalColors {
+internal fun buildJewelGlobalColors(
+    isDark: Boolean,
+    palette: ThemePalette,
+    islands: IslandsPalette,
+): GlobalColors {
     val accent: Color? = palette.accentArgb?.toColor()
-    // The Islands design layer makes the content surface (panelBackground) the *island* color, so
-    // every panel Jewel paints with it floats on the frame. A theme that supplies its own panel
-    // background still wins.
-    val panel: Color = palette.panelBackgroundArgb?.toColor() ?: BlazeIslandColors.islandFor(isDark)
+    val panel: Color = palette.panelBackgroundArgb?.toColor() ?: islands.surfaceArgb.orIsland()
     val border: Color? = palette.borderArgb?.toColor()
     val info: Color? = palette.infoTextArgb?.toColor()
 
@@ -75,3 +82,6 @@ internal fun buildJewelGlobalColors(isDark: Boolean, palette: ThemePalette): Glo
         )
     }
 }
+
+/** Reads an Islands surface token as a color; the stock value stands in for an unset one. */
+private fun Long?.orIsland(): Color = this?.toColor() ?: IslandsDefaults.SURFACE_DARK.toColor()

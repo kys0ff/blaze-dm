@@ -44,19 +44,28 @@ object BlazeAmbientGradient {
     val VerticalRadius = 280.dp
 
     /**
-     * Blend of the accent into the frame at the glow's peak. The reference peak tint is
-     * `#26282c -> (+5 R, +25 G, +22 B)` at x=110, i.e. a luminance lift of ~19 units; Blaze's accent
-     * is the flame orange, so the same 19-unit lift needs a slightly larger share of a color that
-     * carries less green. 15% (the top of the brief's 10-15% band) is what lands the app's peak
-     * luminance delta on the reference's - see the gradient landmarks in `scripts/ui_delta_check.py`,
-     * which compare shape (Δluminance over the sampled base) rather than hue.
+     * Blend of the accent into the frame at the glow's peak, as the stock design reference reads
+     * it. The reference peak tint is `#26282c -> (+5 R, +25 G, +22 B)` at x=110, i.e. a luminance
+     * lift of ~19 units; Blaze's accent is the flame orange, so the same 19-unit lift needs a
+     * slightly larger share of a color that carries less green. 15% (the top of the brief's 10-15%
+     * band) is what lands the app's peak luminance delta on the reference's - see the gradient
+     * landmarks in `scripts/ui_delta_check.py`, which compare shape (Δluminance over the sampled
+     * base) rather than hue.
+     *
+     * These are only the *defaults*: the live strength is a theme token, read as
+     * [BlazeIslandColors.ambientIntensity], so a plugin (or the user, through a theme's Options
+     * form) can dial the glow without touching this file.
      */
     const val DarkAlpha = 0.15f
     const val LightAlpha = 0.08f
 
-    /** The accent color the glow is tinted with: the brand flame, falling back to the theme accent. */
+    /**
+     * The accent color the glow is tinted with: a theme's declared glow color when it names one,
+     * then the brand flame, then the theme accent.
+     */
     @Composable
-    fun ambientAccent(): Color = rememberBrandIconAccent() ?: BlazeColors.accent
+    fun ambientAccent(): Color =
+        BlazeIslandColors.ambientAccent ?: rememberBrandIconAccent() ?: BlazeColors.accent
 }
 
 /** Whether the glow is drawn at all: the structural switch and the user preference must agree. */
@@ -68,16 +77,15 @@ internal fun ambientGlowEnabled(): Boolean =
  * The peak tint: [base] blended a little of the way toward [accent]. Pure so the math can be
  * checked without a composition, and so a palette can never push the result off the base-to-accent
  * line (which is what keeps the glow a tint rather than a new surface).
+ *
+ * [fraction] is the resolved theme token (0 = the glow is effectively off, 1 = full accent).
  */
-internal fun ambientTintColor(base: Color, accent: Color, isDark: Boolean): Color {
-    val fraction = if (isDark) BlazeAmbientGradient.DarkAlpha else BlazeAmbientGradient.LightAlpha
-    return Color(
-        red = base.red + (accent.red - base.red) * fraction,
-        green = base.green + (accent.green - base.green) * fraction,
-        blue = base.blue + (accent.blue - base.blue) * fraction,
-        alpha = base.alpha,
-    )
-}
+internal fun ambientTintColor(base: Color, accent: Color, fraction: Float): Color = Color(
+    red = base.red + (accent.red - base.red) * fraction,
+    green = base.green + (accent.green - base.green) * fraction,
+    blue = base.blue + (accent.blue - base.blue) * fraction,
+    alpha = base.alpha,
+)
 
 /**
  * Paints the window *frame* layer: the flat frame color with the ambient glow anchored at the
@@ -99,7 +107,7 @@ internal fun ambientTintColor(base: Color, accent: Color, isDark: Boolean): Colo
 fun Modifier.blazeAmbientFrame(anchorY: Dp = 0.dp, bleedTop: Dp = 0.dp): Modifier {
     val base = BlazeIslandColors.frame
     val accent = BlazeAmbientGradient.ambientAccent()
-    val tint = ambientTintColor(base, accent, JewelTheme.isDark)
+    val tint = ambientTintColor(base, accent, BlazeIslandColors.ambientIntensity)
     val enabled = ambientGlowEnabled()
     val verticalRadius = BlazeAmbientGradient.VerticalRadius
 
@@ -154,10 +162,8 @@ fun Modifier.blazeAmbientFrame(anchorY: Dp = 0.dp, bleedTop: Dp = 0.dp): Modifie
  * row is painted chrome rather than the window's raw background.
  */
 @Composable
-fun Modifier.blazeAmbientBodyFrame(): Modifier {
-    val bleed = if (BlazeLayout.USE_ISLANDS) BlazeLayout.TitleBarBorderHeight else 0.dp
-    return blazeAmbientFrame(anchorY = ambientBodyAnchorY(), bleedTop = bleed)
-}
+fun Modifier.blazeAmbientBodyFrame(): Modifier =
+    blazeAmbientFrame(anchorY = ambientBodyAnchorY(), bleedTop = BlazeLayout.TitleBarBorderHeight)
 
 /**
  * Distance from the window's top edge to the top of the body: the title bar's own height plus the
