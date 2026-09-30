@@ -509,6 +509,7 @@ object ArStrings : BlazeStrings {
         override val downloadsCategory = "التنزيلات"
         override val filesCategory = "الملفات"
         override val logsCategory = "السجلات"
+        override val shortcutsCategory = "الاختصارات"
         override val concurrencyHeader = "التزامن والترتيب"
         override val maxConcurrentDownloadsLabel = "الحد الأقصى للتنزيلات المتزامنة"
         override val maxConcurrentDownloadsDesc = "يحدد عدد التنزيلات التي يمكن أن تعمل بنشاط في الوقت نفسه؛ التنزيلات التي تتجاوز هذا الحد تبقى في قائمة الانتظار حتى يتوفر موضع."
@@ -650,6 +651,30 @@ object ArStrings : BlazeStrings {
             override val whileInSightLabel = "أشعر أيضًا عندما تكون نافذة Blaze ظاهرة ومركَّزة"
             override val whileInSightDesc = "عند التعطيل تُنشر الإشعارات فقط عندما يكون Blaze مخفيًا في الدرج أو في الخلفية — فالقائمة تعرض ما يحدث بالفعل أثناء النظر إليها."
             override val unsupportedNote = "لا يوفّر هذا السطح أي قناة إشعارات، لذلك لا يستطيع Blaze نشر إشعارات نظام."
+        }
+
+        override val shortcuts = object : BlazeStrings.Settings.Shortcuts {
+            override val category = "الاختصارات"
+            override val header = "اختصارات لوحة المفاتيح"
+            override val description = "أعد ربط أوامر التطبيق؛ يحتاج الاختصار إلى معدِّل (Ctrl/⌘ أو Alt) ما لم يكن مفتاحًا لا يكتب نصًا مثل Enter أو Delete."
+            override val newDownload = "تنزيل جديد"
+            override val searchEverywhere = "البحث الشامل"
+            override val focusListSearch = "تحويل التركيز إلى بحث القائمة"
+            override val toggleDetails = "إظهار/إخفاء لوحة التفاصيل"
+            override val selectAll = "تحديد الكل"
+            override val togglePause = "إيقاف/استئناف"
+            override val remove = "إزالة تنزيل"
+            override val openSelected = "فتح الملف المحدد"
+            override val openSettings = "فتح الإعدادات"
+            override val recordAction = "تسجيل"
+            override val recordingHint = "اضغط على الاختصار الجديد…"
+            override val cancelAction = "إلغاء"
+            override val clearAction = "إلغاء الربط"
+            override val resetAction = "إعادة تعيين"
+            override val restoreAllAction = "استعادة كل الافتراضيات"
+            override val unboundLabel = "غير مربوط"
+            override fun conflictError(otherAction: String) = "مستخدم بالفعل بواسطة «$otherAction»"
+            override val needModifierError = "أضف Ctrl/⌘ أو Alt، أو اختر مفتاحًا لا يكتب نصًا"
         }
     }
 

@@ -87,4 +87,31 @@ data class AppSettings(
      * user-switchable under Themes.
      */
     val ambientGlowEnabled: Boolean = true,
+
+    // ── Keyboard shortcuts ───────────────────────────────────────────────────
+    /**
+     * User rebinds, keyed by [org.blaze.presentation.components.BlazeKeymap.Action] name. An absent key
+     * means "use the built-in default"; a stored value overrides it. Stored as primitives (raw key code +
+     * location + modifier flags) so this file keeps its "no foreign serializable types" rule.
+     */
+    val keyBindings: Map<String, StoredKeyBinding> = emptyMap(),
+    /**
+     * Action names the user explicitly unbound — the action then fires on no key and prints no accelerator.
+     * Kept separate from [keyBindings] so "unbound" is distinct from "default"; cleared by a per-row reset.
+     */
+    val unboundShortcuts: List<String> = emptyList(),
+)
+
+/**
+ * A keyboard chord as written to disk: a physical key ([keyCode]/[keyLocation] mirror `java.awt.event.KeyEvent`)
+ * under the primary [ctrl] (Ctrl on Windows/Linux, Command on macOS), [shift] and [alt] modifiers.
+ * [KeymapPersistence] converts to and from the presentation [org.blaze.presentation.components.BlazeKeymap.Binding].
+ */
+@Serializable
+data class StoredKeyBinding(
+    val keyCode: Int,
+    val keyLocation: Int = 0,
+    val ctrl: Boolean = true,
+    val shift: Boolean = false,
+    val alt: Boolean = false,
 )

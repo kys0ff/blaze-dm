@@ -7,5 +7,6 @@ enum class SettingsCategory {
     EXTENSIONS,
     THEMES,
     NOTIFICATIONS,
+    SHORTCUTS,
     LOGS
 }

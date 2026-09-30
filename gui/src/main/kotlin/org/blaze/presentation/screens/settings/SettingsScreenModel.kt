@@ -316,6 +316,44 @@ class SettingsScreenModel(
             it.copy(settings = it.settings.copy(fileLoggingEnabled = event.enabled))
         }
 
+        // Keyboard shortcuts. Conflicts and unsafe chords are derived from the draft in SettingsState,
+        // so editing these maps is all that is needed — validation and isDirty follow automatically.
+        is SettingsEvent.SetKeyBinding -> _state.update {
+            it.copy(
+                appSettings = it.appSettings.copy(
+                    keyBindings = it.appSettings.keyBindings + (event.actionName to event.binding),
+                    unboundShortcuts = it.appSettings.unboundShortcuts.filterNot { name -> name == event.actionName }
+                )
+            )
+        }
+
+        is SettingsEvent.ClearKeyBinding -> _state.update {
+            it.copy(
+                appSettings = it.appSettings.copy(
+                    keyBindings = it.appSettings.keyBindings - event.actionName,
+                    unboundShortcuts = (it.appSettings.unboundShortcuts + event.actionName).distinct()
+                )
+            )
+        }
+
+        is SettingsEvent.RestoreDefaultKeyBinding -> _state.update {
+            it.copy(
+                appSettings = it.appSettings.copy(
+                    keyBindings = it.appSettings.keyBindings - event.actionName,
+                    unboundShortcuts = it.appSettings.unboundShortcuts.filterNot { name -> name == event.actionName }
+                )
+            )
+        }
+
+        SettingsEvent.RestoreAllKeyBindings -> _state.update {
+            it.copy(
+                appSettings = it.appSettings.copy(
+                    keyBindings = emptyMap(),
+                    unboundShortcuts = emptyList()
+                )
+            )
+        }
+
         is SettingsEvent.ToggleHandler -> _state.update {
             it.copy(enabledHandlerOverrides = it.enabledHandlerOverrides + (event.id to event.enabled))
         }

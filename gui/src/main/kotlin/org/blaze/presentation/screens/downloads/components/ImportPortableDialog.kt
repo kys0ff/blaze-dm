@@ -14,8 +14,8 @@ import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.repository.PortableKind
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.IdeDialogActions
-import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.components.StandardDialogButtons
+import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.util.formatSize
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -51,7 +51,7 @@ fun ImportPortableDialog(
     }
 
     BaseDialog(onDismiss = onDismiss, width = 480.dp) {
-        IdeDialogTitle(p.dialogTitle)
+        DialogHeader(p.dialogTitle)
         Text(kindLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -77,7 +77,7 @@ fun ImportPortableDialog(
             }
         }
 
-        IdeDialogActions(
+        StandardDialogButtons(
             dismissText = strings.common.cancel,
             onDismiss = onDismiss,
             confirmText = p.importAction,

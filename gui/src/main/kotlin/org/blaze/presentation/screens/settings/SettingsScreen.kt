@@ -286,6 +286,7 @@ private fun SettingsContent(
             ExtensionsSection(state, strings, onEvent, resolverRegistry, onInstallHandler)
         SettingsCategory.THEMES -> ThemesSection(state, strings, themeRegistry, onEvent, onInstallTheme)
         SettingsCategory.NOTIFICATIONS -> NotificationsSection(state, strings, onEvent)
+        SettingsCategory.SHORTCUTS -> ShortcutsSection(state, strings, onEvent)
         SettingsCategory.LOGS -> LogsSection(state, strings, onEvent, logConfigurator)
     }
 }

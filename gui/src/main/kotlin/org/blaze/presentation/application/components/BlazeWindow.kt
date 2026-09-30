@@ -11,10 +11,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import org.blaze.data.AppSettingsRepository
+import org.blaze.data.KeymapPersistence
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
 import org.blaze.platform.tray.AppTrayIcon
@@ -55,11 +55,38 @@ private fun Color.toAwtColor(): AwtColor =
 
 @Composable
 fun BlazeWindow(shell: AppShell) {
+    // Search Everywhere is a single window-level popup: the title-bar icon, the hamburger item and
+    // Ctrl/Cmd+K all route into this one controller, so all three open the very same thing. It is read
+    // here (above the frame) because the frame's own key preview — which must fire before any focused
+    // child swallows the chord — drives it.
+    val searchController = koinInject<SearchController>()
     DecoratedWindow(
         onCloseRequest = shell::onCloseRequest,
         state = shell.windowState,
         visible = shell.windowVisible.value,
         title = "Blaze",
+        // The frame-level half of the keymap bridge. Compose's `Modifier.onPreviewKeyEvent` only fires
+        // when a focusable node inside that modifier's subtree owns keyboard focus, so at cold start —
+        // with focus nowhere in the scene — every app-wide chord was silently dropped. The window's own
+        // preview runs for every key event while the frame is focused, independent of the Compose focus
+        // state, and recognises the very [BlazeKeymap.Binding] the menus print, so a shortcut can no
+        // longer be displayed without being handled. The frame owns the two chords that belong to the
+        // window itself; everything the downloads screen owns is left to fall through to it.
+        onPreviewKeyEvent = { event ->
+            when (BlazeKeymap.matchAction(event)) {
+                BlazeKeymap.Action.OpenSettings -> {
+                    shell.openSettings()
+                    true
+                }
+
+                BlazeKeymap.Action.SearchEverywhere -> {
+                    searchController.toggle()
+                    true
+                }
+
+                else -> false
+            }
+        },
     ) {
         val visible = shell.windowVisible.value
         val raiseToken = shell.windowRaiseToken.value
@@ -134,10 +161,11 @@ fun BlazeWindow(shell: AppShell) {
         // The ambient glow is a chrome preference, so it lives with the other shell settings and is
         // read reactively here: Apply in Settings changes the frame immediately without a restart.
         val appSettings = koinInject<AppSettingsRepository>().settings.collectAsState().value
-        // Search Everywhere is a single window-level popup: the title-bar icon, the hamburger item and
-        // Ctrl/Cmd+K all route into this one controller, so all three open the very same thing (before
-        // this they fired a filter-focus command with nothing to show, which is why search looked dead).
-        val searchController = koinInject<SearchController>()
+        // The persisted keymap is re-read reactively: Apply in Settings rebinds a chord and the frame's
+        // own preview (plus every printed accelerator) follows without a restart.
+        LaunchedEffect(appSettings) {
+            KeymapPersistence.applyTo(appSettings.keyBindings, appSettings.unboundShortcuts)
+        }
         val commandBus = koinInject<AppCommandBus>()
         LaunchedEffect(commandBus, searchController) {
             commandBus.commands.collect { command ->
@@ -157,27 +185,7 @@ fun BlazeWindow(shell: AppShell) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(drop.modifier)
-                    // The shell-level half of the keymap bridge. Everything the downloads screen owns
-                    // (new download, search, selection keys, details) is handled there, closer to the
-                    // focus; what is left here is the one chord that belongs to the frame itself, and it
-                    // is recognized by the very [BlazeKeymap.Binding] the menus print - so a shortcut can
-                    // no longer be displayed without being handled, which is what Settings used to be.
-                    .onPreviewKeyEvent { event ->
-                        when (BlazeKeymap.matchAction(event)) {
-                            BlazeKeymap.Action.OpenSettings -> {
-                                shell.openSettings()
-                                true
-                            }
-
-                            BlazeKeymap.Action.SearchEverywhere -> {
-                                searchController.toggle()
-                                true
-                            }
-
-                            else -> false
-                        }
-                    },
+                    .then(drop.modifier),
             ) {
                 BlazeContent()
                 WindowDropOverlay(drop)

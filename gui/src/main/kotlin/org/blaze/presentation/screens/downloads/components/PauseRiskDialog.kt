@@ -9,8 +9,8 @@ import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.IdeDialogActions
-import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.components.StandardDialogButtons
+import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.screens.downloads.percentDone
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.CheckboxRow
@@ -38,12 +38,12 @@ fun PauseRiskDialog(
     var doNotAskAgain by remember { mutableStateOf(false) }
 
     BaseDialog(onDismiss = onDismiss, width = 440.dp) {
-        IdeDialogTitle(risk.title)
+        DialogHeader(risk.title)
         Text(text = risk.message(download.name))
 
         AdvisoryCallout(text = risk.detail(percent), tone = AdvisoryTone.WARNING)
 
-        IdeDialogActions(
+        StandardDialogButtons(
             dismissText = strings.common.cancel,
             onDismiss = onDismiss,
             confirmText = risk.confirm,

@@ -125,7 +125,7 @@ private fun NotificationBalloon(
     }
 
     val isError = notification.type == NotificationType.ERROR
-    val panelColor = Color(0xFF33353B)
+    val panelColor = Color(0xFF33353B) // TODO: migrate to theme colors so it can be customizable via theme plugins
     val borderColor = if (isError) {
         BlazeColors.error.copy(alpha = 0.6f)
     } else {

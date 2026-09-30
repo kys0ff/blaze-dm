@@ -1,6 +1,7 @@
 package org.blaze.presentation.screens.settings
 
 import androidx.compose.ui.text.input.TextFieldValue
+import org.blaze.data.StoredKeyBinding
 import org.blaze.engine.api.DownloadPriority
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.engine.settings.LogLevel
@@ -71,6 +72,17 @@ sealed interface SettingsEvent {
     // Logging
     data class UpdateLogLevel(val level: LogLevel) : SettingsEvent
     data class UpdateFileLoggingEnabled(val enabled: Boolean) : SettingsEvent
+
+    // Keyboard shortcuts — all buffered in the app-settings draft (keyed by BlazeKeymap action name),
+    // so a rebind reaches the running keymap only on Apply/OK and reverts on Cancel, like the rest.
+    /** Record [binding] as the new chord for [actionName], replacing any override and un-unbinding it. */
+    data class SetKeyBinding(val actionName: String, val binding: StoredKeyBinding) : SettingsEvent
+    /** Explicitly unbind [actionName] so it fires on no key and prints no accelerator. */
+    data class ClearKeyBinding(val actionName: String) : SettingsEvent
+    /** Drop [actionName]'s override/unbind so it falls back to its built-in default chord. */
+    data class RestoreDefaultKeyBinding(val actionName: String) : SettingsEvent
+    /** Restore every action to its built-in default, clearing all overrides and unbinds at once. */
+    data object RestoreAllKeyBindings : SettingsEvent
 
     // Link handlers / extensions (enable/disable and always-ask are buffered until Apply/OK;
     // install/remove/reload act on the extensions directory immediately)

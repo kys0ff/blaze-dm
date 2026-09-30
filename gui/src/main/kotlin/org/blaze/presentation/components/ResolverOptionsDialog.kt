@@ -61,7 +61,7 @@ fun ResolverOptionsDialog(
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
     BaseDialog(onDismiss = onDismiss) {
-        IdeDialogTitle(title)
+        DialogHeader(title)
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -91,7 +91,7 @@ fun ResolverOptionsDialog(
         // fields re-read them, so the controls snap back without needing their own keys. It rides
         // the leading slot of the action bar (the same home other dialogs use for secondary
         // actions) so it reads as a real button, not a caption.
-        IdeDialogActions(
+        StandardDialogButtons(
             dismissText = cancelLabel,
             onDismiss = onDismiss,
             confirmText = okLabel,

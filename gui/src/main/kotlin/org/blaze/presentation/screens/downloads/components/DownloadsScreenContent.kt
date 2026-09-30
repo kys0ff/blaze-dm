@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -20,6 +22,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -102,6 +105,13 @@ fun DownloadsScreenContent(
     var defaultDeleteBehavior by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
     val searchFocusRequester = remember { FocusRequester() }
+    // The screen's chords (new download, select-all, details, delete, space, enter, arrows, escape) are
+    // recognized by the `onPreviewKeyEvent` on the content root below. Compose only delivers a key event
+    // to that handler while a focusable node inside its subtree owns keyboard focus, so the root is made
+    // focusable and takes focus on entry: without it, the chords were dead until the user happened to
+    // click a focusable row. The frame's own chords are handled above this, at the window level.
+    val contentFocusRequester = remember { FocusRequester() }
+    val contentFocusInteraction = remember { MutableInteractionSource() }
     val clipboard = koinInject<SystemClipboard>()
 
     // Commands the title-bar menu raises that this screen owns directly: open the add-download dialog,
@@ -525,9 +535,15 @@ fun DownloadsScreenContent(
         )
     }
 
+    // Take keyboard focus on entry so the content root's chord handler is reachable before the user has
+    // clicked anything. Wrapped so a focus race at composition time can never crash the screen.
+    LaunchedEffect(Unit) { runCatching { contentFocusRequester.requestFocus() } }
+
     Column(
         modifier = modifier
             .fillMaxSize()
+            .focusRequester(contentFocusRequester)
+            .focusable(interactionSource = contentFocusInteraction)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 // The chords come off [BlazeKeymap] instead of being re-typed here: the accelerator a

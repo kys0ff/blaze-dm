@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.icons.BlazeFlame
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.DefaultButton
@@ -44,7 +44,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 modifier = Modifier.size(40.dp),
             )
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                IdeDialogTitle(menu.aboutTitle)
+                DialogHeader(menu.aboutTitle)
                 Text(
                     text = "Blaze $APP_VERSION",
                     style = JewelTheme.typography.small,

@@ -33,6 +33,7 @@ class SettingsRegistryGuardTest {
         SettingsCategory.EXTENSIONS to "SettingsExtensionsSection.kt",
         SettingsCategory.THEMES to "SettingsThemesSection.kt",
         SettingsCategory.NOTIFICATIONS to "SettingsNotificationsSection.kt",
+        SettingsCategory.SHORTCUTS to "SettingsShortcutsSection.kt",
         SettingsCategory.LOGS to "SettingsLogsSection.kt",
     )
 

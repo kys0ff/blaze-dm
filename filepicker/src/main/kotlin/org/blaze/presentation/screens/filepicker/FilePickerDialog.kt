@@ -15,8 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.IdeDialogActions
-import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.components.StandardDialogButtons
+import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.screens.filepicker.components.FilePickerPathField
 import org.blaze.presentation.screens.filepicker.components.FilePickerToolbar
 import org.blaze.presentation.screens.filepicker.components.FilePickerTree
@@ -102,7 +102,7 @@ fun FilePickerDialog(
 
     BaseDialog(onDismiss = onDismiss, width = 620.dp, requestFocus = false, title = actualTitle) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            IdeDialogTitle(actualTitle)
+            DialogHeader(actualTitle)
             val desc = state.description
             if (desc != null) {
                 Text(text = desc, style = small, color = secondary)
@@ -151,7 +151,7 @@ fun FilePickerDialog(
             )
         }
 
-        IdeDialogActions(
+        StandardDialogButtons(
             dismissText = strings.common.cancel,
             onDismiss = onDismiss,
             confirmText = actualConfirmText,

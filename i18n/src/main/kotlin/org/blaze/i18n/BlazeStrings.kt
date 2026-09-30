@@ -643,6 +643,8 @@ interface BlazeStrings {
         val downloadsCategory: String
         val filesCategory: String
         val logsCategory: String
+        /** Sidebar label of the keyboard-shortcuts page. */
+        val shortcutsCategory: String
         val concurrencyHeader: String
         val maxConcurrentDownloadsLabel: String
         val maxConcurrentDownloadsDesc: String
@@ -803,6 +805,45 @@ interface BlazeStrings {
             val whileInSightDesc: String
             /** Shown instead of the controls when the desktop offers no notification surface. */
             val unsupportedNote: String
+        }
+
+        val shortcuts: Shortcuts
+        /**
+         * Copy for the keyboard-shortcuts category: the per-action names shown in the list, the recorder's
+         * controls, and the validation messages raised when a chord is unsafe or clashes with another action.
+         */
+        interface Shortcuts {
+            val category: String
+            val header: String
+            val description: String
+            /** Action name beside the "New Download" command. */
+            val newDownload: String
+            val searchEverywhere: String
+            val focusListSearch: String
+            val toggleDetails: String
+            val selectAll: String
+            val togglePause: String
+            val remove: String
+            val openSelected: String
+            val openSettings: String
+            /** Label of the button that starts capturing a new chord. */
+            val recordAction: String
+            /** Hint shown while a chord capture is armed. */
+            val recordingHint: String
+            /** Label of the button that cancels an armed capture. */
+            val cancelAction: String
+            /** Label of the per-row button that unbinds the action (leaves it with no chord). */
+            val clearAction: String
+            /** Label of the per-row button that restores just that action to its built-in chord. */
+            val resetAction: String
+            /** Label of the header button that restores every action to its built-in chord. */
+            val restoreAllAction: String
+            /** Shown where the chord would print, when the action is unbound. */
+            val unboundLabel: String
+            /** Error raised when two actions would answer the same chord; names the other action. */
+            fun conflictError(otherAction: String): String
+            /** Error raised when a recorded chord has no modifier and is not a safe standalone key. */
+            val needModifierError: String
         }
     }
     

@@ -102,6 +102,7 @@ internal fun settingsNavCategories(strings: BlazeStrings): List<Pair<SettingsCat
     SettingsCategory.EXTENSIONS to strings.settings.handlers.category,
     SettingsCategory.THEMES to strings.settings.themes.category,
     SettingsCategory.NOTIFICATIONS to strings.settings.notifications.category,
+    SettingsCategory.SHORTCUTS to strings.settings.shortcutsCategory,
     SettingsCategory.LOGS to strings.settings.logsCategory
 )
 

@@ -6,8 +6,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.IdeDialogActions
-import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.components.StandardDialogButtons
+import org.blaze.presentation.components.DialogHeader
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 
@@ -41,7 +41,7 @@ fun ClearCompletedDialog(
     val cStrings = strings.downloads.dialogs.clearCompleted
 
     BaseDialog(onDismiss = onDismiss, width = 440.dp) {
-        IdeDialogTitle(cStrings.title)
+        DialogHeader(cStrings.title)
 
         Text(
             text = cStrings.message(scope.total),
@@ -61,7 +61,7 @@ fun ClearCompletedDialog(
             AdvisoryCallout(text = cStrings.seedingDetail(scope.seeding), tone = AdvisoryTone.WARNING)
         }
 
-        IdeDialogActions(
+        StandardDialogButtons(
             dismissText = strings.common.cancel,
             onDismiss = onDismiss,
             confirmText = cStrings.confirm,

@@ -14,9 +14,6 @@ import org.blaze.presentation.components.BlazeLayout.SettingsDialogWidth
  * progress thickness, list-item padding — are intentionally NOT duplicated here; read them from
  * the component style (e.g. `JewelTheme.simpleListItemStyle.metrics`) per the design rules.
  */
-// -----------------------------------------------------------------------------
-// Layout metrics - every value mirrors the IDE chrome; see the class doc.
-// -----------------------------------------------------------------------------
 object BlazeLayout {
 
     /**
@@ -91,7 +88,7 @@ object BlazeLayout {
 
     /**
      * Overlay scrollbar track thickness. The IDE's scrollbars are thin, rounded and only present while
-     * the pointer is over the scroll area or it is scrolling (see
+     * the pointer is over the scroll area, or it is scrolling (see
      * [org.blaze.presentation.theme.blazeOverlayScrollbarStyle]); Jewel's Windows/Linux default is a
      * permanently visible ~15dp track, which is what the brief rejects.
      */

@@ -503,6 +503,7 @@ object EnStrings : BlazeStrings {
         override val downloadsCategory = "Downloads"
         override val filesCategory = "Files"
         override val logsCategory = "Logs"
+        override val shortcutsCategory = "Shortcuts"
         override val concurrencyHeader = "Concurrency & Queuing"
         override val maxConcurrentDownloadsLabel = "Maximum concurrent downloads"
         override val maxConcurrentDownloadsDesc = "Controls how many downloads can actively transfer at the same time. Downloads exceeding this limit remain queued until a slot becomes available."
@@ -644,6 +645,30 @@ object EnStrings : BlazeStrings {
             override val whileInSightLabel = "Also notify while the Blaze window is visible and focused"
             override val whileInSightDesc = "Left off, notices only go out when Blaze is hidden to the tray or in the background - the list already shows what happened while you are looking at it."
             override val unsupportedNote = "This desktop offers no notification surface, so Blaze cannot post system notices."
+        }
+
+        override val shortcuts = object : BlazeStrings.Settings.Shortcuts {
+            override val category = "Shortcuts"
+            override val header = "Keyboard Shortcuts"
+            override val description = "Rebind the app's commands. A chord needs a modifier (Ctrl/⌘ or Alt) unless it is a key that never types text, like Enter or Delete."
+            override val newDownload = "New download"
+            override val searchEverywhere = "Search Everywhere"
+            override val focusListSearch = "Focus list search"
+            override val toggleDetails = "Toggle details pane"
+            override val selectAll = "Select all"
+            override val togglePause = "Pause / resume"
+            override val remove = "Remove download"
+            override val openSelected = "Open selected file"
+            override val openSettings = "Open settings"
+            override val recordAction = "Record"
+            override val recordingHint = "Press the new shortcut…"
+            override val cancelAction = "Cancel"
+            override val clearAction = "Unbind"
+            override val resetAction = "Reset"
+            override val restoreAllAction = "Restore all defaults"
+            override val unboundLabel = "Unbound"
+            override fun conflictError(otherAction: String) = "Already used by “$otherAction”"
+            override val needModifierError = "Add Ctrl/⌘ or Alt, or choose a non-typing key"
         }
     }
     

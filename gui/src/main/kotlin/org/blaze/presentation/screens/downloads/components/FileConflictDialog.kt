@@ -14,8 +14,8 @@ import androidx.compose.ui.unit.dp
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.IdeDialogActions
-import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.components.StandardDialogButtons
+import org.blaze.presentation.components.DialogHeader
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.RadioButtonRow
 import org.jetbrains.jewel.ui.component.Text
@@ -34,7 +34,7 @@ fun FileConflictDialog(
     val sStrings = strings.settings
 
     BaseDialog(onDismiss = onDismiss, width = 440.dp) {
-        IdeDialogTitle(dStrings.conflictTitle)
+        DialogHeader(dStrings.conflictTitle)
 
         Text(
             text = dStrings.conflictMessage(fileName),
@@ -65,7 +65,7 @@ fun FileConflictDialog(
             )
         }
 
-        IdeDialogActions(
+        StandardDialogButtons(
             dismissText = strings.common.cancel,
             onDismiss = onDismiss,
             confirmText = strings.common.ok,

@@ -52,6 +52,7 @@ object SettingsRegistry {
         "themes.dir" to { it.settings.themes.themesDirHeader },
         "notifications.main" to { it.settings.notifications.header },
         "notifications.attention" to { it.settings.notifications.attentionHeader },
+        "shortcuts" to { it.settings.shortcuts.header },
         "logging.main" to { it.settings.logging.header },
         "logging.files" to { it.settings.logging.filesHeader },
     )
@@ -243,6 +244,55 @@ object SettingsRegistry {
             keywords = listOf("focus", "visible", "background", "notify"),
         ),
 
+        // ── Keyboard shortcuts ────────────────────────────────────────────────
+        // One row per bindable action so Search Everywhere and the in-Settings filter surface a rebind the
+        // same way they surface any other preference; the ids mirror the BlazeKeymap action names.
+        SettingsOption(
+            id = "shortcuts.NewDownload", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.newDownload },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "new", "download"),
+        ),
+        SettingsOption(
+            id = "shortcuts.SearchEverywhere", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.searchEverywhere },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "search"),
+        ),
+        SettingsOption(
+            id = "shortcuts.FocusListSearch", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.focusListSearch },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "find", "filter"),
+        ),
+        SettingsOption(
+            id = "shortcuts.ToggleDetails", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.toggleDetails },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "details", "pane"),
+        ),
+        SettingsOption(
+            id = "shortcuts.SelectAll", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.selectAll },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "selection"),
+        ),
+        SettingsOption(
+            id = "shortcuts.TogglePause", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.togglePause },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "pause", "resume"),
+        ),
+        SettingsOption(
+            id = "shortcuts.Remove", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.remove },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "delete"),
+        ),
+        SettingsOption(
+            id = "shortcuts.OpenSelected", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.openSelected },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "open", "file"),
+        ),
+        SettingsOption(
+            id = "shortcuts.OpenSettings", category = SettingsCategory.SHORTCUTS, groupKey = "shortcuts",
+            title = { it.settings.shortcuts.openSettings },
+            keywords = listOf("keybinding", "hotkey", "accelerator", "preferences"),
+        ),
+
         // ── Logs ──────────────────────────────────────────────────────────────
         SettingsOption(
             id = "logs.level", category = SettingsCategory.LOGS, groupKey = "logging.main",
@@ -292,6 +342,7 @@ object SettingsRegistry {
         SettingsCategory.EXTENSIONS -> strings.settings.handlers.category
         SettingsCategory.THEMES -> strings.settings.themes.category
         SettingsCategory.NOTIFICATIONS -> strings.settings.notifications.category
+        SettingsCategory.SHORTCUTS -> strings.settings.shortcutsCategory
         SettingsCategory.LOGS -> strings.settings.logsCategory
     }
 

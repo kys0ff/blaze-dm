@@ -2,7 +2,9 @@ package org.blaze.presentation.screens.settings.state
 
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.data.AppSettings
+import org.blaze.data.KeymapPersistence
 import org.blaze.engine.settings.DownloadSettings
+import org.blaze.presentation.components.BlazeKeymap
 
 data class SettingsState(
     val currentCategory: SettingsCategory = SettingsCategory.GENERAL,
@@ -72,6 +74,29 @@ data class SettingsState(
     fun effectiveThemeActive(theme: ThemeUiState): Boolean =
         selectedThemeOverride?.let { it == theme.id } ?: theme.active
 
+    // ── Keyboard-shortcut draft validation ─────────────────────────────────────
+    // Resolved straight from the app-settings draft, so a rebind is checked the moment it lands and
+    // Apply/OK stay blocked until it is fixed. The draft is resolved through [KeymapPersistence] rather
+    // than the live keymap, because nothing is applied to the running app until Apply/OK.
+
+    /**
+     * Draft chords that answer the same key as another action: action name -> the clashing action name.
+     * Only real, acceptable chords participate, so an empty column or a rejected bare key never raises a
+     * spurious conflict.
+     */
+    val keyBindingConflicts: Map<String, String>
+        get() = KeymapPersistence.findConflicts(appSettings.keyBindings, appSettings.unboundShortcuts)
+
+    /**
+     * Draft chords that would hijack ordinary text entry — a bare key with no modifier that is not one of
+     * the standalone keys the chrome already handles. The Shortcuts UI surfaces these with a
+     * "needs a modifier" error so the user re-records instead of stealing keystrokes.
+     */
+    val unsafeKeyBindings: Set<String>
+        get() = appSettings.keyBindings
+            .filterValues { !BlazeKeymap.isAcceptable(KeymapPersistence.toBinding(it)) }
+            .keys
+
     /** A theme's option values as the draft would write them, falling back to the persisted effective set. */
     fun effectiveThemeOptions(id: String, persisted: Map<String, String>): Map<String, String> =
         themeOptionOverrides[id]?.let { persisted + it } ?: persisted
@@ -94,7 +119,9 @@ data class SettingsState(
                     maxRedirectsError != null ||
                     maxPeerConnectionsError != null ||
                     (seedTimeRelevant && seedTimeLimitMinutesError != null) ||
-                    (seedingEnabled && seedRatioLimitError != null)
+                    (seedingEnabled && seedRatioLimitError != null) ||
+                    keyBindingConflicts.isNotEmpty() ||
+                    unsafeKeyBindings.isNotEmpty()
         }
 
     /** True when there are uncommitted changes waiting to be applied. */

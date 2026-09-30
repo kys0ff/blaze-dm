@@ -107,7 +107,7 @@ fun BaseDialog(
 
 /** Standard dialog heading (15sp, semibold) used above the dialog body. */
 @Composable
-fun IdeDialogTitle(text: String, modifier: Modifier = Modifier) {
+fun DialogHeader(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         modifier = modifier,
@@ -124,7 +124,7 @@ fun IdeDialogTitle(text: String, modifier: Modifier = Modifier) {
  * pinned to the start of the row.
  */
 @Composable
-fun IdeDialogActions(
+fun StandardDialogButtons(
     dismissText: String,
     onDismiss: () -> Unit,
     confirmText: String,

@@ -25,8 +25,8 @@ import cafe.adriel.voyager.koin.koinScreenModel
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.ExtensionIcon
-import org.blaze.presentation.components.IdeDialogActions
-import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.components.StandardDialogButtons
+import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.ResolverOptionsDialog
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
@@ -232,9 +232,9 @@ private fun RemoveExtensionDialog(
     onConfirm: () -> Unit,
 ) {
     BaseDialog(onDismiss = onDismiss) {
-        IdeDialogTitle(title)
+        DialogHeader(title)
         Text(text = body)
-        IdeDialogActions(
+        StandardDialogButtons(
             dismissText = cancelLabel,
             onDismiss = onDismiss,
             confirmText = okLabel,

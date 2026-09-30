@@ -16,8 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.IdeDialogActions
-import org.blaze.presentation.components.IdeDialogTitle
+import org.blaze.presentation.components.StandardDialogButtons
+import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.screens.downloads.components.add.ResolvedPick
 import org.blaze.presentation.screens.downloads.components.add.pickResolvedLinks
 import org.blaze.presentation.util.formatSize
@@ -50,7 +50,7 @@ fun ResolvedLinksChoiceDialog(
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
     BaseDialog(onDismiss = onDismiss) {
-        IdeDialogTitle(dStrings.resolvedLinksTitle)
+        DialogHeader(dStrings.resolvedLinksTitle)
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = dStrings.resolvedLinksPrompt,
@@ -96,7 +96,7 @@ fun ResolvedLinksChoiceDialog(
             )
         }
 
-        IdeDialogActions(
+        StandardDialogButtons(
             dismissText = strings.common.cancel,
             onDismiss = onDismiss,
             // "Download all" is offered as the confirm when everything is already checked,
