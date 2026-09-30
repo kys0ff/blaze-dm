@@ -23,7 +23,7 @@ import org.jetbrains.jewel.foundation.theme.JewelTheme
  */
 @Composable
 fun BlazeContent() {
-    val frameLayer = if (BlazeLayout.useIslands) {
+    val frameLayer = if (BlazeLayout.USE_ISLANDS) {
         Modifier.blazeAmbientBodyFrame()
     } else {
         Modifier.background(JewelTheme.globalColors.panelBackground)

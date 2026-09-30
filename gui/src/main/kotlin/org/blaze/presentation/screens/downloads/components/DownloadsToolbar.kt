@@ -9,6 +9,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BlazeIcons
+import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ToolWindowSearchField
@@ -90,7 +91,7 @@ fun DownloadsToolbar(
                 )
                 Divider(
                     Orientation.Vertical,
-                    modifier = Modifier.height(16.dp).padding(horizontal = 4.dp)
+                    modifier = Modifier.height(BlazeLayout.ToolbarSeparatorHeight).padding(horizontal = 4.dp)
                 )
                 ToolbarIconButton(
                     key = AllIconsKeys.General.Add,
@@ -117,7 +118,7 @@ fun DownloadsToolbar(
                 )
                 Divider(
                     Orientation.Vertical,
-                    modifier = Modifier.height(16.dp).padding(horizontal = 4.dp)
+                    modifier = Modifier.height(BlazeLayout.ToolbarSeparatorHeight).padding(horizontal = 4.dp)
                 )
                 // The IDE spells "select all" with a button, not a hidden gesture: this takes the
                 // whole current filter, and while a selection is alive the bulk group swaps it for its

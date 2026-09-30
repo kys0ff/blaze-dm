@@ -90,8 +90,9 @@ class ApplicationDownloadService(
     // Event projection state, per download id.
     private val lastState = ConcurrentHashMap<String, DownloadState>()
     private val lastProgressAt = ConcurrentHashMap<String, Long>()
-    // TODO: Warning: Java collection 'ConcurrentHashMap' is parameterized with a nullable type
-    private val lastErrorCode = ConcurrentHashMap<String, String?>()
+    // The last error code seen per download, with "" meaning "no error". A ConcurrentHashMap forbids
+    // null values, so the cleared-error case is carried as the empty sentinel rather than a null.
+    private val lastErrorCode = ConcurrentHashMap<String, String>()
 
     init {
         scope.launch { projectEvents() }
@@ -271,7 +272,7 @@ class ApplicationDownloadService(
             }
 
             // Error may change without the state moving (a transient failure being retried).
-            val errorKey = task.error?.toApiError()?.code?.name
+            val errorKey = task.error?.toApiError()?.code?.name ?: ""
             if (errorKey != lastErrorCode[id]) {
                 lastErrorCode[id] = errorKey
                 if (state != DownloadState.FAILED) {

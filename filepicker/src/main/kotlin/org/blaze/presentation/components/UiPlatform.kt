@@ -12,12 +12,12 @@ package org.blaze.presentation.components
  * `IdeDialog` are here) so a `:gui`-only helper could not be the one place both the dialogs and the
  * chrome consult.
  */
-enum class UiPlatform { Windows, macOS, Linux } // TODO: Warning: Enum entry name 'macOS' should start with an uppercase letter
+enum class UiPlatform { Windows, MacOS, Linux }
 
 val CurrentUiPlatform: UiPlatform by lazy {
     val os = System.getProperty("os.name").orEmpty().lowercase()
     when {
-        os.contains("mac") || os.contains("darwin") -> UiPlatform.macOS
+        os.contains("mac") || os.contains("darwin") -> UiPlatform.MacOS
         os.startsWith("windows") -> UiPlatform.Windows
         else -> UiPlatform.Linux
     }
@@ -38,7 +38,7 @@ enum class DialogButton { Ok, Cancel, Apply }
  * this decides only where the three sit, and the caller renders in this order.
  */
 fun dialogButtonOrder(hasApply: Boolean): List<DialogButton> = when (CurrentUiPlatform) {
-    UiPlatform.macOS -> if (hasApply) {
+    UiPlatform.MacOS -> if (hasApply) {
         listOf(DialogButton.Cancel, DialogButton.Apply, DialogButton.Ok)
     } else {
         listOf(DialogButton.Cancel, DialogButton.Ok)

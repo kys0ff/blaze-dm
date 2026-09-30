@@ -45,11 +45,11 @@ fun StatusBar(
     // The bar is part of the frame, so in the Islands shell it paints nothing and lets the frame
     // layer (flat color + ambient glow) show through, exactly like the tool-window stripe.
     val frameBackground =
-        if (BlazeLayout.useIslands) Color.Transparent else JewelTheme.globalColors.panelBackground
+        if (BlazeLayout.USE_ISLANDS) Color.Transparent else JewelTheme.globalColors.panelBackground
 
     Column(modifier = modifier.fillMaxWidth()) {
         // Islands: the frame background and the gap above do the separation, so no hairline.
-        if (!BlazeLayout.useIslands) {
+        if (!BlazeLayout.USE_ISLANDS) {
             Divider(Orientation.Horizontal)
         }
         Row(

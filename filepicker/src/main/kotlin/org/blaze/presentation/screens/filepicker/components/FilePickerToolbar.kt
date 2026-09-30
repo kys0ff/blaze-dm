@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.BlazeStrings
+import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.filepicker.FilePickerEvent
 import org.blaze.presentation.screens.filepicker.FilePickerState
@@ -54,7 +55,7 @@ internal fun FilePickerToolbar(
         )
         Divider(
             Orientation.Vertical,
-            modifier = Modifier.height(16.dp).padding(horizontal = 4.dp)
+            modifier = Modifier.height(BlazeLayout.ToolbarSeparatorHeight).padding(horizontal = 4.dp)
         )
         ToolbarIconButton(
             key = AllIconsKeys.Actions.ToggleVisibility,

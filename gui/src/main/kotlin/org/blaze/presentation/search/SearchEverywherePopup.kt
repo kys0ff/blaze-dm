@@ -24,10 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,13 +57,13 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import org.blaze.domain.models.DownloadState
+import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.screens.downloads.components.indicatorColor
-import org.blaze.presentation.screens.downloads.components.label
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeIslandColors
+import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.theme.blazeSearchFieldStyle
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -90,8 +88,6 @@ import org.jetbrains.jewel.ui.typography
 @Composable
 fun SearchEverywherePopup(controller: SearchController) {
     if (!controller.isOpen) return
-    val strings = blazeStrings
-    val s = strings.search
 
     Popup(
         onDismissRequest = controller::close,
@@ -215,7 +211,6 @@ internal fun SearchIsland(controller: SearchController, modifier: Modifier = Mod
                         SearchResultRow(
                             hit = hit,
                             highlighted = index == controller.highlighted,
-                            strings = strings,
                             onClick = { controller.activate(hit) },
                             onHover = { controller.highlight(index) },
                         )
@@ -258,7 +253,6 @@ private fun SearchTabs(selectedTab: SearchTab, onSelect: (SearchTab) -> Unit, mo
 private fun SearchResultRow(
     hit: SearchHit,
     highlighted: Boolean,
-    strings: org.blaze.i18n.BlazeStrings,
     onClick: () -> Unit,
     onHover: () -> Unit,
 ) {
@@ -361,7 +355,7 @@ private fun highlightPrimary(text: String, ranges: List<MatchRange>): AnnotatedS
 
 private val BlazeHighlightBackground = Color(0x3D548AF7) // ~24% accent wash over matched characters.
 
-private fun sectionTitle(kind: SearchKind, s: org.blaze.i18n.BlazeStrings.Search): String = when (kind) {
+private fun sectionTitle(kind: SearchKind, s: BlazeStrings.Search): String = when (kind) {
     SearchKind.Download -> s.sectionDownloads
     SearchKind.Action -> s.sectionActions
     SearchKind.Setting -> s.sectionSettings

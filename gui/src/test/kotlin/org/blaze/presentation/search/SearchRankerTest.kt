@@ -74,7 +74,7 @@ class SearchRankerTest {
         val hit = SearchRanker.score(candidate("s", "ubuntu-desktop.iso"), "dsk")
         assertTrue(hit != null && hit.matches.isNotEmpty(), "d-s-k appear in order")
         // 'd','s','k' land in "desktop": the runs must cover exactly the matched characters.
-        val covered = hit!!.matches.flatMap { range -> (range.start until range.end).toList() }.toSet()
+        val covered = hit.matches.flatMap { range -> (range.start until range.end).toList() }.toSet()
         val text = "ubuntu-desktop.iso"
         val matchedChars = listOf('d', 's', 'k')
         assertTrue(
@@ -92,7 +92,7 @@ class SearchRankerTest {
     fun `secondary and keyword aliases match without highlighting the primary`() {
         val hit = SearchRanker.score(candidate("s", "Network", secondary = null, keywords = "proxy http"), "proxy")
         assertTrue(hit != null, "the English/alias keyword must surface the row")
-        assertEquals(emptyList(), hit!!.matches, "a keyword-only match leaves the primary unhighlighted")
+        assertEquals(emptyList(), hit.matches, "a keyword-only match leaves the primary unhighlighted")
     }
 
     @Test

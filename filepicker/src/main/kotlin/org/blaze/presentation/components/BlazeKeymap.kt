@@ -13,13 +13,13 @@ import org.blaze.presentation.components.BlazeKeymap.displayValue
 import org.blaze.presentation.components.BlazeKeymap.matches
 
 /**
- * The app's one keymap: what an action is bound to, how that binding is recognised, and how it reads
+ * The app's one keymap: what an action is bound to, how that binding is recognized, and how it reads
  * on this OS.
  *
  * Before this existed the accelerator text was assembled per call site (`shortcutOf("A")` here, a
  * literal "Del" there) while the key that was actually listened for was spelled out again inside the
  * screen's key handler. Two copies of the same fact, nothing keeping them honest: a menu could print
- * a chord no code ever handled — Settings was exactly that, labelled everywhere and bound nowhere.
+ * a chord no code ever handled — Settings was exactly that, labeled everywhere and bound nowhere.
  *
  * Here a binding is a *fact about the keyboard* held once, and both ends read it: [matches] is what a
  * key handler asks, [displayValue] is what a menu row prints. A label can now only appear next to an
@@ -53,7 +53,6 @@ object BlazeKeymap {
         /** Menu rows with no real binding. They show no accelerator rather than an imaginary one. */
         None(null);
 
-        // TODO: make use of hasBinding
         val hasBinding: Boolean get() = binding != null
     }
 
@@ -72,14 +71,13 @@ object BlazeKeymap {
         if (event.type != KeyEventType.KeyDown) return false
         if (event.key != key) return false
         val primary = event.isCtrlPressed || event.isMetaPressed
-        if (primary != ctrl || event.isShiftPressed != shift || event.isAltPressed != alt) return false
-        return true
+        return !(primary != ctrl || event.isShiftPressed != shift || event.isAltPressed != alt)
     }
 
     /** The action [event] triggers, or null when no accelerator claims it — the whole job of a shell
      * key handler that wants to stay in sync with what the menus print. */
     fun matchAction(event: KeyEvent): Action? =
-        Action.entries.firstOrNull { it.binding != null && it.binding.matches(event) }
+        Action.entries.firstOrNull { it.hasBinding && it.binding?.matches(event) == true }
 
     /**
      * The label for [action] — "Ctrl+A", "⌘A", "Del" — or null when the action has no binding, which
@@ -88,7 +86,7 @@ object BlazeKeymap {
     fun displayValue(action: Action): String? = action.binding?.let { format(it) }
 
     private fun format(binding: Binding): String {
-        val modifiers = if (CurrentUiPlatform == UiPlatform.macOS) {
+        val modifiers = if (CurrentUiPlatform == UiPlatform.MacOS) {
             buildString {
                 if (binding.alt) append("⌥")
                 if (binding.shift) append("⇧")
@@ -112,8 +110,8 @@ object BlazeKeymap {
         Key.A -> "A"
         Key.S -> "S"
         Key.Spacebar -> "Space"
-        Key.Enter -> if (CurrentUiPlatform == UiPlatform.macOS) "↩" else "Enter"
-        Key.Delete -> if (CurrentUiPlatform == UiPlatform.macOS) "⌦" else "Del"
+        Key.Enter -> if (CurrentUiPlatform == UiPlatform.MacOS) "↩" else "Enter"
+        Key.Delete -> if (CurrentUiPlatform == UiPlatform.MacOS) "⌦" else "Del"
         // Every binding the app declares is listed above; an unlisted key would print its modifiers
         // alone, which is the signal to extend this map rather than to guess a name here.
         else -> ""
@@ -125,14 +123,14 @@ object BlazeKeymap {
  * keymap rather than from per-screen literals.
  */
 fun platformShortcutLabels(): ShortcutLabels = ShortcutLabels(
-    newDownload = BlazeKeymap.displayValue(BlazeKeymap.Action.NewDownload).orEmpty(),
-    search = BlazeKeymap.displayValue(BlazeKeymap.Action.FocusListSearch).orEmpty(),
+    newDownload = displayValue(BlazeKeymap.Action.NewDownload).orEmpty(),
+    search = displayValue(BlazeKeymap.Action.FocusListSearch).orEmpty(),
     // The IDE's Search Everywhere is Cmd/Ctrl+N in IntelliJ (where that is "New Project"); here N is
     // taken by New Download, so the popup keeps the IDE's second, undisputed binding.
-    quickSearch = BlazeKeymap.displayValue(BlazeKeymap.Action.SearchEverywhere).orEmpty(),
-    selectAll = BlazeKeymap.displayValue(BlazeKeymap.Action.SelectAll).orEmpty(),
-    settings = BlazeKeymap.displayValue(BlazeKeymap.Action.OpenSettings).orEmpty(),
-    togglePause = BlazeKeymap.displayValue(BlazeKeymap.Action.TogglePause).orEmpty(),
-    remove = BlazeKeymap.displayValue(BlazeKeymap.Action.Remove).orEmpty(),
-    toggleDetails = BlazeKeymap.displayValue(BlazeKeymap.Action.ToggleDetails).orEmpty(),
+    quickSearch = displayValue(BlazeKeymap.Action.SearchEverywhere).orEmpty(),
+    selectAll = displayValue(BlazeKeymap.Action.SelectAll).orEmpty(),
+    settings = displayValue(BlazeKeymap.Action.OpenSettings).orEmpty(),
+    togglePause = displayValue(BlazeKeymap.Action.TogglePause).orEmpty(),
+    remove = displayValue(BlazeKeymap.Action.Remove).orEmpty(),
+    toggleDetails = displayValue(BlazeKeymap.Action.ToggleDetails).orEmpty(),
 )

@@ -81,7 +81,7 @@ fun BlazeTheme(
                 // matching glyph variants, and `isDark()` ignores alpha - a transparent black would
                 // therefore force dark glyphs onto the light bar. A zero-alpha color whose RGB *does*
                 // match the theme keeps that lookup correct while still painting nothing.
-                titleBarStyle = if (BlazeLayout.useIslands) {
+                titleBarStyle = if (BlazeLayout.USE_ISLANDS) {
                     if (isDark) {
                         TitleBarStyle.dark(
                             colors = TitleBarColors.dark(

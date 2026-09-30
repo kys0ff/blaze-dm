@@ -2,6 +2,7 @@ package org.blaze.presentation.screens.downloads
 
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
+import org.blaze.presentation.components.BlazeLayout
 
 /**
  * Which desktop integrations the host can actually perform. Drives whether the download row's
@@ -78,7 +79,7 @@ data class DownloadsState(
     /** Whether the Details tool window beside the list is shown. Collapsed until a row is picked. */
     val detailsVisible: Boolean = false,
     /** Fraction of the list|details split given to the list. */
-    val detailsSplitFraction: Float = 0.68f,
+    val detailsSplitFraction: Float = BlazeLayout.DETAILS_DEFAULT_LIST_FRACTION,
     /** Whether pausing a progress-losing download asks first (persisted "do not ask again"). */
     val warnBeforeDiscardingProgress: Boolean = true,
     /** How the Details tool window presents itself (docked beside the list, or floated over it). */

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.blaze.data.AppSettingsRepository
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadMetadata
@@ -32,12 +33,12 @@ import org.blaze.domain.usecase.ResumeAllDownloadsUseCase
 import org.blaze.domain.usecase.ResumeDownloadUseCase
 import org.blaze.domain.usecase.RetryDownloadUseCase
 import org.blaze.domain.usecase.SetPriorityDownloadUseCase
-import org.blaze.data.AppSettingsRepository
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.platform.files.SystemFileService
+import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.DownloadsColumn
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.milliseconds
@@ -63,7 +64,7 @@ class DownloadsScreenModel(
     private val systemFileService: SystemFileService,
     private val clipboard: SystemClipboard,
     private val externalOpenInbox: ExternalOpenInbox,
-    private val commandBus: org.blaze.presentation.application.AppCommandBus,
+    private val commandBus: AppCommandBus,
 ) : ScreenModel {
 
     /**

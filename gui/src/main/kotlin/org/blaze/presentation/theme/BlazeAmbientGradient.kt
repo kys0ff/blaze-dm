@@ -62,7 +62,7 @@ object BlazeAmbientGradient {
 /** Whether the glow is drawn at all: the structural switch and the user preference must agree. */
 @Composable
 internal fun ambientGlowEnabled(): Boolean =
-    BlazeLayout.useAmbientGradient && LocalAmbientGlowEnabled.current
+    BlazeLayout.USE_AMBIENT_GRADIENT && LocalAmbientGlowEnabled.current
 
 /**
  * The peak tint: [base] blended a little of the way toward [accent]. Pure so the math can be
@@ -155,7 +155,7 @@ fun Modifier.blazeAmbientFrame(anchorY: Dp = 0.dp, bleedTop: Dp = 0.dp): Modifie
  */
 @Composable
 fun Modifier.blazeAmbientBodyFrame(): Modifier {
-    val bleed = if (BlazeLayout.useIslands) BlazeLayout.TitleBarBorderHeight else 0.dp
+    val bleed = if (BlazeLayout.USE_ISLANDS) BlazeLayout.TitleBarBorderHeight else 0.dp
     return blazeAmbientFrame(anchorY = ambientBodyAnchorY(), bleedTop = bleed)
 }
 

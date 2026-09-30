@@ -23,31 +23,33 @@ import kotlin.math.abs
  * of the band and is not a known token of that surface: the signature of one region painting itself
  * with another region's color.
  */
-// FIXME: Const property names should not contain lowercase letters
+// -----------------------------------------------------------------------------
+// Chrome-fidelity scan constants - see the object doc for what each rule guards.
+// -----------------------------------------------------------------------------
 internal object PngFidelityScan {
 
     /** Luma gap (0..255 scale) that makes a hairline "harsh" rather than a subtle grid line. */
-    private const val LineLumaDelta = 24f
+    private const val LINE_LUMA_DELTA = 24f
 
     /** Minimum share of a row that must be the hairline color for it to span the window. */
-    private const val RowCoverage = 0.9f
+    private const val ROW_COVERAGE = 0.9f
 
     /** How thin a full-width band must be to count as a hairline rather than a real region. */
-    private const val MaxHairlineHeight = 2
+    private const val MAX_HAIRLINE_HEIGHT = 2
 
     /** Share of a band a second color must own before it counts as a competing surface. */
-    private const val SurfaceCoverage = 0.04f
+    private const val SURFACE_COVERAGE = 0.04f
 
     /** How wide a color must stretch, as a share of the image, to be a surface rather than content. */
-    private const val MinFlatRunFraction = 0.30f
+    private const val MIN_FLAT_RUN_FRACTION = 0.30f
 
     /** Smallest band (in rows) worth checking for surface uniformity. */
-    private const val MinBandHeight = 12
+    private const val MIN_BAND_HEIGHT = 12
 
-    private const val SurfaceLumaDelta = 6f
+    private const val SURFACE_LUMA_DELTA = 6f
 
     /** How far two rows may sit from each other per channel and still be "the same band". */
-    private const val BandTolerance = 10
+    private const val BAND_TOLERANCE = 10
 
     /**
      * Intentional hairlines, keyed by shot name to the exact colors allowed to span it. Anything not
@@ -104,7 +106,7 @@ internal object PngFidelityScan {
         val issues = mutableListOf<Issue>()
         issues += strayLines(image, shot, fileName)
         if (shot !in popupShots) {
-            issues += mixedSurfaces(image, shot, fileName, width, height)
+            issues += mixedSurfaces(image, fileName, width, height)
         }
         return issues
     }
@@ -128,26 +130,26 @@ internal object PngFidelityScan {
         var y = 0
         while (y < height) {
             val color = dominant[y] ?: break
-            if (coverage[y] < RowCoverage) {
+            if (coverage[y] < ROW_COVERAGE) {
                 y++
                 continue
             }
             // Measure the vertical run of rows that this color owns end to end.
             var end = y
-            while (end + 1 < height && dominant[end + 1] == color && coverage[end + 1] >= RowCoverage) end++
+            while (end + 1 < height && dominant[end + 1] == color && coverage[end + 1] >= ROW_COVERAGE) end++
             val runHeight = end - y + 1
             val above = if (y > 0) dominant[y - 1] else null
             val below = if (end + 1 < height) dominant[end + 1] else null
-            val hairline = runHeight <= MaxHairlineHeight
+            val hairline = runHeight <= MAX_HAIRLINE_HEIGHT
             // The bands it sits in must be the *same* surface (a gradient makes exact equality the
             // wrong test) and must differ sharply from the hairline itself.
             val sandwiched = above != null &&
                 below != null &&
                 sameBand(above, below) &&
-                abs(luma[y] - colorLuma(above)) >= LineLumaDelta
+                abs(luma[y] - colorLuma(above)) >= LINE_LUMA_DELTA
             if (hairline && sandwiched) {
                 val delta = abs(luma[y] - colorLuma(above))
-                if (delta >= LineLumaDelta && color !in allowed) {
+                if (delta >= LINE_LUMA_DELTA && color !in allowed) {
                     issues += Issue(
                         fileName,
                         "stray-line",
@@ -164,7 +166,6 @@ internal object PngFidelityScan {
 
     private fun mixedSurfaces(
         image: BufferedImage,
-        shot: String, // TODO: make use of 'shot'
         fileName: String,
         width: Int,
         height: Int,
@@ -184,7 +185,7 @@ internal object PngFidelityScan {
                 end++
             }
             val bandHeight = end - y + 1
-            if (bandHeight >= MinBandHeight) {
+            if (bandHeight >= MIN_BAND_HEIGHT) {
                 val counts = HashMap<String, Int>()
                 // Longest straight horizontal stretch of each color inside the band: only a color that
                 // fills a wide, flat region is a competing *surface* — a progress bar, an icon or text
@@ -207,10 +208,10 @@ internal object PngFidelityScan {
                 }
                 val intruders = counts.entries
                     .asSequence()
-                    .filter { it.value.toFloat() / total >= SurfaceCoverage }
+                    .filter { it.value.toFloat() / total >= SURFACE_COVERAGE }
                     .filter { it.key != color }
-                    .filter { (maxRun[it.key] ?: 0) >= MinFlatRunFraction * width }
-                    .filter { abs(colorLuma(it.key) - colorLuma(color)) >= SurfaceLumaDelta }
+                    .filter { (maxRun[it.key] ?: 0) >= MIN_FLAT_RUN_FRACTION * width }
+                    .filter { abs(colorLuma(it.key) - colorLuma(color)) >= SURFACE_LUMA_DELTA }
                     .filter { it.key !in surfaceWhitelist }
                     .sortedByDescending { it.value }
                     .toList()
@@ -254,7 +255,7 @@ internal object PngFidelityScan {
     private fun sameBand(a: String, b: String): Boolean {
         val channelsA = channels(a) ?: return a == b
         val channelsB = channels(b) ?: return a == b
-        return channelsA.indices.all { abs(channelsA[it] - channelsB[it]) <= BandTolerance }
+        return channelsA.indices.all { abs(channelsA[it] - channelsB[it]) <= BAND_TOLERANCE }
     }
 
     private fun channels(hex: String): IntArray? {

@@ -20,10 +20,13 @@ class DestinationClaimTest {
 
     private val dir = Path.of("/tmp/blaze-claim")
 
-    // TODO: Warning: Value of parameter 'name' is always '"Big.Buck"'
-    private fun torrent(name: String, destination: Path) = DownloadRequest.Torrent(
-        name = name,
-        torrentSource = TorrentSource.File(Path.of("/tmp/sources/$name.torrent")),
+    // The torrent under test, whose display name and sidecar source path derive from one value so the
+    // assertions can key off the same "Big.Buck" identity throughout.
+    private val torrentName = "Big.Buck"
+
+    private fun torrent(destination: Path) = DownloadRequest.Torrent(
+        name = torrentName,
+        torrentSource = TorrentSource.File(Path.of("/tmp/sources/$torrentName.torrent")),
         destination = destination,
     )
 
@@ -33,7 +36,7 @@ class DestinationClaimTest {
     @Test
     fun `a taken folder becomes a numbered copy, and the name follows it`() {
         val claimed = claim(
-            torrent("Big.Buck", dir.resolve("Big.Buck")),
+            torrent(dir.resolve("Big.Buck")),
             FileConflictBehavior.RENAME,
             taken = arrayOf(dir.resolve("Big.Buck")),
         )
@@ -48,7 +51,7 @@ class DestinationClaimTest {
     fun `asking is the same as renaming, because whoever asked was just offered the alternative`() {
         val taken = dir.resolve("Big.Buck")
 
-        val claimed = claim(torrent("Big.Buck", taken), FileConflictBehavior.ASK, taken = arrayOf(taken))
+        val claimed = claim(torrent(taken), FileConflictBehavior.ASK, taken = arrayOf(taken))
 
         assertEquals(dir.resolve("Big.Buck (1)"), claimed.destination)
     }
@@ -56,7 +59,7 @@ class DestinationClaimTest {
     @Test
     fun `the first free number is taken, not the first number`() {
         val claimed = claim(
-            torrent("Big.Buck", dir.resolve("Big.Buck")),
+            torrent(dir.resolve("Big.Buck")),
             FileConflictBehavior.RENAME,
             taken = arrayOf(dir.resolve("Big.Buck"), dir.resolve("Big.Buck (1)"), dir.resolve("Big.Buck (2)")),
         )
@@ -66,7 +69,7 @@ class DestinationClaimTest {
 
     @Test
     fun `a folder that is free is the folder the download keeps`() {
-        val request = torrent("Big.Buck", dir.resolve("Big.Buck"))
+        val request = torrent(dir.resolve("Big.Buck"))
 
         assertEquals(request, claim(request, FileConflictBehavior.RENAME, taken = arrayOf(dir.resolve("Something.Else"))))
     }
@@ -74,7 +77,7 @@ class DestinationClaimTest {
     @Test
     fun `overwriting and skipping leave the destination to the policy that will act on it`() {
         val taken = dir.resolve("Big.Buck")
-        val request = torrent("Big.Buck", taken)
+        val request = torrent(taken)
 
         assertEquals(request, claim(request, FileConflictBehavior.OVERWRITE, taken = arrayOf(taken)))
         assertEquals(request, claim(request, FileConflictBehavior.SKIP, taken = arrayOf(taken)))

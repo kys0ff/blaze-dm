@@ -44,10 +44,6 @@ enum class DetailsMoveTo {
 
     /** True when the pane is docked along the bottom rather than a vertical side. */
     val isBottom: Boolean get() = this == BOTTOM_LEFT || this == BOTTOM_RIGHT
-
-    /** True when the pane hugs the leading (left/top) corner of its side. */
-    // TODO: make use of anchoredStart it is unused
-    val anchoredStart: Boolean get() = this == LEFT_TOP || this == RIGHT_TOP || this == BOTTOM_LEFT // TODO: make use of this
 }
 
 /** The presets the Details pane's "Resize" submenu applies to the split. */

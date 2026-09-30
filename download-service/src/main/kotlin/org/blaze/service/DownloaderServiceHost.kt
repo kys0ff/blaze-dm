@@ -39,8 +39,6 @@ class DownloaderServiceHost(
 ) : AutoCloseable {
     private val logger = LoggerFactory.getLogger(DownloaderServiceHost::class.java)
 
-    // TODO: make use of isServing
-    val isServing: Boolean get() = server != null
     val boundHost: String? get() = server?.boundHost
     val boundPort: Int get() = server?.boundPort ?: -1
 

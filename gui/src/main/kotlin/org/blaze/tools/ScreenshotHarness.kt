@@ -52,11 +52,11 @@ import org.blaze.presentation.screens.downloads.components.DownloadsList
 import org.blaze.presentation.screens.downloads.components.DownloadsToolbar
 import org.blaze.presentation.screens.downloads.components.PauseRiskDialog
 import org.blaze.presentation.screens.downloads.toCounts
-import org.blaze.presentation.screens.settings.SettingsButtonBar
+import org.blaze.presentation.screens.settings.components.SettingsButtonBar
 import org.blaze.presentation.screens.settings.SettingsFilter
 import org.blaze.presentation.screens.settings.LocalSettingsFilter
 import org.blaze.presentation.screens.settings.SettingRow
-import org.blaze.presentation.screens.settings.SettingsSidebar
+import org.blaze.presentation.screens.settings.components.SettingsSidebar
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.search.SearchIsland

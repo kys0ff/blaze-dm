@@ -21,7 +21,7 @@ fun DecoratedWindowScope.BlazeTitleBar() {
     // glow (Modifier.blazeAmbientFrame) paints that frame behind it, anchored at the window's very
     // top-left corner, and the title-bar style makes the bar's own background transparent so the
     // glow reads through. Classic: keep Jewel's stock header with the JetBrains brand gradient.
-    val gradient = if (BlazeLayout.useIslands) {
+    val gradient = if (BlazeLayout.USE_ISLANDS) {
         Color.Unspecified
     } else {
         val brandAccent = rememberBrandIconAccent()

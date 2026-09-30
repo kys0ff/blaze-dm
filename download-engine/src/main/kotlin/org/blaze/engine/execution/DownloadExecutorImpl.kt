@@ -83,7 +83,8 @@ class DownloadExecutorImpl(
                     scheduledAt = Instant.now().plusMillis(delayMs),
                     retryCount = currentTask.retryCount + 1
                 )
-                currentTask = retryingTask // TODO: Warning: Assigned value is never read
+                // Emitted downstream as the task's new state; the flow ends here, so there is nothing
+                // left to carry in `currentTask`.
                 send(retryingTask)
             }
         }

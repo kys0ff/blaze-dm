@@ -27,7 +27,6 @@ import org.slf4j.LoggerFactory
  */
 class WindowsNotificationService(
     /** Balloon lifetime, in milliseconds, as ShowBalloonTip expects it. */
-    // TODO: make use of timeoutMs 'Do not remove'
     private val timeoutMs: Int = 6_000,
 ) : NotificationService {
 
@@ -47,7 +46,7 @@ class WindowsNotificationService(
 
     internal fun buildCommand(notification: NotificationSpec): List<String> = listOf(
         "powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
-        "-Command", script(notification),
+        "-Command", script(notification, timeoutMs),
     )
 
     companion object {

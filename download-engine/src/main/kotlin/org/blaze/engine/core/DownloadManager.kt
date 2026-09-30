@@ -33,7 +33,6 @@ import org.blaze.engine.api.PortableTransferKind
 import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.execution.DownloadExecutorImpl
-import org.blaze.engine.metrics.DownloadDiagnostics
 import org.blaze.engine.metrics.EngineMetrics
 import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
@@ -141,9 +140,6 @@ class DownloadManager(
         }
         loadTasks()
     }
-
-    // TODO: make use of diagnostics or remove it
-    val diagnostics: DownloadDiagnostics get() = metrics.snapshot()
 
     /** Engine-wide download ceiling in bytes/s; 0 when throttling is off. */
     val speedLimitBytesPerSec: Long get() = limiter.limitBytesPerSecond
@@ -400,7 +396,7 @@ class DownloadManager(
             val info = PortableImport.detect(artifact) ?: return@withContext null
             val id = when (info.kind) {
                 PortableTransferKind.HTTP -> importHttp(artifact, destination, info)
-                PortableTransferKind.TORRENT -> importTorrent(artifact, info)
+                PortableTransferKind.TORRENT -> importTorrent(artifact)
             }
             if (id != null) scheduler.start(id)
             id
@@ -426,8 +422,7 @@ class DownloadManager(
         )
     }
 
-    // TODO: make use of info or remove it
-    private suspend fun importTorrent(artifact: Path, info: PortableDownloadInfo): DownloadId? {
+    private suspend fun importTorrent(artifact: Path): DownloadId? {
         val dir = PortableImport.resolveTorrentDestination(artifact) ?: return null
         val record = TorrentPortableFile.read(TorrentPortableFile.markerPath(dir)) ?: return null
         if (record.manifest.torrentFile.isEmpty()) return null
@@ -435,8 +430,9 @@ class DownloadManager(
             val cacheDir = repository.storageDir.resolve("cache")
             storage.ensureDirectory(cacheDir)
             val torrentFile = cacheDir.resolve("import-${System.nanoTime()}.torrent")
-            // FIXME: Possibly blocking call in non-blocking context could lead to thread starvation
-            Files.write(torrentFile, record.manifest.torrentFile)
+            // The metainfo blob is written on the IO dispatcher, off whichever thread the caller's
+            // import coroutine happens to be resumed on, so the disk flush cannot starve a shared pool.
+            withContext(Dispatchers.IO) { Files.write(torrentFile, record.manifest.torrentFile) }
             val files = record.manifest.files.map { DownloadFileMetadata(it.relativePath, it.size) }
             enqueue(
                 DownloadRequest.Torrent(

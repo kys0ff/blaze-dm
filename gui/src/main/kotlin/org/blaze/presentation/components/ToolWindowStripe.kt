@@ -65,7 +65,7 @@ fun ToolWindowStripe(
     // its own: the frame layer behind it (flat color + ambient glow) shows through, which is
     // exactly how the reference's stripe bleeds the glow down its first ~280dp.
     val stripeBackground =
-        if (BlazeLayout.useIslands) Color.Transparent else JewelTheme.globalColors.panelBackground
+        if (BlazeLayout.USE_ISLANDS) Color.Transparent else JewelTheme.globalColors.panelBackground
 
     Column(
         modifier = modifier

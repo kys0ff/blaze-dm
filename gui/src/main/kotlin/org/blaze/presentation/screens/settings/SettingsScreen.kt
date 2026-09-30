@@ -1,17 +1,13 @@
 package org.blaze.presentation.screens.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -24,15 +20,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
@@ -41,24 +34,20 @@ import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.logging.LogConfigurator
 import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.DialogButton
-import org.blaze.presentation.components.ToolWindowSearchField
-import org.blaze.presentation.components.dialogButtonOrder
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
+import org.blaze.presentation.screens.settings.components.NothingFoundPanel
+import org.blaze.presentation.screens.settings.components.SettingsButtonBar
+import org.blaze.presentation.screens.settings.components.SettingsSidebar
+import org.blaze.presentation.screens.settings.components.settingsNavCategories
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.screens.settings.state.SettingsState
 import org.blaze.presentation.search.SearchController
-import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
-import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
-import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Divider
-import org.jetbrains.jewel.ui.component.OutlinedButton
-import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 import org.koin.compose.koinInject
 import java.nio.file.Path
@@ -84,8 +73,6 @@ class SettingsScreen : Screen {
     @OptIn(ExperimentalJewelApi::class)
     @Composable
     override fun Content() {
-        // TODO: This screen is a mess, needs to be broken up into smaller composable functions.
-        // TODO: Also create a 'components' package for each screen's common components.
         val onDismiss = LocalSettingsDialogDismiss.current
         val screenModel = koinScreenModel<SettingsScreenModel>()
         val state by screenModel.state.collectAsState()
@@ -224,7 +211,7 @@ class SettingsScreen : Screen {
                                 NothingFoundPanel(strings = strings, onClear = { query = "" })
                             } else {
                                 Column(
-                                    modifier = Modifier.widthIn(max = 640.dp),
+                                    modifier = Modifier.widthIn(max = BlazeLayout.FormMaxWidth),
                                     verticalArrangement = Arrangement.spacedBy(24.dp)
                                 ) {
                                     SettingsContent(
@@ -254,138 +241,23 @@ class SettingsScreen : Screen {
             )
         }
 
-        if (showDirPicker) {
-            FilePickerDialog(
-                title = strings.settings.defaultDownloadDirLabel,
-                mode = FilePickerMode.Directory,
-                initialPath = remember(state.settings.defaultDownloadDir) {
-                    runCatching { Path.of(state.settings.defaultDownloadDir) }.getOrNull()
-                },
-                onDismiss = { showDirPicker = false },
-                onPick = { path ->
-                    onEvent(SettingsEvent.UpdateDefaultDownloadDir(path.toString()))
-                }
-            )
-        }
-
-        if (showJarPicker) {
-            FilePickerDialog(
-                title = strings.settings.handlers.installAction,
-                mode = FilePickerMode.File,
-                onDismiss = { showJarPicker = false },
-                onPick = { path ->
-                    showJarPicker = false
-                    onEvent(SettingsEvent.InstallExtension(path.toString()))
-                },
-                fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
-            )
-        }
-
-        if (showThemeJarPicker) {
-            FilePickerDialog(
-                title = strings.settings.themes.installAction,
-                mode = FilePickerMode.File,
-                onDismiss = { showThemeJarPicker = false },
-                onPick = { path ->
-                    showThemeJarPicker = false
-                    onEvent(SettingsEvent.InstallTheme(path.toString()))
-                },
-                fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
-            )
-        }
+        SettingsPickerDialogs(
+            state = state,
+            strings = strings,
+            onEvent = onEvent,
+            showDirPicker = showDirPicker,
+            onDirPickerDismiss = { showDirPicker = false },
+            showJarPicker = showJarPicker,
+            onJarPickerDismiss = { showJarPicker = false },
+            showThemeJarPicker = showThemeJarPicker,
+            onThemeJarPickerDismiss = { showThemeJarPicker = false },
+        )
     }
 }
 
 // ---------------------------------------------------------------------------
-// Layout scaffolding
+// Screen-local helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Left-hand category list, led by a search box; the Downloads entry shows an error dot when a field is
- * invalid, and every surviving entry carries a count badge while a search is active.
- *
- * The IDE's Settings dialog prunes its tree by *option*, not by page title: typing "proxy" must keep
- * Downloads visible because an option inside it matches, even though the word "Downloads" has no "proxy"
- * in it. So the filter is [SettingsRegistry.categoryMatches] over the very same registry the content pane
- * hides rows with — the sidebar and the section can never disagree about what a query matches.
- */
-@OptIn(ExperimentalJewelApi::class)
-@Composable
-internal fun SettingsSidebar(
-    selected: SettingsCategory,
-    hasDownloadsError: Boolean,
-    strings: BlazeStrings,
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onSelect: (SettingsCategory) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .width(BlazeLayout.SettingsNavWidth)
-            .fillMaxHeight()
-            .background(JewelTheme.globalColors.panelBackground)
-            .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(1.dp)
-    ) {
-        ToolWindowSearchField(
-            query = query,
-            placeholder = strings.settings.searchPlaceholder,
-            clearDescription = strings.settings.clearSearch,
-            onQueryChange = onQueryChange,
-            fieldWidth = BlazeLayout.SettingsNavWidth,
-        )
-        Spacer(Modifier.height(6.dp))
-
-        val visible = settingsNavCategories(strings).filter { (category, _) ->
-            query.isBlank() || SettingsRegistry.categoryMatches(category, query, strings)
-        }
-
-        visible.forEach { (category, label) ->
-            SettingsNavItem(
-                label = label,
-                isSelected = selected == category,
-                hasError = category == SettingsCategory.DOWNLOADS && hasDownloadsError,
-                query = query,
-                matchCount = SettingsRegistry.matchCount(category, query, strings),
-                onClick = { onSelect(category) }
-            )
-        }
-    }
-}
-
-/** The category list in sidebar order, each paired with its localized page label. */
-private fun settingsNavCategories(strings: BlazeStrings): List<Pair<SettingsCategory, String>> = listOf(
-    SettingsCategory.GENERAL to strings.settings.generalCategory,
-    SettingsCategory.DOWNLOADS to strings.settings.downloadsCategory,
-    SettingsCategory.FILES to strings.settings.filesCategory,
-    SettingsCategory.EXTENSIONS to strings.settings.handlers.category,
-    SettingsCategory.THEMES to strings.settings.themes.category,
-    SettingsCategory.NOTIFICATIONS to strings.settings.notifications.category,
-    SettingsCategory.LOGS to strings.settings.logsCategory
-)
-
-/** The content pane's empty state when a query matches no option anywhere, with a clear-search link. */
-@Composable
-private fun NothingFoundPanel(strings: BlazeStrings, onClear: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = strings.settings.searchNoMatches,
-            color = JewelTheme.globalColors.text.info,
-        )
-        Text(
-            text = strings.settings.clearSearch,
-            color = BlazeColors.accent,
-            modifier = Modifier
-                .clickable(onClick = onClear)
-                .semantics { testTag = "settings_clear_search" }
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-        )
-    }
-}
 
 /** How long a jump-from-Search-Everywhere keeps the target row flashed. */
 private const val FLASH_MS = 1400L
@@ -415,50 +287,59 @@ private fun SettingsContent(
 }
 
 /**
- * OK commits and closes, Apply commits and stays, Cancel discards and closes. Committing is what
- * finally writes the buffered draft to the repositories/registries.
- *
- * The three are laid out by [dialogButtonOrder], the one platform switch: `OK, Cancel, Apply` on
- * Windows/Linux and `Cancel, Apply, OK` on macOS, where the default button belongs in the corner the
- * pointer rests in. Only the button *kind* is fixed per action, so OK stays accent-filled wherever it
- * lands.
+ * The three file/folder pickers the sections request through their browse & install callbacks. They
+ * are kept out of [Content] so the screen body reads as a single composition; each picker is driven by
+ * a visible flag plus a dismiss callback, and forwards the chosen path back as a [SettingsEvent].
  */
-@OptIn(ExperimentalJewelApi::class)
 @Composable
-internal fun SettingsButtonBar(
-    okEnabled: Boolean,
-    applyEnabled: Boolean,
-    onOk: () -> Unit,
-    onApply: () -> Unit,
-    onCancel: () -> Unit,
-    strings: BlazeStrings
+private fun SettingsPickerDialogs(
+    state: SettingsState,
+    strings: BlazeStrings,
+    onEvent: (SettingsEvent) -> Unit,
+    showDirPicker: Boolean,
+    onDirPickerDismiss: () -> Unit,
+    showJarPicker: Boolean,
+    onJarPickerDismiss: () -> Unit,
+    showThemeJarPicker: Boolean,
+    onThemeJarPickerDismiss: () -> Unit,
 ) {
-    // Button bar: top divider only (the old border() drew a frame on all four sides).
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Divider(Orientation.Horizontal)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(JewelTheme.globalColors.panelBackground)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            dialogButtonOrder(hasApply = true).forEach { button ->
-                when (button) {
-                    DialogButton.Ok -> DefaultButton(onClick = onOk, enabled = okEnabled) {
-                        Text(strings.common.ok)
-                    }
-
-                    DialogButton.Cancel -> OutlinedButton(onClick = onCancel) {
-                        Text(strings.common.cancel)
-                    }
-
-                    DialogButton.Apply -> OutlinedButton(onClick = onApply, enabled = applyEnabled) {
-                        Text(strings.common.apply)
-                    }
-                }
+    if (showDirPicker) {
+        FilePickerDialog(
+            title = strings.settings.defaultDownloadDirLabel,
+            mode = FilePickerMode.Directory,
+            initialPath = remember(state.settings.defaultDownloadDir) {
+                runCatching { Path.of(state.settings.defaultDownloadDir) }.getOrNull()
+            },
+            onDismiss = onDirPickerDismiss,
+            onPick = { path ->
+                onEvent(SettingsEvent.UpdateDefaultDownloadDir(path.toString()))
             }
-        }
+        )
+    }
+
+    if (showJarPicker) {
+        FilePickerDialog(
+            title = strings.settings.handlers.installAction,
+            mode = FilePickerMode.File,
+            onDismiss = onJarPickerDismiss,
+            onPick = { path ->
+                onJarPickerDismiss()
+                onEvent(SettingsEvent.InstallExtension(path.toString()))
+            },
+            fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
+        )
+    }
+
+    if (showThemeJarPicker) {
+        FilePickerDialog(
+            title = strings.settings.themes.installAction,
+            mode = FilePickerMode.File,
+            onDismiss = onThemeJarPickerDismiss,
+            onPick = { path ->
+                onThemeJarPickerDismiss()
+                onEvent(SettingsEvent.InstallTheme(path.toString()))
+            },
+            fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
+        )
     }
 }

@@ -74,7 +74,10 @@ fun IdeDialog(
                     }
                 }
                 .focusable()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(
+                    horizontal = BlazeLayout.DialogPaddingHorizontal,
+                    vertical = BlazeLayout.DialogPaddingVertical,
+                ),
             verticalArrangement = verticalArrangement,
             content = content
         )

@@ -4,7 +4,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.EnStrings
@@ -68,6 +68,9 @@ class BackgroundTasksPopupTest {
 
             onNodeWithText("movie.mkv").assertExists()
             onNodeWithText("album.zip").assertExists()
+
+            // Each live transfer gets its own tagged row surface.
+            onNode(hasTestTag(rowTag("b")), useUnmergedTree = true).assertExists()
 
             // Clicking the row's text area selects + opens details for exactly that download.
             onNode(hasTestTag(rowTag("a")), useUnmergedTree = true).performClick()

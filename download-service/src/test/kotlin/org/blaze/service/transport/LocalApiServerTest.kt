@@ -44,8 +44,7 @@ class LocalApiServerTest {
         job.cancel()
     }
 
-    // TODO: make use of property 'api'
-    private class Running(val base: String, val port: Int, val token: String, val api: ApplicationDownloadService)
+    private class Running(val base: String, val port: Int, val token: String)
 
     private fun start(
         engine: FakeEngine = FakeEngine(),
@@ -62,7 +61,7 @@ class LocalApiServerTest {
         val server = LocalApiServer(api, settings, store, scope)
         server.start()
         servers += server
-        return Running("http://127.0.0.1:${server.boundPort}", server.boundPort, store.token(), api)
+        return Running("http://127.0.0.1:${server.boundPort}", server.boundPort, store.token())
     }
 
     private fun get(r: Running, path: String, token: String? = r.token, origin: String? = null): HttpResponse<String> {

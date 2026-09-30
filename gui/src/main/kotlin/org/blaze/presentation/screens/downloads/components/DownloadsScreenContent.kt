@@ -626,7 +626,7 @@ fun DownloadsScreenContent(
         }
 
         val listPane: @Composable () -> Unit = {
-            if (BlazeLayout.useIslands) {
+            if (BlazeLayout.USE_ISLANDS) {
                 Island(modifier = Modifier.fillMaxSize()) { listContent() }
             } else {
                 Box(modifier = Modifier.fillMaxSize()) { listContent() }
@@ -653,7 +653,7 @@ fun DownloadsScreenContent(
                 )
             }
             val detailsPane: @Composable () -> Unit = {
-                if (BlazeLayout.useIslands) {
+                if (BlazeLayout.USE_ISLANDS) {
                     Island(modifier = Modifier.fillMaxSize()) { detailsContent() }
                 } else {
                     Box(modifier = Modifier.fillMaxSize()) { detailsContent() }
@@ -685,7 +685,7 @@ fun DownloadsScreenContent(
                     val first: @Composable () -> Unit = if (moveTo.detailsFirst) detailsPane else listPane
                     val second: @Composable () -> Unit = if (moveTo.detailsFirst) listPane else detailsPane
                     val gapDivider = DividerStyle(
-                        color = if (BlazeLayout.useIslands) Color.Transparent else JewelTheme.globalColors.borders.normal,
+                        color = if (BlazeLayout.USE_ISLANDS) Color.Transparent else JewelTheme.globalColors.borders.normal,
                         metrics = DividerMetrics(thickness = islandGap, startIndent = 0.dp),
                     )
                     if (moveTo.isHorizontal) {
@@ -724,7 +724,7 @@ fun DownloadsScreenContent(
                         DetailsMoveTo.BOTTOM_RIGHT -> Alignment.BottomEnd
                     }
                     // A floating pane is an overlay, so it stays narrower than the docked split's third
-                    // (BlazeLayout.DetailsDefaultListFraction) rather than covering half the list.
+                    // (BlazeLayout.DETAILS_DEFAULT_LIST_FRACTION) rather than covering half the list.
                     val widthFraction = if (moveTo.isBottom) 0.5f else 0.34f
                     val heightFraction = if (moveTo.isBottom) 0.42f else 0.62f
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {

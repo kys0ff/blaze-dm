@@ -5,8 +5,9 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import org.blaze.i18n.EnStrings
+import org.blaze.presentation.screens.settings.components.SettingsSidebar
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.theme.BlazeTheme
 import kotlin.test.Test

@@ -14,7 +14,9 @@ import org.blaze.presentation.components.BlazeLayout.SettingsDialogWidth
  * progress thickness, list-item padding — are intentionally NOT duplicated here; read them from
  * the component style (e.g. `JewelTheme.simpleListItemStyle.metrics`) per the design rules.
  */
-// FIXME: Const property names should not contain lowercase letters
+// -----------------------------------------------------------------------------
+// Layout metrics - every value mirrors the IDE chrome; see the class doc.
+// -----------------------------------------------------------------------------
 object BlazeLayout {
 
     /**
@@ -23,7 +25,7 @@ object BlazeLayout {
      * dividers between major regions). Flip to false to restore the classic flat, divider-lined
      * look — no other call site changes are needed.
      */
-    const val useIslands: Boolean = true
+    const val USE_ISLANDS: Boolean = true
 
     /**
      * Structural switch for the IDE's ambient chrome glow — the soft accent-colored field anchored
@@ -32,7 +34,7 @@ object BlazeLayout {
      * the feature entirely; the user-facing half of it is the "Ambient title-bar glow" preference,
      * folded in through [LocalAmbientGlowEnabled].
      */
-    const val useAmbientGradient: Boolean = true
+    const val USE_AMBIENT_GRADIENT: Boolean = true
 
     /** Island corner radius, measured off the reference IDE corner (~10-12dp). */
     val IslandRadius = 11.dp
@@ -77,7 +79,7 @@ object BlazeLayout {
     val RowLeadingIconSize = 16.dp
 
     /** Height of a toolbar/action separator's 1dp hairline. */
-    val ToolbarSeparatorHeight = 16.dp // TODO: make use of this
+    val ToolbarSeparatorHeight = 16.dp
 
     /** Standard content padding inside a panel (IDE grid: 8dp). */
     val ContentPadding = 8.dp
@@ -86,11 +88,11 @@ object BlazeLayout {
     val ContentPaddingLarge = 12.dp
 
     /** Dialog content padding (DialogWrapper body). */
-    val DialogPaddingHorizontal = 20.dp // TODO: make use of this
-    val DialogPaddingVertical = 16.dp // TODO: make use of this
+    val DialogPaddingHorizontal = 20.dp
+    val DialogPaddingVertical = 16.dp
 
     /** Settings/panel max measure width so long forms stay readable, like the IDE editor gutter cap. */
-    val FormMaxWidth = 640.dp // TODO: make use of this
+    val FormMaxWidth = 640.dp
 
     /** In-list search field width in the toolbar. */
     val SearchFieldWidth = 180.dp
@@ -109,7 +111,7 @@ object BlazeLayout {
      * inside the 30-35% the reference shows, and the split's own 320dp pane minimum keeps it usable on
      * narrow windows.
      */
-    const val DetailsDefaultListFraction = 0.68f
+    const val DETAILS_DEFAULT_LIST_FRACTION = 0.68f
 
     /** Smallest the Details pane may be dragged (the IDE's tool-window minimum). */
     val DetailsPaneMinWidth = 320.dp

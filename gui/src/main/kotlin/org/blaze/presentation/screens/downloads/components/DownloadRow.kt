@@ -331,7 +331,7 @@ fun DownloadRow(
                         cellModifier,
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        ProgressCell(download, secondary, strings)
+                        ProgressCell(download, secondary)
                     }
 
                     DownloadsColumn.Size -> Box(
@@ -368,7 +368,7 @@ fun DownloadRow(
                         contentAlignment = Alignment.CenterEnd
                     ) {
                         Text(
-                            text = etaText(download, strings),
+                            text = etaText(download),
                             style = BlazeTypography.rowCell,
                             color = secondary,
                             maxLines = 1,
@@ -384,7 +384,6 @@ fun DownloadRow(
                                     cannotResume,
                                     fileMissing,
                                     primary,
-                                    secondary,
                                     strings
                                 )
                             }
@@ -471,8 +470,7 @@ private fun NameCell(
 private fun ProgressCell(
     download: Download,
     secondary: Color,
-    strings: BlazeStrings
-) { // TODO: make use of strings or remove it
+) {
     val isIndeterminate = download.state == DownloadState.DOWNLOADING &&
             (download.totalSize == null || (download.downloadedSize == 0L && download.speed == 0L))
     val progress = download.progress.coerceIn(0f, 1f)
@@ -541,7 +539,6 @@ private fun StateCell(
     cannotResume: Boolean,
     fileMissing: Boolean,
     primary: Color,
-    secondary: Color, // TODO: make use of secondary
     strings: BlazeStrings,
 ) {
     Row(
@@ -603,8 +600,7 @@ private fun speedText(download: Download, strings: BlazeStrings): String {
 
 private fun etaText(
     download: Download,
-    strings: BlazeStrings
-): String { // TODO: make use of strings or remove it
+): String {
     val active =
         download.state == DownloadState.DOWNLOADING || download.state == DownloadState.SEEDING
     val eta = download.eta

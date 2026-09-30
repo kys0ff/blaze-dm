@@ -219,7 +219,7 @@ private fun RowScope.HeaderCell(
  * clips the row's icon.
  */
 @Composable
-private fun RowScope.HeaderOptionsSlot( // TODO: Receiver parameter is never used
+private fun HeaderOptionsSlot( // The gutter is a fixed-width Box, so it needs no RowScope weighting
     hiddenColumns: Set<String>,
     everythingSelected: Boolean,
     onSelectAll: () -> Unit,

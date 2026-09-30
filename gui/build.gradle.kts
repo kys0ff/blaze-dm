@@ -66,8 +66,10 @@ dependencies {
     testImplementation(kotlin("test"))
     // Compose UI tests deliver real pointer and key events to an offscreen scene, which is the only
     // way to reproduce (and then pin) the submenu hover trap: it is an interaction bug, invisible to
-    // any test that only calls the state machine directly.
-    testImplementation(compose.desktop.uiTestJUnit4) // TODO: 'val uiTestJUnit4: String' is deprecated.
+    // any test that only calls the state machine directly. The `runDesktopComposeUiTest` these tests use
+    // lives in the plain ui-test artifact, so it is specified directly (the uiTestJUnit4 DSL accessor is
+    // deprecated and only exists to add a JUnit4 rule none of these tests use).
+    testImplementation(libs.compose.ui.test)
 }
 
 repositories {

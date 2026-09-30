@@ -9,37 +9,19 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.blaze.data.AppSettingsRepository
 import org.blaze.engine.settings.DownloadSettings
-import org.blaze.engine.settings.EngineSettingsRepository
-import org.blaze.notifications.api.NotificationService
-import org.blaze.platform.autostart.AutoStartCoordinator
-import org.blaze.presentation.screens.settings.state.HandlerUiState
 import org.blaze.presentation.screens.settings.state.SettingsState
-import org.blaze.presentation.screens.settings.state.ThemeUiState
-import org.blaze.resolver.core.LinkResolverRegistry
-import org.blaze.resolver.core.LinkResolverSettingsRepository
-import org.blaze.resolver.core.ResolverSource
-import org.blaze.theming.core.ThemeRegistry
-import org.blaze.theming.core.ThemeSettingsRepository
-import org.blaze.theming.core.ThemeSource
-import org.blaze.tray.api.TrayService
-import java.nio.file.Path
 
+/**
+ * The Settings draft's state machine. It owns only presentation concerns - buffering the user's edits
+ * into a [SettingsState] draft, validating text fields, and deciding when to apply, persist or discard -
+ * while every read from and write to the repositories and plugin registries is delegated to
+ * [SettingsUseCases].
+ */
 class SettingsScreenModel(
-    // TODO: Make a bundle of use cases for each bloated screen model
-    private val settingsRepository: EngineSettingsRepository,
-    private val appSettingsRepository: AppSettingsRepository,
-    private val autoStartCoordinator: AutoStartCoordinator,
-    private val trayService: TrayService,
-    private val notificationService: NotificationService,
-    private val resolverRegistry: LinkResolverRegistry,
-    private val resolverSettingsRepository: LinkResolverSettingsRepository,
-    private val themeRegistry: ThemeRegistry,
-    private val themeSettingsRepository: ThemeSettingsRepository
+    private val useCases: SettingsUseCases,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -51,25 +33,7 @@ class SettingsScreenModel(
     init {
         resetLocalState()
         screenModelScope.launch {
-            combine(
-                resolverRegistry.handlers,
-                resolverSettingsRepository.settings
-            ) { handlers, settings ->
-                HandlersSnapshot(
-                    handlers = handlers.map { loaded ->
-                        HandlerUiState(
-                            id = loaded.resolver.id,
-                            displayName = loaded.resolver.displayName,
-                            description = loaded.resolver.description,
-                            enabled = loaded.resolver.id !in settings.disabledHandlers,
-                            isPlugin = loaded.source == ResolverSource.PLUGIN,
-                            resolver = loaded
-                        )
-                    },
-                    alwaysAsk = settings.alwaysAskHandler,
-                    extensionDir = settings.extensionDir
-                )
-            }.collect { snapshot ->
+            useCases.observeHandlers().collect { snapshot ->
                 _state.update {
                     it.copy(
                         handlers = snapshot.handlers,
@@ -80,24 +44,7 @@ class SettingsScreenModel(
             }
         }
         screenModelScope.launch {
-            combine(
-                themeRegistry.themes,
-                themeRegistry.selectedThemeId,
-                themeSettingsRepository.settings
-            ) { themes, selectedId, settings ->
-                ThemesSnapshot(
-                    themes = themes.map { loaded ->
-                        ThemeUiState(
-                            id = loaded.provider.id,
-                            displayName = loaded.provider.displayName,
-                            description = loaded.provider.description,
-                            active = loaded.provider.id == selectedId,
-                            isPlugin = loaded.source == ThemeSource.PLUGIN
-                        )
-                    },
-                    themesDir = settings.extensionDir
-                )
-            }.collect { snapshot ->
+            useCases.observeThemes().collect { snapshot ->
                 _state.update {
                     it.copy(themes = snapshot.themes, themesDir = snapshot.themesDir)
                 }
@@ -105,20 +52,9 @@ class SettingsScreenModel(
         }
     }
 
-    private data class ThemesSnapshot(
-        val themes: List<ThemeUiState>,
-        val themesDir: String
-    )
-
-    private data class HandlersSnapshot(
-        val handlers: List<HandlerUiState>,
-        val alwaysAsk: Boolean,
-        val extensionDir: String
-    )
-
     private fun resetLocalState() {
-        val currentSettings = settingsRepository.settings.value
-        val currentAppSettings = appSettingsRepository.settings.value
+        val (currentSettings, currentAppSettings) = useCases.initialValues()
+        val flags = useCases.supportFlags()
         _state.update {
             SettingsState(
                 currentCategory = it.currentCategory,
@@ -126,9 +62,9 @@ class SettingsScreenModel(
                 savedSettings = currentSettings,
                 appSettings = currentAppSettings,
                 savedAppSettings = currentAppSettings,
-                traySupported = trayService.isSupported,
-                autoStartSupported = autoStartCoordinator.isSupported,
-                notificationsSupported = notificationService.isSupported,
+                traySupported = flags.traySupported,
+                autoStartSupported = flags.autoStartSupported,
+                notificationsSupported = flags.notificationsSupported,
                 maxConcurrentDownloadsText = TextFieldValue(currentSettings.maxConcurrentDownloads.toString()),
                 maxConnectionsPerDownloadText = TextFieldValue(currentSettings.maxConnectionsPerDownload.toString()),
                 globalSpeedLimitKbpsText = TextFieldValue(currentSettings.globalSpeedLimitKbps.toString()),
@@ -389,28 +325,28 @@ class SettingsScreenModel(
         }
 
         is SettingsEvent.InstallExtension -> screenModelScope.launch {
-            resolverRegistry.install(Path.of(event.jarPath))
+            useCases.installHandler(event.jarPath)
         }
 
         is SettingsEvent.RemoveExtension -> screenModelScope.launch {
-            resolverRegistry.uninstall(event.id)
+            useCases.uninstallHandler(event.id)
         }
 
-        SettingsEvent.ReloadHandlers -> resolverRegistry.reload()
+        SettingsEvent.ReloadHandlers -> useCases.reloadHandlers()
 
         is SettingsEvent.SelectTheme -> _state.update {
             it.copy(selectedThemeOverride = event.id)
         }
 
         is SettingsEvent.InstallTheme -> screenModelScope.launch {
-            themeRegistry.install(Path.of(event.jarPath))
+            useCases.installTheme(event.jarPath)
         }
 
         is SettingsEvent.RemoveTheme -> screenModelScope.launch {
-            themeRegistry.uninstall(event.id)
+            useCases.uninstallTheme(event.id)
         }
 
-        SettingsEvent.ReloadThemes -> themeRegistry.reload()
+        SettingsEvent.ReloadThemes -> useCases.reloadThemes()
 
         SettingsEvent.Apply -> applyDraftToLiveState()
         SettingsEvent.Ok -> persistDraftAndClose()
@@ -418,68 +354,26 @@ class SettingsScreenModel(
     }
 
     /**
-     * Push the buffered draft into the repositories' / registries' live in-memory state so the
-     * running app reflects it (restyle, logging level, limits...), WITHOUT writing to disk.
-     * Dirty state is left intact on purpose: nothing has been persisted yet, so OK is still needed.
+     * Push the buffered draft into the repositories' / registries' live in-memory state via
+     * [SettingsUseCases.applyLive]. Dirty state is left intact on purpose: nothing has been persisted
+     * yet, so OK is still needed.
      */
     private fun applyDraftToLiveState() {
         val s = _state.value
         if (s.hasValidationError) return
-
-        // Appearance mode, logging, download limits, ... (whole draft at once).
-        settingsRepository.updateSettingsInMemory { s.settings }
-
-        // Tray follows the in-memory app settings live; autostart has no in-memory-only
-        // effect, so "live" here means actually writing/removing the OS registration.
-        appSettingsRepository.updateSettingsInMemory { s.appSettings }
-        autoStartCoordinator.applyLive(s.appSettings.runAtStartup)
-
-        // Link-handler enable/disable and always-ask.
-        if (s.enabledHandlerOverrides.isNotEmpty() || s.alwaysAskOverride != null) {
-            resolverSettingsRepository.updateSettingsInMemory { settings ->
-                val disabled = settings.disabledHandlers.toMutableSet()
-                s.enabledHandlerOverrides.forEach { (id, enabled) ->
-                    if (enabled) disabled.remove(id) else disabled.add(id)
-                }
-                settings.copy(
-                    disabledHandlers = disabled.toList(),
-                    alwaysAskHandler = s.alwaysAskOverride ?: settings.alwaysAskHandler
-                )
-            }
-        }
-
-        // Color theme selection.
-        s.selectedThemeOverride
-            ?.takeIf { id -> s.themes.any { it.id == id } }
-            ?.let { themeRegistry.selectInMemory(it) }
+        useCases.applyLive(s.toDraft())
     }
 
     /**
-     * Write the buffered draft to disk (the only place persistence happens), then close via a
-     * [SettingsEffect.Close].
+     * Write the buffered draft to disk with [SettingsUseCases.persist], clear the buffered overrides,
+     * re-seed the text fields and close via a [SettingsEffect.Close].
      */
     private fun persistDraftAndClose() {
         val snapshot = _state.value
         if (snapshot.hasValidationError) return
 
         screenModelScope.launch {
-            if (snapshot.settings != snapshot.savedSettings) {
-                settingsRepository.updateSettings { snapshot.settings }
-            }
-            if (snapshot.appSettings != snapshot.savedAppSettings) {
-                appSettingsRepository.updateSettings { snapshot.appSettings }
-            }
-            // Make sure the OS registration matches what was just persisted, even if the
-            // user hit OK without Apply first (onDispose reverts to the persisted value).
-            autoStartCoordinator.applyLive(snapshot.appSettings.runAtStartup)
-            // Only replay overrides for handlers still installed (a removed one has no target).
-            snapshot.enabledHandlerOverrides.forEach { (id, enabled) ->
-                if (snapshot.handlers.any { it.id == id }) resolverRegistry.setEnabled(id, enabled)
-            }
-            snapshot.alwaysAskOverride?.let { resolverRegistry.setAlwaysAsk(it) }
-            snapshot.selectedThemeOverride
-                ?.takeIf { id -> snapshot.themes.any { it.id == id } }
-                ?.let { themeRegistry.select(it) }
+            useCases.persist(snapshot.toDraft())
 
             val committed = snapshot.settings
             _state.update {
@@ -506,12 +400,21 @@ class SettingsScreenModel(
      */
     override fun onDispose() {
         super.onDispose()
-        settingsRepository.revertToPersisted()
-        appSettingsRepository.revertToPersisted()
-        autoStartCoordinator.revertToPersisted()
-        resolverSettingsRepository.revertToPersisted()
-        themeRegistry.restoreSelectionFromSettings()
+        useCases.revertToPersisted()
     }
+
+    /** Projects the presentation draft onto the subset of fields the data layer acts on. */
+    private fun SettingsState.toDraft() = SettingsDraft(
+        settings = settings,
+        savedSettings = savedSettings,
+        appSettings = appSettings,
+        savedAppSettings = savedAppSettings,
+        enabledHandlerOverrides = enabledHandlerOverrides,
+        alwaysAskOverride = alwaysAskOverride,
+        installedHandlerIds = handlers.mapTo(HashSet()) { it.id },
+        themeIds = themes.mapTo(HashSet()) { it.id },
+        selectedThemeOverride = selectedThemeOverride,
+    )
 
     /** Re-seed the numeric/text fields from [s] after a commit or reset. */
     private fun resetTextFieldsTo(s: DownloadSettings) {

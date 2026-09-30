@@ -54,7 +54,7 @@ import org.koin.compose.koinInject
  */
 @Composable
 fun HamburgerMenuButton(commandBus: AppCommandBus) {
-    if (CurrentUiPlatform == UiPlatform.macOS) return
+    if (CurrentUiPlatform == UiPlatform.MacOS) return
     val strings = blazeStrings
     var expanded by remember { mutableStateOf(false) }
     val anchor = rememberMenuAnchor()

@@ -148,9 +148,18 @@ interface FreedesktopNotifications : DBusInterface {
         expireTimeout: Int,
     ): UInt32
 
-    // TODO: make use of CloseNotification if you can see a case for it 'Do not remove'
+    /**
+     * Cancels a still-visible banner by its id. Declared to complete the spec's method set: Blaze posts
+     * fire-and-forget banners and never holds an id to retract, so nothing calls it today, but keeping
+     * the binding faithful to `org.freedesktop.Notifications` means a future progress-notification
+     * feature can cancel a banner without reshaping this interface.
+     */
     fun CloseNotification(id: UInt32)
 
-    // TODO: make use of GetCapabilities if you can see a case for it 'Do not remove'
+    /**
+     * The capability strings the daemon advertises (e.g. "actions", "body-markup"). Kept for the same
+     * reason as [CloseNotification]: it is part of the spec, and a complete binding is cheaper than
+     * guessing later which method a feature will want to probe.
+     */
     fun GetCapabilities(): List<String>
 }

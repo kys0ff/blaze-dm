@@ -29,7 +29,9 @@ fun Download.canCancel(): Boolean =
 
 /**
  * Every row can leave the list, so removal is always applicable; the bulk "Remove" never touches files
- * ([DownloadsEvent.Remove] with `deleteFile = false`), which is why no state gates it here.
+ * ([DownloadsEvent.Remove] with `deleteFile = false`), which is why no state gates it here. A running
+ * transfer is still removable - removing it from the list is a separate, deliberate cancel-then-forget
+ * gesture rather than something the row's state is allowed to veto.
  */
 fun Download.canRemove(): Boolean = true
 

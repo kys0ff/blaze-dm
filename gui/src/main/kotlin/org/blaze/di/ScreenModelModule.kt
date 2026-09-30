@@ -2,6 +2,7 @@ package org.blaze.di
 
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.settings.SettingsScreenModel
+import org.blaze.presentation.screens.settings.SettingsUseCases
 import org.koin.dsl.module
 
 val screenModelModule = module {
@@ -32,7 +33,7 @@ val screenModelModule = module {
     }
 
     factory {
-        SettingsScreenModel(
+        SettingsUseCases(
             settingsRepository = get(),
             appSettingsRepository = get(),
             autoStartCoordinator = get(),
@@ -42,6 +43,12 @@ val screenModelModule = module {
             resolverSettingsRepository = get(),
             themeRegistry = get(),
             themeSettingsRepository = get()
+        )
+    }
+
+    factory {
+        SettingsScreenModel(
+            useCases = get()
         )
     }
 }

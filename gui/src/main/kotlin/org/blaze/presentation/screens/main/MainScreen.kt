@@ -128,7 +128,7 @@ class MainScreen : Screen {
 
                     // Islands: the content floats on the frame with a gap on every side; the frame
                     // shows through. Classic: the content fills edge to edge with no gap.
-                    val contentPadding = if (BlazeLayout.useIslands) BlazeLayout.IslandGap else 0.dp
+                    val contentPadding = if (BlazeLayout.USE_ISLANDS) BlazeLayout.IslandGap else 0.dp
                     Box(
                         modifier = Modifier
                             .weight(1f)

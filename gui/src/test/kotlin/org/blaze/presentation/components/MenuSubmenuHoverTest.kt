@@ -19,7 +19,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
-import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
 import org.blaze.presentation.theme.BlazeTheme
 import kotlin.test.Test
@@ -92,7 +92,6 @@ class MenuSubmenuHoverTest {
 
     // ── the mouse ─────────────────────────────────────────────────────────────
 
-    // TODO: runDesktopComposeUiTest is deprecated
     @Test
     fun `hovering the parent of a submenu opens it`() = runDesktopComposeUiTest(width = 800, height = 600) {
         val host = MenuHost()
