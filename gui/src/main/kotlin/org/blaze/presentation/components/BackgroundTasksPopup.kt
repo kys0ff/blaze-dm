@@ -19,12 +19,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.theme.BlazeColors
+import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSpeed
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -91,10 +94,14 @@ fun BackgroundTasksPopup(
     running: List<Download>,
     onPause: (String) -> Unit,
     onCancel: (String) -> Unit,
+    onOpenDetails: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val strings = blazeStrings // TODO: make use of strings or remove it
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .semantics { testTag = "background_tasks_popup" },
+    ) {
         // Transparent click-to-dismiss layer beneath the card.
         Box(
             modifier = Modifier
@@ -105,6 +112,10 @@ fun BackgroundTasksPopup(
             running = running,
             onPause = onPause,
             onCancel = onCancel,
+            onOpenDetails = { id ->
+                onOpenDetails(id)
+                onDismiss()
+            },
             onDismiss = onDismiss,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -118,6 +129,7 @@ private fun BackgroundTasksCard(
     running: List<Download>,
     onPause: (String) -> Unit,
     onCancel: (String) -> Unit,
+    onOpenDetails: (String) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -172,10 +184,23 @@ private fun BackgroundTasksCard(
                             download = download,
                             onPause = { onPause(download.id) },
                             onCancel = { onCancel(download.id) },
+                            onOpenDetails = { onOpenDetails(download.id) },
                         )
                     }
                 }
             }
+            // A totals footer: the whole popup is about live transfers, so it closes with the honest
+            // split of what is moving now versus what is still waiting for a slot.
+            Divider(Orientation.Horizontal)
+            Text(
+                text = tasks.footer(
+                    active = running.count { it.state == DownloadState.DOWNLOADING },
+                    queued = running.count { it.state == DownloadState.QUEUED },
+                ),
+                style = JewelTheme.typography.small,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            )
         }
     }
 }
@@ -185,6 +210,7 @@ private fun BackgroundTaskRow(
     download: Download,
     onPause: () -> Unit,
     onCancel: () -> Unit,
+    onOpenDetails: () -> Unit,
 ) {
     val strings = blazeStrings
     val s = strings.downloads.selection
@@ -198,7 +224,11 @@ private fun BackgroundTaskRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(4.dp))
+                .clickable(onClick = onOpenDetails)
+                .semantics { testTag = "background_task_${download.id}" },
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
@@ -218,14 +248,14 @@ private fun BackgroundTaskRow(
                 } else {
                     HorizontalProgressBar(progress = progress, modifier = Modifier.weight(1f).height(4.dp))
                 }
-                val label = if (indeterminate) {
-                    "\u2014"
-                } else {
-                    "${(progress * 100).toInt()}%" +
-                        (if (isDownloading && download.speed > 0) "  ${formatSpeed(download.speed, strings)}" else "")
+                val eta = download.eta
+                val parts = buildList {
+                    if (!indeterminate) add("${(progress * 100).toInt()}%")
+                    if (isDownloading && download.speed > 0) add(formatSpeed(download.speed, strings))
+                    if (isDownloading && eta != null && eta > 0) add(formatDuration(eta))
                 }
                 Text(
-                    text = label,
+                    text = if (parts.isEmpty()) "\u2014" else parts.joinToString("  \u00b7  "),
                     style = JewelTheme.typography.small,
                     color = JewelTheme.globalColors.text.info,
                     maxLines = 1,

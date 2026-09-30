@@ -9,6 +9,7 @@ interface BlazeStrings {
     val statusSummary: StatusSummary
     val tray: Tray
     val menu: Menu
+    val search: Search
 
     interface Common {
         val ok: String
@@ -207,6 +208,8 @@ interface BlazeStrings {
             val empty: String
             /** Clickable status-bar summary naming how many transfers are live. */
             fun runningCount(n: Int): String
+            /** Popup footer: splits the running set into actively transferring vs still queued. */
+            fun footer(active: Int, queued: Int): String
         }
 
         val dialogs: Dialogs
@@ -286,7 +289,7 @@ interface BlazeStrings {
             /**
              * Shown before saving a page link that no installed handler can take apart. Blaze can
              * still fetch it — the response just isn't the file the user was after — so the outcome
-             * is stated and accepted rather than discovered afterwards.
+             * is stated and accepted rather than discovered afterward.
              */
             val plainPage: PlainPage
             interface PlainPage {
@@ -449,7 +452,7 @@ interface BlazeStrings {
             fun failed(name: String, reason: String): String
             /**
              * An unfinished transfer is beginning again from zero, so the bytes it had already
-             * fetched can't be continued from - whether the server refused a resume or the data on
+             * fetched can't be continued from - whether the server refused a 'resume' or the data on
              * disk went away. [percent] is how far it had got before starting over.
              */
             fun restarted(name: String, percent: Int): String
@@ -531,6 +534,8 @@ interface BlazeStrings {
         val mainMenu: String
         /** Tooltip for the title-bar search button, which focuses the list's search field. */
         val search: String
+        /** Tooltip/label for the Search Everywhere entry points (title-bar icon, menu, Ctrl/Cmd+K). */
+        val searchEverywhere: String
         val newDownload: String
         val settings: String
         val pauseAll: String
@@ -547,6 +552,29 @@ interface BlazeStrings {
         val aboutBody: String
     }
     
+    /**
+     * Labels for the window-level "Search Everywhere" popup. The popup is chrome, not a screen, so
+     * its strings sit at the app root next to [Menu].
+     */
+    interface Search {
+        /** Placeholder of the popup's text field. */
+        val placeholder: String
+        val tabAll: String
+        val tabDownloads: String
+        val tabActions: String
+        val tabSettings: String
+        /** Shown instead of a list when the query is empty and the tab has no meaningful default. */
+        val typeToSearch: String
+        /** Shown when a non-empty query matches nothing. */
+        val nothingFound: String
+        /** Section header over the download group in the All tab. */
+        val sectionDownloads: String
+        /** Section header over the action group in the All tab. */
+        val sectionActions: String
+        /** Section header over the settings group in the All tab. */
+        val sectionSettings: String
+    }
+
     interface Settings {
         val title: String
         val placeholder: String

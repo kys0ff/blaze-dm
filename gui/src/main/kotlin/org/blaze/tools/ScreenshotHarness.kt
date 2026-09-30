@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -28,6 +29,8 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.domain.models.SelectedFile
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BackgroundTasksPopup
+import org.blaze.presentation.components.BackgroundTasksStatusItem
+import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.MenuEntry
@@ -50,8 +53,14 @@ import org.blaze.presentation.screens.downloads.components.DownloadsToolbar
 import org.blaze.presentation.screens.downloads.components.PauseRiskDialog
 import org.blaze.presentation.screens.downloads.toCounts
 import org.blaze.presentation.screens.settings.SettingsButtonBar
+import org.blaze.presentation.screens.settings.SettingsFilter
+import org.blaze.presentation.screens.settings.LocalSettingsFilter
+import org.blaze.presentation.screens.settings.SettingRow
 import org.blaze.presentation.screens.settings.SettingsSidebar
 import org.blaze.presentation.screens.settings.state.SettingsCategory
+import org.blaze.presentation.search.SearchController
+import org.blaze.presentation.search.SearchIsland
+import org.blaze.presentation.search.SearchTab
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.presentation.theme.BlazeTheme
 import org.blaze.presentation.theme.BlazeTypography
@@ -198,6 +207,7 @@ fun main() {
                 running = samples.filter { it.state == DownloadState.DOWNLOADING || it.state == DownloadState.QUEUED },
                 onPause = {},
                 onCancel = {},
+                onOpenDetails = {},
                 onDismiss = {},
             )
         }
@@ -326,6 +336,8 @@ fun main() {
                         selected = SettingsCategory.GENERAL,
                         hasDownloadsError = false,
                         strings = strings,
+                        query = "",
+                        onQueryChange = {},
                         onSelect = {},
                     )
                     Divider(Orientation.Vertical, Modifier.fillMaxHeight())
@@ -353,6 +365,82 @@ fun main() {
                 )
             }
         }
+        // ── Search Everywhere ──────────────────────────────────────────────────────────────────
+        // Rendered through the real SearchIsland (the surface the window Popup hosts) with a live
+        // controller, so the tabs, section headers, matched-char highlight and both empty states show
+        // exactly as shipped. One controller per shot, seeded before the single offscreen composition.
+        fun searchShot(name: String, tab: SearchTab, query: String, withDownloads: Boolean = true) {
+            shot(name, 640, 520, dark) {
+                val controller = SearchController(AppCommandBus())
+                if (withDownloads) controller.submitDownloads(samples)
+                controller.open(tab = tab)
+                if (query.isNotEmpty()) controller.updateQuery(query)
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    SearchIsland(controller, modifier = Modifier.padding(top = 24.dp))
+                }
+            }
+        }
+
+        // "d" lights every family so the All tab shows its three section headers with highlighted runs.
+        searchShot("14-search-all-$suffix", SearchTab.All, "d")
+        searchShot("15-search-downloads-$suffix", SearchTab.Downloads, "ubuntu")
+        // The Actions and Settings tabs list everything they offer with a blank query.
+        searchShot("16-search-actions-$suffix", SearchTab.Actions, "", withDownloads = false)
+        searchShot("17-search-settings-$suffix", SearchTab.Settings, "", withDownloads = false)
+        searchShot("18-search-type-to-search-$suffix", SearchTab.All, "")
+        searchShot("19-search-nothing-found-$suffix", SearchTab.All, "zzqxj")
+
+        // Settings with an option-level query active: the sidebar is pruned to the one page that hosts a
+        // match and the content pane keeps only the matching row, both painted with the match tint.
+        shot("20-settings-filter-$suffix", 900, 300, dark) {
+            val strings = blazeStrings
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(BlazeIslandColors.island),
+            ) {
+                SettingsSidebar(
+                    selected = SettingsCategory.DOWNLOADS,
+                    hasDownloadsError = false,
+                    strings = strings,
+                    query = "proxy",
+                    onQueryChange = {},
+                    onSelect = {},
+                )
+                Divider(Orientation.Vertical, Modifier.fillMaxHeight())
+                CompositionLocalProvider(LocalSettingsFilter provides SettingsFilter("proxy")) {
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight().padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        SettingRow("downloads.userAgent") { Text(strings.settings.userAgentLabel) }
+                        // Not a match for "proxy", so it is hidden while the query is active.
+                        SettingRow("downloads.maxConnections") { Text(strings.settings.maxConnectionsLabel) }
+                    }
+                }
+            }
+        }
+
+        // The status bar with the Background Tasks widget (live transfers) and without it (idle: the
+        // widget hides, throughput drops out, the message reads "Ready").
+        shot("21-statusbar-active-$suffix", 940, 40, dark) {
+            StatusBar(
+                info = blazeStrings.statusSummary.downloading(3),
+                throughput = "5.5 MB/s",
+                trailing = {
+                    BackgroundTasksStatusItem(runningCount = 4, expanded = false, onClick = {})
+                },
+            )
+        }
+        shot("22-statusbar-idle-$suffix", 940, 40, dark) {
+            StatusBar(
+                info = blazeStrings.statusSummary.ready,
+                trailing = {
+                    BackgroundTasksStatusItem(runningCount = 0, expanded = false, onClick = {})
+                },
+            )
+        }
+
         // The title-bar seam — the exact structure that put a `#eeeeee` line across the dark theme.
         // Jewel's `TitleBar` always emits a 1dp `Spacer` under the bar as its border, and in Islands
         // that border color is deliberately transparent, so the row is painted by *nothing* in the

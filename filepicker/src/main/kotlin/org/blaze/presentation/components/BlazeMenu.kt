@@ -56,7 +56,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
@@ -66,6 +65,8 @@ import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.theme.menuStyle
 import org.jetbrains.jewel.ui.typography
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * One row of a [BlazeMenu].
@@ -452,7 +453,7 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
         if (entries.isEmpty()) return
         val start = highlightedAt(level)
         var index = start
-        for (step in entries.indices) {
+        entries.indices.forEach { _ ->
             index = if (backwards) (index - 1 + entries.size) % entries.size else (index + 1) % entries.size
             val row = entries[index]
             if (row !is MenuEntry.Separator && row.enabled) {
@@ -536,13 +537,13 @@ fun BlazeMenu(
     // the pointer back cancels whichever timer is running.
     LaunchedEffect(model.pointerInside, model.depth) {
         if (!model.pointerInside) {
-            delay(CollapseDelayMs)
-            while (model.closeInnermostLevel()) delay(CollapseDelayMs)
+            delay(CollapseDelayMs.milliseconds)
+            while (model.closeInnermostLevel()) delay(CollapseDelayMs.milliseconds)
         }
     }
     LaunchedEffect(model.pendingOpen) {
         val target = model.pendingOpen ?: return@LaunchedEffect
-        delay(SubmenuOpenDelayMs)
+        delay(SubmenuOpenDelayMs.milliseconds)
         if (model.pendingOpen == target) model.commitPendingOpen()
     }
 

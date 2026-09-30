@@ -219,7 +219,7 @@ private fun RowScope.HeaderCell(
  * clips the row's icon.
  */
 @Composable
-private fun RowScope.HeaderOptionsSlot(
+private fun RowScope.HeaderOptionsSlot( // TODO: Receiver parameter is never used
     hiddenColumns: Set<String>,
     everythingSelected: Boolean,
     onSelectAll: () -> Unit,

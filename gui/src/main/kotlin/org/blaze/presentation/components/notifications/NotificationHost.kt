@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -123,7 +125,7 @@ private fun NotificationBalloon(
     }
 
     val isError = notification.type == NotificationType.ERROR
-    val panelColor = JewelTheme.globalColors.panelBackground
+    val panelColor = Color(0xFF33353B)
     val borderColor = if (isError) {
         BlazeColors.error.copy(alpha = 0.6f)
     } else {
@@ -153,7 +155,7 @@ private fun NotificationBalloon(
                         Modifier
                     },
                 )
-                .border(1.dp, borderColor, balloonShape)
+                .border(if (isError) 1.dp else 0.dp, borderColor, balloonShape)
                 .hoverable(interactionSource)
                 .padding(
                     start = 12.dp,
@@ -180,28 +182,34 @@ private fun NotificationBalloon(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 notification.title?.let { title ->
+                    SelectionContainer {
+                        Text(
+                            text = title,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
+                SelectionContainer {
                     Text(
-                        text = title,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
+                        text = notification.message,
+                        style = JewelTheme.typography.small,
+                        maxLines = 6,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
 
-                Text(
-                    text = notification.message,
-                    style = JewelTheme.typography.small,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
                 if (isError) {
-                    Link(
-                        text = strings.common.copyDetails,
-                        onClick = {
-                            clipboard.copy(notification.message)
-                        },
-                    )
+                    SelectionContainer {
+                        Link(
+                            text = strings.common.copyDetails,
+                            onClick = {
+                                clipboard.copy(notification.message)
+                            },
+                        )
+                    }
                 }
             }
 

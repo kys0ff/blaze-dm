@@ -39,7 +39,7 @@ internal fun ExtensionsSection(
     val hStrings = strings.settings.handlers
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-    SettingsSection(hStrings.supportedSitesHeader) {
+    SettingsGroup("handlers.sites", strings) {
         Text(
             text = hStrings.supportedSitesDesc,
             style = infoStyle,
@@ -62,17 +62,19 @@ internal fun ExtensionsSection(
             }
         }
 
-        CheckboxRow(
-            text = hStrings.alwaysAskLabel,
-            checked = state.effectiveAlwaysAsk,
-            onCheckedChange = { checked -> onEvent(SettingsEvent.UpdateAlwaysAskHandler(checked)) }
-        )
-        Text(
-            text = hStrings.alwaysAskDesc,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info,
-            modifier = Modifier.padding(start = DependentIndent)
-        )
+        SettingRow("handlers.alwaysAsk") {
+            CheckboxRow(
+                text = hStrings.alwaysAskLabel,
+                checked = state.effectiveAlwaysAsk,
+                onCheckedChange = { checked -> onEvent(SettingsEvent.UpdateAlwaysAskHandler(checked)) }
+            )
+            Text(
+                text = hStrings.alwaysAskDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
+        }
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -87,13 +89,15 @@ internal fun ExtensionsSection(
         }
     }
 
-    SettingsSection(hStrings.extensionsDirHeader) {
-        ReadOnlyPathField(
-            label = hStrings.extensionsDirLabel,
-            path = state.extensionDir,
-            description = hStrings.extensionsDirDesc,
-            infoStyle = infoStyle
-        )
+    SettingsGroup("handlers.dir", strings) {
+        SettingRow("handlers.extensionsDir") {
+            ReadOnlyPathField(
+                label = hStrings.extensionsDirLabel,
+                path = state.extensionDir,
+                description = hStrings.extensionsDirDesc,
+                infoStyle = infoStyle
+            )
+        }
     }
 }
 

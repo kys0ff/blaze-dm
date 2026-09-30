@@ -27,8 +27,10 @@ fun Download.canResume(queuedBlocked: Boolean = false): Boolean = when (state) {
 fun Download.canCancel(): Boolean =
     canPause() || state == DownloadState.PAUSED || state == DownloadState.QUEUED
 
-/** Every row can leave the list; a bulk removal never touches files, so it stays always applicable. */
-// TODO: actually implement the removal and make use of it
+/**
+ * Every row can leave the list, so removal is always applicable; the bulk "Remove" never touches files
+ * ([DownloadsEvent.Remove] with `deleteFile = false`), which is why no state gates it here.
+ */
 fun Download.canRemove(): Boolean = true
 
 /**

@@ -144,6 +144,13 @@ object EnStrings : BlazeStrings {
             override val title = "Background Tasks"
             override val empty = "No downloads in progress"
             override fun runningCount(n: Int) = if (n == 1) "1 download in progress" else "$n downloads in progress"
+            override fun footer(active: Int, queued: Int): String = buildString {
+                if (active > 0) append(if (active == 1) "1 active" else "$active active")
+                if (queued > 0) {
+                    if (isNotEmpty()) append(", ")
+                    append(if (queued == 1) "1 queued" else "$queued queued")
+                }
+            }
         }
 
         override val dialogs = object : BlazeStrings.Downloads.Dialogs {
@@ -424,6 +431,7 @@ object EnStrings : BlazeStrings {
     override val menu = object : BlazeStrings.Menu {
         override val mainMenu = "Main Menu"
         override val search = "Search"
+        override val searchEverywhere = "Search Everywhere…"
         override val newDownload = "New Download…"
         override val settings = "Settings…"
         override val pauseAll = "Pause All"
@@ -438,6 +446,19 @@ object EnStrings : BlazeStrings {
         override val aboutBody = "A fast, modern download manager."
     }
     
+    override val search = object : BlazeStrings.Search {
+        override val placeholder = "Search downloads, actions, settings…"
+        override val tabAll = "All"
+        override val tabDownloads = "Downloads"
+        override val tabActions = "Actions"
+        override val tabSettings = "Settings"
+        override val typeToSearch = "Type to search"
+        override val nothingFound = "Nothing found"
+        override val sectionDownloads = "Downloads"
+        override val sectionActions = "Actions"
+        override val sectionSettings = "Settings"
+    }
+
     override val settings = object : BlazeStrings.Settings {
         override val title = "Settings"
         override val placeholder = "App configuration will appear here."

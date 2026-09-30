@@ -21,7 +21,8 @@ enum class AppCommand {
     ResumeAll,
     ToggleDetails,
     SelectAll,
-    FocusSearch,
+    /** Opens the window-level Search Everywhere popup (title-bar icon, hamburger item, Ctrl/Cmd+K). */
+    SearchEverywhere,
     ShowAbout,
     Exit,
 }

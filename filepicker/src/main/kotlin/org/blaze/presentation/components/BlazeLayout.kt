@@ -4,6 +4,7 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import org.blaze.presentation.components.BlazeLayout.SettingsDialogWidth
 
 /**
  * Every layout metric the app mirrors from the JetBrains IDE (Int UI) chrome, in one place.
@@ -13,6 +14,7 @@ import androidx.compose.ui.unit.dp
  * progress thickness, list-item padding — are intentionally NOT duplicated here; read them from
  * the component style (e.g. `JewelTheme.simpleListItemStyle.metrics`) per the design rules.
  */
+// FIXME: Const property names should not contain lowercase letters
 object BlazeLayout {
 
     /**

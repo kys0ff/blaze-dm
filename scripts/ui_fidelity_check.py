@@ -47,6 +47,11 @@ SURFACE_WHITELIST = set(LINE_WHITELIST) | {
     "#373328", "#f4ede0",              # progress fill over island (dark / light)
 }
 
+# Shots whose subject is a floating surface -- a menu with its submenu open. Two surfaces in one frame
+# is the whole point of those pictures, so the mixed-surface rule is skipped for them (the stray-line
+# rule still runs). Mirrors PngFidelityScan.popupShots; keep the two lists in sync.
+POPUP_SHOTS = {"09-menu-submenu"}
+
 
 def luma(hex_color: str) -> float:
     r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
@@ -83,6 +88,11 @@ def same_band(a: str, b: str) -> bool:
 
 def scan(path: str) -> list[str]:
     name = os.path.basename(path)
+    shot = name[:-4]
+    for suffix in ("-dark", "-light"):
+        if shot.endswith(suffix):
+            shot = shot[: -len(suffix)]
+            break
     image = Image.open(path).convert("RGB")
     width, height = image.size
     rows = row_pixels(image)
@@ -112,45 +122,47 @@ def scan(path: str) -> list[str]:
         y = end + 1
 
     # ---- mixed surfaces: a second flat, wide color inside one surface band ----------------------
-    y = 0
-    while y < height:
-        color, coverage = dom[y]
-        if coverage < 0.5:
-            y += 1
-            continue
-        end = y
-        while end + 1 < height and dom[end + 1][0] == color and dom[end + 1][1] >= 0.5:
-            end += 1
-        if end - y + 1 >= MIN_BAND_HEIGHT:
-            counts: Counter = Counter()
-            runs: dict[str, int] = {}
-            total = 0
-            for row in rows[y:end + 1]:
-                run_color, run_length = None, 0
-                for pixel in row:
-                    counts[pixel] += 1
-                    total += 1
-                    if pixel == run_color:
-                        run_length += 1
-                    else:
-                        run_color, run_length = pixel, 1
-                    runs[pixel] = max(runs.get(pixel, 0), run_length)
-            for candidate, seen in counts.most_common():
-                if candidate == color or candidate in SURFACE_WHITELIST:
-                    continue
-                if seen / total < SURFACE_COVERAGE:
-                    continue
-                if runs[candidate] / width < MIN_FLAT_RUN:
-                    continue
-                if abs(dominant_luma(candidate) - dominant_luma(color)) < SURFACE_LUMA_DELTA:
-                    continue
-                issues.append(
-                    f"{name} [mixed-surface] band y={y}..{end} is {color} but {candidate} "
-                    f"owns {100 * seen / total:.0f}% of it in a {100 * runs[candidate] / width:.0f}% "
-                    f"wide flat stretch"
-                )
-                break
-        y = end + 1
+    # Skipped for popup shots, where a floating surface over the window is the subject by design.
+    if shot not in POPUP_SHOTS:
+        y = 0
+        while y < height:
+            color, coverage = dom[y]
+            if coverage < 0.5:
+                y += 1
+                continue
+            end = y
+            while end + 1 < height and dom[end + 1][0] == color and dom[end + 1][1] >= 0.5:
+                end += 1
+            if end - y + 1 >= MIN_BAND_HEIGHT:
+                counts: Counter = Counter()
+                runs: dict[str, int] = {}
+                total = 0
+                for row in rows[y:end + 1]:
+                    run_color, run_length = None, 0
+                    for pixel in row:
+                        counts[pixel] += 1
+                        total += 1
+                        if pixel == run_color:
+                            run_length += 1
+                        else:
+                            run_color, run_length = pixel, 1
+                        runs[pixel] = max(runs.get(pixel, 0), run_length)
+                for candidate, seen in counts.most_common():
+                    if candidate == color or candidate in SURFACE_WHITELIST:
+                        continue
+                    if seen / total < SURFACE_COVERAGE:
+                        continue
+                    if runs[candidate] / width < MIN_FLAT_RUN:
+                        continue
+                    if abs(dominant_luma(candidate) - dominant_luma(color)) < SURFACE_LUMA_DELTA:
+                        continue
+                    issues.append(
+                        f"{name} [mixed-surface] band y={y}..{end} is {color} but {candidate} "
+                        f"owns {100 * seen / total:.0f}% of it in a {100 * runs[candidate] / width:.0f}% "
+                        f"wide flat stretch"
+                    )
+                    break
+            y = end + 1
 
     return issues
 

@@ -150,6 +150,13 @@ object ArStrings : BlazeStrings {
             override val title = "المهام الخلفية"
             override val empty = "لا توجد تنزيلات قيد التشغيل"
             override fun runningCount(n: Int) = if (n == 1) "تنزيل واحد قيد التشغيل" else "$n تنزيلات قيد التشغيل"
+            override fun footer(active: Int, queued: Int): String = buildString {
+                if (active > 0) append("$active قيد التشغيل")
+                if (queued > 0) {
+                    if (isNotEmpty()) append("، ")
+                    append("$queued في الانتظار")
+                }
+            }
         }
 
         override val dialogs = object : BlazeStrings.Downloads.Dialogs {
@@ -430,6 +437,7 @@ object ArStrings : BlazeStrings {
     override val menu = object : BlazeStrings.Menu {
         override val mainMenu = "القائمة الرئيسية"
         override val search = "بحث"
+        override val searchEverywhere = "البحث في كل مكان…"
         override val newDownload = "تنزيل جديد…"
         override val settings = "الإعدادات…"
         override val pauseAll = "إيقاف الكل"
@@ -442,6 +450,19 @@ object ArStrings : BlazeStrings {
         override val snailMode = "وضع الحلزون"
         override val aboutTitle = "حول Blaze"
         override val aboutBody = "مدير تنزيلات سريع وعصري."
+    }
+
+    override val search = object : BlazeStrings.Search {
+        override val placeholder = "ابحث في التنزيلات والإعدادات والإجراءات…"
+        override val tabAll = "الكل"
+        override val tabDownloads = "التنزيلات"
+        override val tabActions = "الإجراءات"
+        override val tabSettings = "الإعدادات"
+        override val typeToSearch = "اكتب للبحث"
+        override val nothingFound = "لا نتائج"
+        override val sectionDownloads = "التنزيلات"
+        override val sectionActions = "الإجراءات"
+        override val sectionSettings = "الإعدادات"
     }
 
     override val settings = object : BlazeStrings.Settings {

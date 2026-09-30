@@ -6,8 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,8 +17,10 @@ import androidx.compose.ui.window.rememberDialogState
 import org.blaze.data.AppSettingsRepository
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
-import org.blaze.presentation.application.AppShell
 import org.blaze.platform.tray.AppTrayIcon
+import org.blaze.presentation.application.AppCommand
+import org.blaze.presentation.application.AppCommandBus
+import org.blaze.presentation.application.AppShell
 import org.blaze.presentation.components.BlazeKeymap
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.LocalAmbientGlowEnabled
@@ -28,6 +30,8 @@ import org.blaze.presentation.components.notifications.LocalNotifications
 import org.blaze.presentation.components.notifications.NotificationHost
 import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.components.platformShortcutLabels
+import org.blaze.presentation.search.SearchController
+import org.blaze.presentation.search.SearchEverywherePopup
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.koin.compose.koinInject
@@ -36,14 +40,14 @@ import java.awt.Frame
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import kotlin.math.roundToInt
+import java.awt.Color as AwtColor
 
 /**
  * The AWT color for a Compose color, for the handful of properties only the Swing side of the window
- * exposes. Alpha is dropped on purpose: a translucent window background would make the frame see-
- * through, and every surface token in the app is opaque.
+ * exposes. Alpha is dropped on purpose: a translucent window background would make the frame see-through, and every surface token in the app is opaque.
  */
-private fun Color.toAwtColor(): java.awt.Color =
-    java.awt.Color(
+private fun Color.toAwtColor(): AwtColor =
+    AwtColor(
         (red.coerceIn(0f, 1f) * 255).roundToInt(),
         (green.coerceIn(0f, 1f) * 255).roundToInt(),
         (blue.coerceIn(0f, 1f) * 255).roundToInt(),
@@ -130,6 +134,16 @@ fun BlazeWindow(shell: AppShell) {
         // The ambient glow is a chrome preference, so it lives with the other shell settings and is
         // read reactively here: Apply in Settings changes the frame immediately without a restart.
         val appSettings = koinInject<AppSettingsRepository>().settings.collectAsState().value
+        // Search Everywhere is a single window-level popup: the title-bar icon, the hamburger item and
+        // Ctrl/Cmd+K all route into this one controller, so all three open the very same thing (before
+        // this they fired a filter-focus command with nothing to show, which is why search looked dead).
+        val searchController = koinInject<SearchController>()
+        val commandBus = koinInject<AppCommandBus>()
+        LaunchedEffect(commandBus, searchController) {
+            commandBus.commands.collect { command ->
+                if (command == AppCommand.SearchEverywhere) searchController.toggle()
+            }
+        }
         CompositionLocalProvider(
             LocalNotifications provides notifications,
             LocalWindowActive provides state.isActive,
@@ -147,12 +161,17 @@ fun BlazeWindow(shell: AppShell) {
                     // The shell-level half of the keymap bridge. Everything the downloads screen owns
                     // (new download, search, selection keys, details) is handled there, closer to the
                     // focus; what is left here is the one chord that belongs to the frame itself, and it
-                    // is recognised by the very [BlazeKeymap.Binding] the menus print - so a shortcut can
+                    // is recognized by the very [BlazeKeymap.Binding] the menus print - so a shortcut can
                     // no longer be displayed without being handled, which is what Settings used to be.
                     .onPreviewKeyEvent { event ->
                         when (BlazeKeymap.matchAction(event)) {
                             BlazeKeymap.Action.OpenSettings -> {
                                 shell.openSettings()
+                                true
+                            }
+
+                            BlazeKeymap.Action.SearchEverywhere -> {
+                                searchController.toggle()
                                 true
                             }
 
@@ -166,6 +185,9 @@ fun BlazeWindow(shell: AppShell) {
                     state = notifications,
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
+                // Rendered at the window root so it floats above every screen, exactly like the menu
+                // popups; it reads all state from the shared controller and no-ops when closed.
+                SearchEverywherePopup(searchController)
             }
 
             // The modal Settings window. Composing it here is what gives it the right owner and the

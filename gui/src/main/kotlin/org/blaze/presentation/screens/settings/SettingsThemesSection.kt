@@ -37,41 +37,45 @@ internal fun ThemesSection(
     val tStrings = strings.settings.themes
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-    SettingsSection(tStrings.colorThemeHeader) {
-        Text(
-            text = tStrings.colorThemeDesc,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            state.themes.forEach { theme ->
-                ThemeRow(
-                    theme = theme,
-                    active = state.effectiveThemeActive(theme),
-                    infoStyle = infoStyle,
-                    strings = strings,
-                    onSelect = { onEvent(SettingsEvent.SelectTheme(theme.id)) },
-                    onRemove = { onEvent(SettingsEvent.RemoveTheme(theme.id)) }
-                )
+    SettingsGroup("themes.color", strings) {
+        SettingRow("themes.colorTheme") {
+            Text(
+                text = tStrings.colorThemeDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                state.themes.forEach { theme ->
+                    ThemeRow(
+                        theme = theme,
+                        active = state.effectiveThemeActive(theme),
+                        infoStyle = infoStyle,
+                        strings = strings,
+                        onSelect = { onEvent(SettingsEvent.SelectTheme(theme.id)) },
+                        onRemove = { onEvent(SettingsEvent.RemoveTheme(theme.id)) }
+                    )
+                }
             }
         }
     }
 
-    SettingsSection(tStrings.chromeHeader) {
-        CheckboxRow(
-            text = tStrings.ambientGlowLabel,
-            checked = state.appSettings.ambientGlowEnabled,
-            onCheckedChange = { onEvent(SettingsEvent.UpdateAmbientGlowEnabled(it)) }
-        )
-        Text(
-            text = tStrings.ambientGlowDesc,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info,
-            modifier = Modifier.padding(start = DependentIndent)
-        )
+    SettingsGroup("themes.chrome", strings) {
+        SettingRow("themes.ambientGlow") {
+            CheckboxRow(
+                text = tStrings.ambientGlowLabel,
+                checked = state.appSettings.ambientGlowEnabled,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateAmbientGlowEnabled(it)) }
+            )
+            Text(
+                text = tStrings.ambientGlowDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
+        }
     }
 
-    SettingsSection(tStrings.themesDirHeader) {
+    SettingsGroup("themes.dir", strings) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -83,12 +87,14 @@ internal fun ThemesSection(
                 Text(tStrings.reloadAction)
             }
         }
-        ReadOnlyPathField(
-            label = tStrings.themesDirLabel,
-            path = state.themesDir,
-            description = tStrings.themesDirDesc,
-            infoStyle = infoStyle
-        )
+        SettingRow("themes.dir") {
+            ReadOnlyPathField(
+                label = tStrings.themesDirLabel,
+                path = state.themesDir,
+                description = tStrings.themesDirDesc,
+                infoStyle = infoStyle
+            )
+        }
     }
 }
 

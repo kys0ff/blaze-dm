@@ -39,70 +39,76 @@ internal fun LogsSection(
     val lStrings = strings.settings.logging
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-    SettingsSection(lStrings.header) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(text = lStrings.levelLabel)
-            val levelOptions = listOf(
-                LogLevel.OFF to lStrings.offOption,
-                LogLevel.ERROR to lStrings.errorOption,
-                LogLevel.WARN to lStrings.warnOption,
-                LogLevel.INFO to lStrings.infoOption,
-                LogLevel.DEBUG to lStrings.debugOption,
-                LogLevel.TRACE to lStrings.traceOption
-            )
-            levelOptions.forEach { (level, label) ->
-                RadioButtonRow(
-                    text = label,
-                    selected = state.settings.logLevel == level,
-                    onClick = { onEvent(SettingsEvent.UpdateLogLevel(level)) },
-                    modifier = Modifier.fillMaxWidth()
+    SettingsGroup("logging.main", strings) {
+        SettingRow("logs.level") {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(text = lStrings.levelLabel)
+                val levelOptions = listOf(
+                    LogLevel.OFF to lStrings.offOption,
+                    LogLevel.ERROR to lStrings.errorOption,
+                    LogLevel.WARN to lStrings.warnOption,
+                    LogLevel.INFO to lStrings.infoOption,
+                    LogLevel.DEBUG to lStrings.debugOption,
+                    LogLevel.TRACE to lStrings.traceOption
+                )
+                levelOptions.forEach { (level, label) ->
+                    RadioButtonRow(
+                        text = label,
+                        selected = state.settings.logLevel == level,
+                        onClick = { onEvent(SettingsEvent.UpdateLogLevel(level)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Text(
+                    text = lStrings.levelDesc,
+                    style = infoStyle,
+                    color = JewelTheme.globalColors.text.info
                 )
             }
-            Text(
-                text = lStrings.levelDesc,
-                style = infoStyle,
-                color = JewelTheme.globalColors.text.info
-            )
         }
 
-        CheckboxRow(
-            text = lStrings.fileLoggingLabel,
-            checked = state.settings.fileLoggingEnabled,
-            onCheckedChange = { onEvent(SettingsEvent.UpdateFileLoggingEnabled(it)) }
-        )
-        Text(
-            text = lStrings.fileLoggingDesc,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info,
-            modifier = Modifier.padding(start = DependentIndent)
-        )
+        SettingRow("logs.fileLogging") {
+            CheckboxRow(
+                text = lStrings.fileLoggingLabel,
+                checked = state.settings.fileLoggingEnabled,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateFileLoggingEnabled(it)) }
+            )
+            Text(
+                text = lStrings.fileLoggingDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
+        }
     }
 
-    SettingsSection(lStrings.filesHeader) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(text = lStrings.logDirLabel)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Same read-only path field pattern as the download dir.
-                TextField(
-                    value = TextFieldValue(logConfigurator.logDir.toString()),
-                    onValueChange = {},
-                    enabled = false,
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedButton(
-                    onClick = { openInFileManager(logConfigurator.logDir) }
+    SettingsGroup("logging.files", strings) {
+        SettingRow("logs.dir") {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(text = lStrings.logDirLabel)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(lStrings.openFolderAction)
+                    // Same read-only path field pattern as the download dir.
+                    TextField(
+                        value = TextFieldValue(logConfigurator.logDir.toString()),
+                        onValueChange = {},
+                        enabled = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedButton(
+                        onClick = { openInFileManager(logConfigurator.logDir) }
+                    ) {
+                        Text(lStrings.openFolderAction)
+                    }
                 }
+                Text(
+                    text = lStrings.logDirDesc,
+                    style = infoStyle,
+                    color = JewelTheme.globalColors.text.info
+                )
             }
-            Text(
-                text = lStrings.logDirDesc,
-                style = infoStyle,
-                color = JewelTheme.globalColors.text.info
-            )
         }
     }
 }

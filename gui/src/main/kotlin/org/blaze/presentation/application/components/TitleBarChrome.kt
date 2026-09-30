@@ -29,7 +29,6 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.BlazeIcons
-import org.blaze.presentation.components.BlazeKeymap
 import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.CurrentUiPlatform
 import org.blaze.presentation.components.LocalShortcutLabels
@@ -38,6 +37,7 @@ import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.components.UiPlatform
 import org.blaze.presentation.components.rememberMenuAnchor
 import org.blaze.presentation.components.trackingModifier
+import org.blaze.presentation.search.AppActions
 import org.blaze.presentation.theme.BlazeColors
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
@@ -55,15 +55,14 @@ import org.koin.compose.koinInject
 @Composable
 fun HamburgerMenuButton(commandBus: AppCommandBus) {
     if (CurrentUiPlatform == UiPlatform.macOS) return
-    val menu = blazeStrings.menu
-    val selection = blazeStrings.downloads.selection
+    val strings = blazeStrings
     var expanded by remember { mutableStateOf(false) }
     val anchor = rememberMenuAnchor()
 
     Box(modifier = anchor.trackingModifier) {
         ToolbarIconButton(
             key = AllIconsKeys.General.Menu,
-            tooltip = menu.mainMenu,
+            tooltip = strings.menu.mainMenu,
             onClick = { expanded = !expanded },
         )
         if (expanded) {
@@ -71,81 +70,26 @@ fun HamburgerMenuButton(commandBus: AppCommandBus) {
             // painted over the panel color; it is now the same BlazeMenu the row context menu uses, so
             // it takes its radius, border, shadow, row height, hover and text colors from the theme's
             // menu tokens like every other popup, and submenus behave the same everywhere.
+            //
+            // The entries are generated from [AppActions] — the very registry Search Everywhere's Actions
+            // tab reads — so a command can never show in one and be missing from the other, and every row
+            // just re-raises its [AppCommand] on the shared bus (a menu click and a search activation now
+            // take the identical path).
             BlazeMenu(
                 entries = buildList {
-                    add(
-                        MenuEntry.Action(
-                            label = menu.newDownload,
-                            icon = AllIconsKeys.General.Add,
-                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.NewDownload),
-                            onClick = { commandBus.send(AppCommand.NewDownload) },
-                        ),
-                    )
-                    add(
-                        MenuEntry.Action(
-                            label = menu.search,
-                            icon = AllIconsKeys.Actions.Find,
-                            // The in-list search field, which is what Ctrl/Cmd+F really does from here;
-                            // the Search Everywhere popup gets its own entry (and its own chord) in step B.
-                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.FocusListSearch),
-                            onClick = { commandBus.send(AppCommand.FocusSearch) },
-                        ),
-                    )
-                    add(
-                        MenuEntry.Action(
-                            label = menu.settings,
-                            icon = AllIconsKeys.General.Settings,
-                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.OpenSettings),
-                            onClick = { commandBus.send(AppCommand.OpenSettings) },
-                        ),
-                    )
-                    add(MenuEntry.Separator)
-                    add(
-                        MenuEntry.Action(
-                            label = menu.pauseAll,
-                            icon = AllIconsKeys.Actions.Pause,
-                            onClick = { commandBus.send(AppCommand.PauseAll) },
-                        ),
-                    )
-                    add(
-                        MenuEntry.Action(
-                            label = menu.resumeAll,
-                            icon = AllIconsKeys.Actions.Resume,
-                            onClick = { commandBus.send(AppCommand.ResumeAll) },
-                        ),
-                    )
-                    add(
-                        MenuEntry.Action(
-                            label = selection.selectAll,
-                            icon = AllIconsKeys.Actions.Selectall,
-                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.SelectAll),
-                            onClick = { commandBus.send(AppCommand.SelectAll) },
-                        ),
-                    )
-                    add(MenuEntry.Separator)
-                    add(
-                        MenuEntry.Action(
-                            label = menu.toggleDetails,
-                            icon = AllIconsKeys.General.ShowInfos,
-                            accelerator = BlazeKeymap.displayValue(BlazeKeymap.Action.ToggleDetails),
-                            onClick = { commandBus.send(AppCommand.ToggleDetails) },
-                        ),
-                    )
-                    add(
-                        MenuEntry.Action(
-                            label = menu.about,
-                            icon = AllIconsKeys.General.ShowInfos,
-                            onClick = { commandBus.send(AppCommand.ShowAbout) },
-                        ),
-                    )
-                    add(MenuEntry.Separator)
-                    add(
-                        MenuEntry.Action(
-                            label = menu.exit,
-                            icon = AllIconsKeys.General.Close,
-                            onClick = { commandBus.send(AppCommand.Exit) },
-                        ),
-                    )
+                    var lastGroup: Int? = null
+                    for (action in AppActions.all) {
+                        if (lastGroup != null && action.group != lastGroup) add(MenuEntry.Separator)
+                        lastGroup = action.group
+                        add(
+                            MenuEntry.Action(
+                                label = action.label(strings),
+                                icon = action.icon,
+                                accelerator = AppActions.accelerator(action),
+                                onClick = { commandBus.send(action.command) },
+                            ),
+                        )
+                    }
                 },
                 anchor = anchor,
                 onDismissRequest = { expanded = false },
@@ -247,9 +191,9 @@ fun TitleBarTrailingIcons(commandBus: AppCommandBus) {
     ) {
         ToolbarIconButton(
             key = AllIconsKeys.Actions.Find,
-            tooltip = menu.search,
-            shortcut = shortcuts.search,
-            onClick = { commandBus.send(AppCommand.FocusSearch) },
+            tooltip = menu.searchEverywhere,
+            shortcut = shortcuts.quickSearch,
+            onClick = { commandBus.send(AppCommand.SearchEverywhere) },
         )
     }
 }

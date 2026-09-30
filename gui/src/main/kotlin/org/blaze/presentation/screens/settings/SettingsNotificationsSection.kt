@@ -42,52 +42,62 @@ internal fun NotificationsSection(
 
     val enabled = state.appSettings.desktopNotificationsEnabled
 
-    SettingsSection(nStrings.header) {
-        CheckboxRow(
-            text = nStrings.enabledLabel,
-            checked = enabled,
-            onCheckedChange = { onEvent(SettingsEvent.UpdateDesktopNotificationsEnabled(it)) }
-        )
-        Text(
-            text = nStrings.enabledDesc,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info,
-            modifier = Modifier.padding(start = DependentIndent)
-        )
+    SettingsGroup("notifications.main", strings) {
+        SettingRow("notifications.enabled") {
+            CheckboxRow(
+                text = nStrings.enabledLabel,
+                checked = enabled,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateDesktopNotificationsEnabled(it)) }
+            )
+            Text(
+                text = nStrings.enabledDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
+        }
         // Dependent options: which events count only matters while notifications are on.
         if (enabled) {
             Column(modifier = Modifier.padding(start = DependentIndent)) {
-                CheckboxRow(
-                    text = nStrings.completedLabel,
-                    checked = state.appSettings.notifyOnCompleted,
-                    onCheckedChange = { onEvent(SettingsEvent.UpdateNotifyOnCompleted(it)) }
-                )
-                CheckboxRow(
-                    text = nStrings.failedLabel,
-                    checked = state.appSettings.notifyOnFailed,
-                    onCheckedChange = { onEvent(SettingsEvent.UpdateNotifyOnFailed(it)) }
-                )
-                CheckboxRow(
-                    text = nStrings.restartedLabel,
-                    checked = state.appSettings.notifyOnRestarted,
-                    onCheckedChange = { onEvent(SettingsEvent.UpdateNotifyOnRestarted(it)) }
-                )
+                SettingRow("notifications.completed") {
+                    CheckboxRow(
+                        text = nStrings.completedLabel,
+                        checked = state.appSettings.notifyOnCompleted,
+                        onCheckedChange = { onEvent(SettingsEvent.UpdateNotifyOnCompleted(it)) }
+                    )
+                }
+                SettingRow("notifications.failed") {
+                    CheckboxRow(
+                        text = nStrings.failedLabel,
+                        checked = state.appSettings.notifyOnFailed,
+                        onCheckedChange = { onEvent(SettingsEvent.UpdateNotifyOnFailed(it)) }
+                    )
+                }
+                SettingRow("notifications.restarted") {
+                    CheckboxRow(
+                        text = nStrings.restartedLabel,
+                        checked = state.appSettings.notifyOnRestarted,
+                        onCheckedChange = { onEvent(SettingsEvent.UpdateNotifyOnRestarted(it)) }
+                    )
+                }
             }
         }
     }
 
-    SettingsSection(nStrings.attentionHeader) {
-        CheckboxRow(
-            text = nStrings.whileInSightLabel,
-            checked = state.appSettings.notifyWhileWindowInSight,
-            enabled = enabled,
-            onCheckedChange = { onEvent(SettingsEvent.UpdateNotifyWhileInSight(it)) }
-        )
-        Text(
-            text = nStrings.whileInSightDesc,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info,
-            modifier = Modifier.padding(start = DependentIndent)
-        )
+    SettingsGroup("notifications.attention", strings) {
+        SettingRow("notifications.whileInSight") {
+            CheckboxRow(
+                text = nStrings.whileInSightLabel,
+                checked = state.appSettings.notifyWhileWindowInSight,
+                enabled = enabled,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateNotifyWhileInSight(it)) }
+            )
+            Text(
+                text = nStrings.whileInSightDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
+        }
     }
 }

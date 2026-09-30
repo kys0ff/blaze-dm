@@ -67,7 +67,7 @@ dependencies {
     // Compose UI tests deliver real pointer and key events to an offscreen scene, which is the only
     // way to reproduce (and then pin) the submenu hover trap: it is an interaction bug, invisible to
     // any test that only calls the state machine directly.
-    testImplementation(compose.desktop.uiTestJUnit4)
+    testImplementation(compose.desktop.uiTestJUnit4) // TODO: 'val uiTestJUnit4: String' is deprecated.
 }
 
 repositories {
@@ -208,6 +208,34 @@ val blazeCleanup = tasks.register<JavaExec>("blazeCleanup") {
     (project.findProperty("blazeHome") as String?)?.let {
         systemProperty("user.home", it)
     }
+}
+
+/**
+ * `./gradlew :gui:uiProbe -Pprobe="click 1234 56"` drives the *real* window through java.awt.Robot
+ * (move / click / keys / screen capture) against the live display, with no test hooks in the app. It
+ * exists because the Jewel `DecoratedWindow` title bar - and the native popup surfaces menus open in
+ * - are never part of a Compose test scene, so title-bar behavior can only be verified on screen.
+ *
+ * The app must already be running (`:gui:run`). `-Pprobe="shot file.png"` captures the whole screen.
+ */
+val uiProbe = tasks.register<JavaExec>("uiProbe") {
+    group = "blaze"
+    description = "Drive and screenshot the real Blaze window (Robot on the live display)."
+    dependsOn("classes")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.blaze.tools.RealWindowDriverKt")
+    workingDir = rootDir
+    args(
+        ((project.findProperty("probe") as String?) ?: "cursor")
+            .split(" ").filter { it.isNotBlank() },
+    )
+
+    javaLauncher.set(
+        project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(25))
+            vendor.set(JvmVendorSpec.JETBRAINS)
+        }
+    )
 }
 
 /**

@@ -24,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -42,6 +44,7 @@ import org.jetbrains.jewel.ui.Outline
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
 import org.jetbrains.jewel.ui.theme.simpleListItemStyle
+import org.jetbrains.jewel.ui.typography
 
 /** Settings content is indented to line up with the label of a checkbox/radio (icon + gap). */
 internal val DependentIndent = 27.dp
@@ -114,6 +117,7 @@ internal fun SettingsNavItem(
     isSelected: Boolean,
     hasError: Boolean,
     query: String = "",
+    matchCount: Int = 0,
     onClick: () -> Unit
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -141,7 +145,8 @@ internal fun SettingsNavItem(
                 .background(background)
                 .hoverable(interaction)
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-                .padding(start = 8.dp, end = 10.dp),
+                .padding(start = 8.dp, end = 10.dp)
+                .semantics { testTag = "settings_nav_$label" },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -152,6 +157,15 @@ internal fun SettingsNavItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            // A count badge appears only while a search is active, so a pruned list still shows how many
+            // options each surviving page holds.
+            if (matchCount > 0) {
+                Text(
+                    text = matchCount.toString(),
+                    style = JewelTheme.typography.small,
+                    color = JewelTheme.globalColors.text.info,
+                )
+            }
             if (hasError) {
                 Box(
                     modifier = Modifier

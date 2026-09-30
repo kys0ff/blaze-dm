@@ -9,6 +9,8 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import org.blaze.presentation.components.BlazeKeymap.displayValue
+import org.blaze.presentation.components.BlazeKeymap.matches
 
 /**
  * The app's one keymap: what an action is bound to, how that binding is recognised, and how it reads
@@ -51,6 +53,7 @@ object BlazeKeymap {
         /** Menu rows with no real binding. They show no accelerator rather than an imaginary one. */
         None(null);
 
+        // TODO: make use of hasBinding
         val hasBinding: Boolean get() = binding != null
     }
 

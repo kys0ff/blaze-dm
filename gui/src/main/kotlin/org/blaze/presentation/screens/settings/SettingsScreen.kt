@@ -1,6 +1,7 @@
 package org.blaze.presentation.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,9 +26,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
+import kotlinx.coroutines.delay
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.logging.LogConfigurator
@@ -38,6 +48,8 @@ import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.screens.settings.state.SettingsState
+import org.blaze.presentation.search.SearchController
+import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -50,6 +62,7 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 import org.koin.compose.koinInject
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * How the hosted Settings content closes its own window. The content never learns what hosts it - the
@@ -91,6 +104,18 @@ class SettingsScreen : Screen {
         // Apply only makes sense when there is something uncommitted to write.
         val canApply = state.isDirty && !hasError
 
+        // The live Settings search, lifted to the whole screen so the sidebar (which prunes pages) and the
+        // content pane (which hides rows through [SettingRow]) read one query. Empty means "no filtering".
+        var query by remember { mutableStateOf("") }
+        val filter = SettingsFilter(query)
+        // The page showing before the user started searching, restored the instant the query is cleared.
+        var categoryBeforeSearch by remember { mutableStateOf<SettingsCategory?>(null) }
+        // The row Search Everywhere asked us to jump to, painted with a flash while this is non-null.
+        val searchController = koinInject<SearchController>()
+        var flashId by remember { mutableStateOf<String?>(null) }
+
+        val categories = settingsNavCategories(strings)
+
         // All categories share one scroll state, so start each one at the top.
         LaunchedEffect(state.currentCategory) { scrollState.scrollTo(0) }
 
@@ -104,6 +129,47 @@ class SettingsScreen : Screen {
             }
         }
 
+        // Jump-and-flash: when a Search Everywhere result opened Settings for a specific option, select its
+        // page and flash the row, then clear the request so it fires only once.
+        LaunchedEffect(Unit) {
+            val target = searchController.pendingSettingFocus
+            if (target != null) {
+                SettingsRegistry.find(target)?.let { option ->
+                    onEvent(SettingsEvent.ChangeCategory(option.category))
+                    flashId = target
+                }
+                searchController.pendingSettingFocus = null
+            }
+        }
+        LaunchedEffect(flashId) {
+            if (flashId != null) {
+                delay(FLASH_MS.milliseconds)
+                flashId = null
+            }
+        }
+
+        // Prune-to-first / restore-on-clear, the IDE's behavior: a query that leaves the current page with
+        // no matches jumps to the first page that has one; clearing returns to the page the user was on.
+        LaunchedEffect(query) {
+            if (query.isNotBlank()) {
+                if (categoryBeforeSearch == null) categoryBeforeSearch = state.currentCategory
+                val matchingPages = categories.map { it.first }
+                    .filter { SettingsRegistry.categoryMatches(it, query, strings) }
+                if (matchingPages.isNotEmpty() && state.currentCategory !in matchingPages) {
+                    onEvent(SettingsEvent.ChangeCategory(matchingPages.first()))
+                }
+            } else {
+                val restore = categoryBeforeSearch
+                categoryBeforeSearch = null
+                if (restore != null && restore != state.currentCategory) {
+                    onEvent(SettingsEvent.ChangeCategory(restore))
+                }
+            }
+        }
+
+        val anyMatch = query.isBlank() ||
+            categories.any { SettingsRegistry.categoryMatches(it.first, query, strings) }
+
         // The IDE's Settings dialog is one uniform surface, and now that Settings is a real window
         // its client area *is* that surface: the category list, the section and the footer already
         // paint the island color, so the root has to paint it too. A rounded Island wrapper would
@@ -111,44 +177,68 @@ class SettingsScreen : Screen {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(BlazeIslandColors.island),
+                .background(BlazeIslandColors.island)
+                .onPreviewKeyEvent { event ->
+                    // Escape clears an active query first and only closes the window on the second press.
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                        if (query.isNotBlank()) {
+                            query = ""
+                        } else {
+                            onDismiss()
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                },
         ) {
-            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                SettingsSidebar(
-                    selected = state.currentCategory,
-                    hasDownloadsError = hasError,
-                    strings = strings,
-                    onSelect = { onEvent(SettingsEvent.ChangeCategory(it)) }
-                )
+            CompositionLocalProvider(
+                LocalSettingsFilter provides filter,
+                LocalSettingsFlashId provides flashId,
+            ) {
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    SettingsSidebar(
+                        selected = state.currentCategory,
+                        hasDownloadsError = hasError,
+                        strings = strings,
+                        query = query,
+                        onQueryChange = { query = it },
+                        onSelect = { onEvent(SettingsEvent.ChangeCategory(it)) }
+                    )
 
-                Divider(Orientation.Vertical, Modifier.fillMaxHeight())
+                    Divider(Orientation.Vertical, Modifier.fillMaxHeight())
 
-                // Content. verticalScroll must come before padding, otherwise content is
-                // clipped 24dp inside the panel edge instead of at the edge.
-                VerticallyScrollableContainer(
-                    scrollState,
-                    modifier = Modifier.weight(1f).fillMaxHeight()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(scrollState)
-                            .padding(24.dp)
+                    // Content. verticalScroll must come before padding, otherwise content is
+                    // clipped 24dp inside the panel edge instead of at the edge.
+                    VerticallyScrollableContainer(
+                        scrollState,
+                        modifier = Modifier.weight(1f).fillMaxHeight()
                     ) {
                         Column(
-                            modifier = Modifier.widthIn(max = 640.dp),
-                            verticalArrangement = Arrangement.spacedBy(24.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(scrollState)
+                                .padding(24.dp)
                         ) {
-                            SettingsContent(
-                                state = state,
-                                strings = strings,
-                                onEvent = onEvent,
-                                resolverRegistry = resolverRegistry,
-                                logConfigurator = logConfigurator,
-                                onBrowseDownloadDir = { showDirPicker = true },
-                                onInstallHandler = { showJarPicker = true },
-                                onInstallTheme = { showThemeJarPicker = true }
-                            )
+                            if (!anyMatch) {
+                                NothingFoundPanel(strings = strings, onClear = { query = "" })
+                            } else {
+                                Column(
+                                    modifier = Modifier.widthIn(max = 640.dp),
+                                    verticalArrangement = Arrangement.spacedBy(24.dp)
+                                ) {
+                                    SettingsContent(
+                                        state = state,
+                                        strings = strings,
+                                        onEvent = onEvent,
+                                        resolverRegistry = resolverRegistry,
+                                        logConfigurator = logConfigurator,
+                                        onBrowseDownloadDir = { showDirPicker = true },
+                                        onInstallHandler = { showJarPicker = true },
+                                        onInstallTheme = { showThemeJarPicker = true }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -211,17 +301,13 @@ class SettingsScreen : Screen {
 // ---------------------------------------------------------------------------
 
 /**
- * Left-hand category list, led by a search box; the Downloads entry shows an error dot when a field
- * is invalid.
+ * Left-hand category list, led by a search box; the Downloads entry shows an error dot when a field is
+ * invalid, and every surviving entry carries a count badge while a search is active.
  *
- * The IDE's Settings dialog opens with a field that prunes its tree. The category list here is flat and
- * tiny, so the same behavior costs one `filter` — typing keeps the rows whose label contains the query
- * and [SettingsNavItem] tints the matched run. The query is view state, deliberately not in the screen
- * model: nothing outside this sidebar reads it.
- *
- * The sidebar and [SettingsButtonBar] are `internal` (not private) so the headless screenshot harness
- * can render the screen's chrome skeleton — surface color, nav metrics, footer order — without wiring
- * the screen model up.
+ * The IDE's Settings dialog prunes its tree by *option*, not by page title: typing "proxy" must keep
+ * Downloads visible because an option inside it matches, even though the word "Downloads" has no "proxy"
+ * in it. So the filter is [SettingsRegistry.categoryMatches] over the very same registry the content pane
+ * hides rows with — the sidebar and the section can never disagree about what a query matches.
  */
 @OptIn(ExperimentalJewelApi::class)
 @Composable
@@ -229,10 +315,10 @@ internal fun SettingsSidebar(
     selected: SettingsCategory,
     hasDownloadsError: Boolean,
     strings: BlazeStrings,
+    query: String,
+    onQueryChange: (String) -> Unit,
     onSelect: (SettingsCategory) -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
-
     Column(
         modifier = Modifier
             .width(BlazeLayout.SettingsNavWidth)
@@ -245,43 +331,64 @@ internal fun SettingsSidebar(
             query = query,
             placeholder = strings.settings.searchPlaceholder,
             clearDescription = strings.settings.clearSearch,
-            onQueryChange = { query = it },
+            onQueryChange = onQueryChange,
             fieldWidth = BlazeLayout.SettingsNavWidth,
         )
         Spacer(Modifier.height(6.dp))
 
-        val categories = listOf(
-            SettingsCategory.GENERAL to strings.settings.generalCategory,
-            SettingsCategory.DOWNLOADS to strings.settings.downloadsCategory,
-            SettingsCategory.FILES to strings.settings.filesCategory,
-            SettingsCategory.EXTENSIONS to strings.settings.handlers.category,
-            SettingsCategory.THEMES to strings.settings.themes.category,
-            SettingsCategory.NOTIFICATIONS to strings.settings.notifications.category,
-            SettingsCategory.LOGS to strings.settings.logsCategory
-        )
-        val matching = categories.filter { (_, label) ->
-            query.isBlank() || label.contains(query, ignoreCase = true)
+        val visible = settingsNavCategories(strings).filter { (category, _) ->
+            query.isBlank() || SettingsRegistry.categoryMatches(category, query, strings)
         }
 
-        if (matching.isEmpty()) {
-            Text(
-                text = strings.settings.searchNoMatches,
-                color = JewelTheme.globalColors.text.info,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
-            )
-        }
-
-        matching.forEach { (category, label) ->
+        visible.forEach { (category, label) ->
             SettingsNavItem(
                 label = label,
                 isSelected = selected == category,
                 hasError = category == SettingsCategory.DOWNLOADS && hasDownloadsError,
                 query = query,
+                matchCount = SettingsRegistry.matchCount(category, query, strings),
                 onClick = { onSelect(category) }
             )
         }
     }
 }
+
+/** The category list in sidebar order, each paired with its localized page label. */
+private fun settingsNavCategories(strings: BlazeStrings): List<Pair<SettingsCategory, String>> = listOf(
+    SettingsCategory.GENERAL to strings.settings.generalCategory,
+    SettingsCategory.DOWNLOADS to strings.settings.downloadsCategory,
+    SettingsCategory.FILES to strings.settings.filesCategory,
+    SettingsCategory.EXTENSIONS to strings.settings.handlers.category,
+    SettingsCategory.THEMES to strings.settings.themes.category,
+    SettingsCategory.NOTIFICATIONS to strings.settings.notifications.category,
+    SettingsCategory.LOGS to strings.settings.logsCategory
+)
+
+/** The content pane's empty state when a query matches no option anywhere, with a clear-search link. */
+@Composable
+private fun NothingFoundPanel(strings: BlazeStrings, onClear: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = strings.settings.searchNoMatches,
+            color = JewelTheme.globalColors.text.info,
+        )
+        Text(
+            text = strings.settings.clearSearch,
+            color = BlazeColors.accent,
+            modifier = Modifier
+                .clickable(onClick = onClear)
+                .semantics { testTag = "settings_clear_search" }
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+    }
+}
+
+/** How long a jump-from-Search-Everywhere keeps the target row flashed. */
+private const val FLASH_MS = 1400L
 
 /** Dispatches to the section composables for the currently selected category. */
 @Composable

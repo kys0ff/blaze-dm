@@ -23,6 +23,10 @@ import org.jetbrains.jewel.ui.component.Text
  * startup/queue behavior. Each option only appears when the environment can actually honour it —
  * the same rule the rest of the shell follows (no tray on a desktop without one, no autostart on
  * an OS we cannot register with).
+ *
+ * Every registered preference is wrapped in a [SettingRow] keyed to its [SettingsRegistry] id, so the
+ * search index and this screen are the same source: a row shown here is searchable, and a row the search
+ * offers is guaranteed to exist here.
  */
 @OptIn(ExperimentalJewelApi::class)
 @Composable
@@ -33,56 +37,62 @@ internal fun GeneralSection(
 ) {
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-    SettingsSection(strings.settings.appearanceHeader) {
+    SettingsGroup("appearance", strings) {
         // Language names are endonyms (English, العربية), so this row reads correctly in every
         // locale and needs no translation table of its own.
-        Text(text = strings.settings.languageLabel)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            BlazeLocale.entries.forEach { locale ->
-                RadioButtonRow(
-                    text = locale.displayName,
-                    selected = state.appSettings.languageCode == locale.code,
-                    onClick = { onEvent(SettingsEvent.UpdateLanguage(locale.code)) },
-                    modifier = Modifier.fillMaxWidth()
-                )
+        SettingRow("general.language") {
+            Text(text = strings.settings.languageLabel)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                BlazeLocale.entries.forEach { locale ->
+                    RadioButtonRow(
+                        text = locale.displayName,
+                        selected = state.appSettings.languageCode == locale.code,
+                        onClick = { onEvent(SettingsEvent.UpdateLanguage(locale.code)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
 
-        Text(text = strings.settings.themeLabel)
-        val themeOptions = listOf(
-            ThemeMode.SYSTEM to strings.settings.themeSystemOption,
-            ThemeMode.LIGHT to strings.settings.themeLightOption,
-            ThemeMode.DARK to strings.settings.themeDarkOption
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            themeOptions.forEach { (mode, label) ->
-                RadioButtonRow(
-                    text = label,
-                    selected = state.settings.themeMode == mode,
-                    onClick = { onEvent(SettingsEvent.UpdateThemeMode(mode)) },
-                    modifier = Modifier.fillMaxWidth()
-                )
+        SettingRow("general.theme") {
+            Text(text = strings.settings.themeLabel)
+            val themeOptions = listOf(
+                ThemeMode.SYSTEM to strings.settings.themeSystemOption,
+                ThemeMode.LIGHT to strings.settings.themeLightOption,
+                ThemeMode.DARK to strings.settings.themeDarkOption
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                themeOptions.forEach { (mode, label) ->
+                    RadioButtonRow(
+                        text = label,
+                        selected = state.settings.themeMode == mode,
+                        onClick = { onEvent(SettingsEvent.UpdateThemeMode(mode)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }
 
-    SettingsSection(strings.settings.systemIntegrationHeader) {
+    SettingsGroup("systemIntegration", strings) {
         val trayEnabled = state.appSettings.trayEnabled
         if (state.traySupported) {
-            CheckboxRow(
-                text = strings.settings.trayEnabledLabel,
-                checked = trayEnabled,
-                onCheckedChange = { onEvent(SettingsEvent.UpdateTrayEnabled(it)) }
-            )
-            Text(
-                text = strings.settings.trayEnabledDesc,
-                style = infoStyle,
-                color = JewelTheme.globalColors.text.info,
-                modifier = Modifier.padding(start = DependentIndent)
-            )
+            SettingRow("general.trayEnabled") {
+                CheckboxRow(
+                    text = strings.settings.trayEnabledLabel,
+                    checked = trayEnabled,
+                    onCheckedChange = { onEvent(SettingsEvent.UpdateTrayEnabled(it)) }
+                )
+                Text(
+                    text = strings.settings.trayEnabledDesc,
+                    style = infoStyle,
+                    color = JewelTheme.globalColors.text.info,
+                    modifier = Modifier.padding(start = DependentIndent)
+                )
+            }
             // Dependent option: shown only while the tray itself is on.
             if (trayEnabled) {
-                Column(modifier = Modifier.padding(start = DependentIndent)) {
+                SettingRow("general.minimizeToTray", modifier = Modifier.padding(start = DependentIndent)) {
                     CheckboxRow(
                         text = strings.settings.minimizeToTrayLabel,
                         checked = state.appSettings.minimizeToTrayOnClose,
@@ -92,43 +102,51 @@ internal fun GeneralSection(
             }
         }
         if (state.autoStartSupported) {
+            SettingRow("general.runAtStartup") {
+                CheckboxRow(
+                    text = strings.settings.runAtStartupLabel,
+                    checked = state.appSettings.runAtStartup,
+                    onCheckedChange = { onEvent(SettingsEvent.UpdateRunAtStartup(it)) }
+                )
+                Text(
+                    text = strings.settings.runAtStartupDesc,
+                    style = infoStyle,
+                    color = JewelTheme.globalColors.text.info,
+                    modifier = Modifier.padding(start = DependentIndent)
+                )
+            }
+        }
+        // Clipboard watching is pure client behavior, so it carries no platform gate: when the
+        // clipboard itself is unavailable the monitor quietly stays off (see AppClipboardMonitor).
+        SettingRow("general.clipboardMonitoring") {
             CheckboxRow(
-                text = strings.settings.runAtStartupLabel,
-                checked = state.appSettings.runAtStartup,
-                onCheckedChange = { onEvent(SettingsEvent.UpdateRunAtStartup(it)) }
+                text = strings.settings.clipboardMonitoringLabel,
+                checked = state.appSettings.clipboardMonitoringEnabled,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateClipboardMonitoring(it)) }
             )
             Text(
-                text = strings.settings.runAtStartupDesc,
+                text = strings.settings.clipboardMonitoringDesc,
                 style = infoStyle,
                 color = JewelTheme.globalColors.text.info,
                 modifier = Modifier.padding(start = DependentIndent)
             )
         }
-        // Clipboard watching is pure client behavior, so it carries no platform gate: when the
-        // clipboard itself is unavailable the monitor quietly stays off (see AppClipboardMonitor).
-        CheckboxRow(
-            text = strings.settings.clipboardMonitoringLabel,
-            checked = state.appSettings.clipboardMonitoringEnabled,
-            onCheckedChange = { onEvent(SettingsEvent.UpdateClipboardMonitoring(it)) }
-        )
-        Text(
-            text = strings.settings.clipboardMonitoringDesc,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info,
-            modifier = Modifier.padding(start = DependentIndent)
-        )
     }
 
-    SettingsSection(strings.settings.startupHeader) {
-        CheckboxRow(
-            text = strings.settings.resumeOnStartupLabel,
-            checked = state.settings.resumeDownloadsOnStartup,
-            onCheckedChange = { onEvent(SettingsEvent.UpdateResumeDownloadsOnStartup(it)) }
-        )
-        CheckboxRow(
-            text = strings.settings.startQueuedOnStartupLabel,
-            checked = state.settings.startQueuedOnStartup,
-            onCheckedChange = { onEvent(SettingsEvent.UpdateStartQueuedOnStartup(it)) }
-        )
+    SettingsGroup("startup", strings) {
+        SettingRow("general.resumeOnStartup") {
+            CheckboxRow(
+                text = strings.settings.resumeOnStartupLabel,
+                checked = state.settings.resumeDownloadsOnStartup,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateResumeDownloadsOnStartup(it)) }
+            )
+        }
+        SettingRow("general.startQueuedOnStartup") {
+            CheckboxRow(
+                text = strings.settings.startQueuedOnStartupLabel,
+                checked = state.settings.startQueuedOnStartup,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateStartQueuedOnStartup(it)) }
+            )
+        }
     }
 }

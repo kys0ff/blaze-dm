@@ -59,6 +59,7 @@ class MainScreen : Screen {
         val strings = blazeStrings
         val shortcuts = LocalShortcutLabels.current
         val commandBus = koinInject<AppCommandBus>()
+        val searchController = koinInject<org.blaze.presentation.search.SearchController>()
         var showAbout by remember { mutableStateOf(false) }
 
         // Live transfers surfaced in the status bar; QUEUED counts too so the popup shows the whole
@@ -186,6 +187,9 @@ class MainScreen : Screen {
                     running = running,
                     onPause = { id -> screenModel.onEvent(DownloadsEvent.Pause(id)) },
                     onCancel = { id -> screenModel.onEvent(DownloadsEvent.Cancel(id)) },
+                    // A row click routes through the very activator the downloads screen registers for
+                    // Search Everywhere, so "jump to this download" behaves identically from both places.
+                    onOpenDetails = { id -> searchController.activateDownload(id) },
                     onDismiss = { showTasks = false },
                 )
             }

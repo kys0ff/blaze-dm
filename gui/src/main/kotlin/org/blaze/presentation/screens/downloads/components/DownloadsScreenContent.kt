@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -114,10 +116,37 @@ fun DownloadsScreenContent(
                     addDialogSource = null
                     showAddDialog = true
                 }
-                org.blaze.presentation.application.AppCommand.FocusSearch ->
-                    if (state.downloads.isNotEmpty()) runCatching { searchFocusRequester.requestFocus() }
                 else -> Unit
             }
+        }
+    }
+
+    // Search Everywhere hands off to this screen, which alone owns the list state, the selection model
+    // and the Details pane. Two things are wired here: the controller keeps a live snapshot of the
+    // downloads to rank, and the screen registers the activator that turns a chosen result into "clear
+    // the filter, select the row, open its details and scroll it into view" — the exact behavior the
+    // popup promises and nothing above the screen can perform.
+    val searchController = koinInject<org.blaze.presentation.search.SearchController>()
+    var pendingSearchScrollId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.downloads) { searchController.submitDownloads(state.downloads) }
+    val activateFromSearch = rememberUpdatedState<(String) -> Unit> { id ->
+        onEvent(DownloadsEvent.SearchChanged(""))
+        onEvent(DownloadsEvent.SelectRow(id))
+        onEvent(DownloadsEvent.ToggleDetails(true))
+        pendingSearchScrollId = id
+    }
+    DisposableEffect(searchController) {
+        val previous = searchController.registerDownloadActivator { id -> activateFromSearch.value(id) }
+        onDispose { searchController.registerDownloadActivator(previous) }
+    }
+    // Scroll only once the cleared-filter list actually contains the row, so a selection made from a
+    // filtered view still lands on the right row after the filter drops.
+    LaunchedEffect(pendingSearchScrollId, state.filteredDownloads) {
+        val id = pendingSearchScrollId ?: return@LaunchedEffect
+        val index = state.filteredDownloads.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            listState.scrollToItem(index)
+            pendingSearchScrollId = null
         }
     }
 

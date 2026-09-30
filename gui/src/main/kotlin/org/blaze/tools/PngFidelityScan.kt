@@ -1,5 +1,7 @@
 package org.blaze.tools
 
+import org.blaze.tools.PngFidelityScan.lineWhitelist
+import org.blaze.tools.PngFidelityScan.mixedSurfaces
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
@@ -21,6 +23,7 @@ import kotlin.math.abs
  * of the band and is not a known token of that surface: the signature of one region painting itself
  * with another region's color.
  */
+// FIXME: Const property names should not contain lowercase letters
 internal object PngFidelityScan {
 
     /** Luma gap (0..255 scale) that makes a hairline "harsh" rather than a subtle grid line. */
@@ -58,6 +61,13 @@ internal object PngFidelityScan {
         "10-shell" to setOf("#393b40", "#2b2d31", "#35373b"),
         "13-shell-collapsed" to setOf("#393b40", "#2b2d31", "#35373b"),
         "11-settings-shell" to setOf("#393b40", "#2b2d31", "#35373b"),
+        // Search Everywhere: the island's own 1dp rim (#393b40) is chosen chrome, not a leak.
+        "14-search-all" to setOf("#393b40"),
+        "15-search-downloads" to setOf("#393b40"),
+        "16-search-actions" to setOf("#393b40"),
+        "17-search-settings" to setOf("#393b40"),
+        "18-search-type-to-search" to setOf("#393b40"),
+        "19-search-nothing-found" to setOf("#393b40"),
     )
 
     /**
@@ -135,7 +145,7 @@ internal object PngFidelityScan {
                 below != null &&
                 sameBand(above, below) &&
                 abs(luma[y] - colorLuma(above)) >= LineLumaDelta
-            if (hairline && sandwiched && above != null) {
+            if (hairline && sandwiched) {
                 val delta = abs(luma[y] - colorLuma(above))
                 if (delta >= LineLumaDelta && color !in allowed) {
                     issues += Issue(
@@ -154,7 +164,7 @@ internal object PngFidelityScan {
 
     private fun mixedSurfaces(
         image: BufferedImage,
-        shot: String,
+        shot: String, // TODO: make use of 'shot'
         fileName: String,
         width: Int,
         height: Int,
@@ -196,12 +206,14 @@ internal object PngFidelityScan {
                     }
                 }
                 val intruders = counts.entries
+                    .asSequence()
                     .filter { it.value.toFloat() / total >= SurfaceCoverage }
                     .filter { it.key != color }
                     .filter { (maxRun[it.key] ?: 0) >= MinFlatRunFraction * width }
                     .filter { abs(colorLuma(it.key) - colorLuma(color)) >= SurfaceLumaDelta }
                     .filter { it.key !in surfaceWhitelist }
                     .sortedByDescending { it.value }
+                    .toList()
                 if (intruders.isNotEmpty()) {
                     issues += Issue(
                         fileName,
