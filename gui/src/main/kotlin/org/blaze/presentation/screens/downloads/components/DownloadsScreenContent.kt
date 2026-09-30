@@ -57,7 +57,6 @@ import org.blaze.presentation.screens.downloads.percentDone
 import org.blaze.presentation.screens.downloads.resumeStartsOver
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
-import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.HorizontalSplitLayout
 import org.jetbrains.jewel.ui.component.SplitLayoutState
 import org.jetbrains.jewel.ui.component.VerticalSplitLayout

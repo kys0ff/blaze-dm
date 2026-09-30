@@ -76,7 +76,7 @@ fun themeBooleanOption(
     key: String,
     label: String,
     description: String? = null,
-    default: kotlin.Boolean = false,
+    default: Boolean = false,
 ) = ThemeOption(key, label, description, ThemeOptionType.Boolean, default.toString())
 
 fun themeIntegerOption(
@@ -180,7 +180,7 @@ data class ThemeConfig(
 ) {
     fun value(key: String, default: String): String = values[key] ?: default
 
-    fun booleanValue(key: String, default: kotlin.Boolean): kotlin.Boolean =
+    fun booleanValue(key: String, default: Boolean): Boolean =
         values[key]?.toBooleanStrictOrNull() ?: default
 
     /** The stored integer, clamped into [range]; [default] when absent or unparsable. */

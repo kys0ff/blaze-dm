@@ -6,7 +6,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import org.blaze.theming.api.IslandsDefaults
-import org.blaze.theming.api.IslandsPalette
 import org.blaze.theming.api.ThemePalette
 import org.blaze.theming.api.withFallback
 import org.jetbrains.jewel.foundation.DisabledAppearanceValues

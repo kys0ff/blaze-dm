@@ -1,6 +1,5 @@
 package org.blaze.presentation.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +21,7 @@ import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
 import org.jetbrains.jewel.ui.component.ListComboBox
+import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
 
@@ -88,22 +88,20 @@ fun ResolverOptionsDialog(
         }
 
         // Resetting rewrites every working value from the descriptors' declared defaults; the
-        // fields re-read them, so the controls snap back without needing their own keys.
-        Text(
-            text = restoreDefaultsLabel,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    descriptors.forEach { working[it.key] = it.defaultValue }
-                }
-        )
-
+        // fields re-read them, so the controls snap back without needing their own keys. It rides
+        // the leading slot of the action bar (the same home other dialogs use for secondary
+        // actions) so it reads as a real button, not a caption.
         IdeDialogActions(
             dismissText = cancelLabel,
             onDismiss = onDismiss,
             confirmText = okLabel,
+            leading = {
+                OutlinedButton(
+                    onClick = { descriptors.forEach { working[it.key] = it.defaultValue } }
+                ) {
+                    Text(restoreDefaultsLabel)
+                }
+            },
             onConfirm = {
                 onConfirm(
                     descriptors.associate { it.key to (working[it.key] ?: it.defaultValue) },

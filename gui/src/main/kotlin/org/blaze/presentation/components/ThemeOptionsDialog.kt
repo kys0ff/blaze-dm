@@ -2,7 +2,6 @@ package org.blaze.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +29,7 @@ import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
 import org.jetbrains.jewel.ui.component.ListComboBox
+import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
 
@@ -84,20 +84,20 @@ fun ThemeOptionsDialog(
         }
 
         // Resetting rewrites every working value from the descriptors' declared defaults; the fields
-        // re-read them, so the controls snap back without needing their own keys.
-        Text(
-            text = restoreDefaultsLabel,
-            style = infoStyle,
-            color = JewelTheme.globalColors.text.info,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { descriptors.forEach { working[it.key] = it.defaultValue } }
-        )
-
+        // re-read them, so the controls snap back without needing their own keys. It rides the
+        // leading slot of the action bar (the same home other dialogs use for secondary actions)
+        // so it reads as a real button, not a caption.
         IdeDialogActions(
             dismissText = cancelLabel,
             onDismiss = onDismiss,
             confirmText = okLabel,
+            leading = {
+                OutlinedButton(
+                    onClick = { descriptors.forEach { working[it.key] = it.defaultValue } }
+                ) {
+                    Text(restoreDefaultsLabel)
+                }
+            },
             onConfirm = {
                 onConfirm(descriptors.associate { it.key to (working[it.key] ?: it.defaultValue) })
             },
@@ -190,7 +190,7 @@ private fun ColorField(
             value = value,
             onValueChange = { raw ->
                 val keepHex = raw.filter { c -> c.isDigit() || c in 'a'..'f' || c in 'A'..'F' }
-                // Preserve a leading # / 0x marker so the swatch parser still recognises the format.
+                // Preserve a leading # / 0x marker so the swatch parser still recognizes the format.
                 val prefix = when {
                     raw.startsWith("#") -> "#"
                     raw.startsWith("0x") || raw.startsWith("0X") -> "0x"

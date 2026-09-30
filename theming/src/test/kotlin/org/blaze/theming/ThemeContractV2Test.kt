@@ -12,7 +12,6 @@ import org.blaze.theming.api.ThemePalette
 import org.blaze.theming.api.mergedWith
 import org.blaze.theming.api.themeAmbientIntensityOption
 import org.blaze.theming.api.themeColorOption
-import org.blaze.theming.api.withFallback
 import org.blaze.theming.core.ThemePluginLoader
 import org.blaze.theming.core.ThemeRegistry
 import org.blaze.theming.core.ThemeSettingsRepository
