@@ -183,6 +183,14 @@ object ArStrings : BlazeStrings {
             override val scheduleDelayLabel = "تأخير بدء التنزيل المجدول (دقائق):"
             override val scheduleDelayPlaceholder = "0 للبدء الفوري"
 
+            override val authSectionTitle = "المصادقة (اختياري)"
+            override val bearerTokenLabel = "رمز Bearer:"
+            override val bearerTokenPlaceholder = "يُرسل كـ \"Authorization: Bearer …\""
+            override val cookieLabel = "ملف تعريف الارتباط (Cookie):"
+            override val cookiePlaceholder = "name=value; name2=value2"
+            override val authHint =
+                "تُستخدم لهذا التنزيل فقط؛ لا تُحفظ ولا تُعرض مجددًا ولا تُكتب في السجل."
+
             override val pasteFromClipboard = "لصق من الحافظة"
             override val clearSource = "مسح"
             override val advancedOptions = "خيارات متقدمة"

@@ -55,9 +55,10 @@ fun AddDownloadDialog(
         totalSize: Long?,
         files: List<DownloadFile>?,
         scheduledAt: Long?,
-        priority: DownloadPriority
+        priority: DownloadPriority,
+        credentials: Map<String, String>,
     ) -> Unit,
-    onFetchMetadata: suspend (url: String) -> DownloadMetadata?,
+    onFetchMetadata: suspend (url: String, credentials: Map<String, String>) -> DownloadMetadata?,
     initialSource: String? = null
 ) {
     val settingsRepository = koinInject<EngineSettingsRepository>()
@@ -123,7 +124,7 @@ fun AddDownloadDialog(
             registry.resolve(handler, source)
                 .onSuccess { resolved ->
                     state.resolvedDirectUrl = resolved.directUrl
-                    val fetched = onFetchMetadata(resolved.directUrl)
+                    val fetched = onFetchMetadata(resolved.directUrl, state.credentials)
                     state.metadata = fetched ?: DownloadMetadata(
                         name = resolved.fileName
                             ?: source.substringAfterLast('/').substringBefore('?')
@@ -166,7 +167,7 @@ fun AddDownloadDialog(
     fun probeDirectly(source: String) {
         state.isFetching = true
         scope.launch {
-            val metadata = runCatching { onFetchMetadata(source) }
+            val metadata = runCatching { onFetchMetadata(source, state.credentials) }
             state.isFetching = false
             applyOutcome(source, metadata.getOrNull(), metadata.exceptionOrNull()?.message)
         }
@@ -185,7 +186,7 @@ fun AddDownloadDialog(
                     launch {
                         item.isFetching = true
                         try {
-                            item.metadata = onFetchMetadata(item.url)
+                            item.metadata = onFetchMetadata(item.url, state.credentials)
                             // A freshly resolved multi-file torrent starts fully selected; the
                             // submit step sends this set as the download's file indices.
                             item.selectedFileIndices =
@@ -263,7 +264,8 @@ fun AddDownloadDialog(
                     item.metadata?.totalSize,
                     item.metadata?.files,
                     scheduledAt,
-                    state.priority
+                    state.priority,
+                    state.credentials
                 )
             }
         } else {
@@ -276,7 +278,8 @@ fun AddDownloadDialog(
                 state.metadata?.totalSize,
                 state.metadata?.files,
                 scheduledAt,
-                state.priority
+                state.priority,
+                state.credentials
             )
         }
         onDismiss()
@@ -300,8 +303,9 @@ fun AddDownloadDialog(
     }
 
     // Focus stays on the source field (managed above), so the shell must not grab it.
-    BaseDialog(onDismiss = onDismiss, requestFocus = false) {
-        IdeDialogTitle(if (state.isBatch) dStrings.batchTitle else dStrings.addTitle)
+    val dialogTitle = if (state.isBatch) dStrings.batchTitle else dStrings.addTitle
+    BaseDialog(onDismiss = onDismiss, requestFocus = false, title = dialogTitle) {
+        IdeDialogTitle(dialogTitle)
 
         when {
             state.step == 1 -> AddDownloadInputView(

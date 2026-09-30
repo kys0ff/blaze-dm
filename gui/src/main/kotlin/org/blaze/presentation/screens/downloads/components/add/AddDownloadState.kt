@@ -23,6 +23,21 @@ class AddDownloadState(
     var showFolderPicker by mutableStateOf(false)
     var showFilePicker by mutableStateOf(false)
 
+    /**
+     * Ephemeral authentication material for an HTTP(S) source that needs a signed-in request: a
+     * bearer token and/or a raw Cookie header. These are folded into [credentials] and handed to the
+     * transfer only - the API keeps them out of the DTO, the database and the log - so they are
+     * deliberately not part of [resetMetadata] (a URL edit must not throw away what was typed).
+     */
+    var bearerToken by mutableStateOf(TextFieldValue(""))
+    var cookie by mutableStateOf(TextFieldValue(""))
+
+    /** The combined auth headers to send for this transfer; empty when nothing was entered. */
+    val credentials: Map<String, String> get() = buildMap {
+        bearerToken.text.trim().takeIf { it.isNotEmpty() }?.let { put("Authorization", "Bearer $it") }
+        cookie.text.trim().takeIf { it.isNotEmpty() }?.let { put("Cookie", it) }
+    }
+
     /** Scheduling importance for the download(s) about to be queued; seeded from the global default. */
     var priority by mutableStateOf(DownloadPriority.NORMAL)
 

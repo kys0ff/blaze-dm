@@ -49,6 +49,7 @@ fun BaseDialog(
     width: Dp = 460.dp,
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(12.dp),
     requestFocus: Boolean = true,
+    title: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -73,6 +74,7 @@ fun BaseDialog(
     DialogWindow(
         onCloseRequest = onDismiss,
         state = state,
+        title = title.orEmpty(),
         resizable = false,
     ) {
         Column(

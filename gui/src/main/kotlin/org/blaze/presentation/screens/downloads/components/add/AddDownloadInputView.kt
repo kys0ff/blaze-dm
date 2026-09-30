@@ -30,6 +30,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -231,6 +233,33 @@ fun AddDownloadInputView(
                     placeholder = { Text(dStrings.scheduleDelayPlaceholder) },
                     modifier = Modifier.fillMaxWidth().then(submitOnEnter)
                 )
+
+                // Authentication is an HTTP-only concern: a torrent or magnet gets its bytes from
+                // the swarm, not from a credentialed request, so the block is withheld there.
+                if (!isBatch && isHttpSource(state.url.text)) {
+                    Text(
+                        text = dStrings.authSectionTitle,
+                        style = JewelTheme.defaultTextStyle.copy(fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    Text(text = dStrings.bearerTokenLabel)
+                    TextField(
+                        value = state.bearerToken,
+                        onValueChange = { state.bearerToken = it },
+                        placeholder = { Text(dStrings.bearerTokenPlaceholder) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth().then(submitOnEnter)
+                    )
+                    Text(text = dStrings.cookieLabel)
+                    TextField(
+                        value = state.cookie,
+                        onValueChange = { state.cookie = it },
+                        placeholder = { Text(dStrings.cookiePlaceholder) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth().then(submitOnEnter)
+                    )
+                    FieldHint(dStrings.authHint, HintLevel.Info)
+                }
             }
         }
     }

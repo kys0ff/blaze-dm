@@ -7,7 +7,12 @@ import org.blaze.download.api.DownloadPriority
 interface DownloadRepository {
     val downloads: Flow<List<Download>>
 
-    suspend fun fetchMetadata(url: String): DownloadMetadata?
+    /**
+     * Probes a source for its metadata. [credentials] are ephemeral auth headers (a bearer token or
+     * Cookie) sent only for this probe so a sign-in-protected HTTP link can be inspected; they are
+     * never stored.
+     */
+    suspend fun fetchMetadata(url: String, credentials: Map<String, String> = emptyMap()): DownloadMetadata?
 
     suspend fun addDownload(
         url: String,
@@ -18,6 +23,8 @@ interface DownloadRepository {
         files: List<DownloadFile>? = null,
         scheduledAt: Long? = null,
         priority: DownloadPriority? = null,
+        /** Ephemeral auth headers for this transfer only; forwarded to the engine, never persisted. */
+        credentials: Map<String, String> = emptyMap(),
     )
     suspend fun getDestinationPath(url: String, savePath: String, name: String? = null): String
     suspend fun pauseDownload(id: String)

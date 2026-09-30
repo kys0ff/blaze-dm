@@ -52,8 +52,13 @@ class DownloadRepositoryImpl(
                 replay = 1,
             )
 
-    override suspend fun fetchMetadata(url: String): DownloadMetadata? {
-        val request = NewDownloadRequest(source = sourceOf(url), destination = TMP_DIR, filename = null)
+    override suspend fun fetchMetadata(url: String, credentials: Map<String, String>): DownloadMetadata? {
+        val request = NewDownloadRequest(
+            source = sourceOf(url),
+            destination = TMP_DIR,
+            filename = null,
+            credentials = credentials,
+        )
         return api.probe(request)?.let { meta ->
             DownloadMetadata(
                 name = meta.name,
@@ -75,6 +80,7 @@ class DownloadRepositoryImpl(
         files: List<DownloadFile>?,
         scheduledAt: Long?,
         priority: DownloadPriority?,
+        credentials: Map<String, String>,
     ) {
         val destinationDir = Path.of(savePath)
         withContext(Dispatchers.IO) {
@@ -91,6 +97,7 @@ class DownloadRepositoryImpl(
             files = files?.map { DownloadFileHint(path = it.name, size = it.size) },
             scheduledAtEpochMs = scheduledAt,
             priority = priority,
+            credentials = credentials,
         )
         api.create(request)
     }

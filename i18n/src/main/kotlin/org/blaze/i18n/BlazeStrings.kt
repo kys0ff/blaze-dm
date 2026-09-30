@@ -237,6 +237,21 @@ interface BlazeStrings {
             val scheduleDelayLabel: String
             val scheduleDelayPlaceholder: String
 
+            /**
+             * Heading of the optional authentication block in the add-download dialog. The material
+             * entered here is ephemeral: it is sent only for this transfer and is never persisted,
+             * echoed back or logged.
+             */
+            val authSectionTitle: String
+            /** Label for the bearer-token field. */
+            val bearerTokenLabel: String
+            val bearerTokenPlaceholder: String
+            /** Label for the raw Cookie header field. */
+            val cookieLabel: String
+            val cookiePlaceholder: String
+            /** Explains the lifetime/handling of the credentials just entered. */
+            val authHint: String
+
             /** Tooltip for the paste-from-clipboard action in the add-download source field. */
             val pasteFromClipboard: String
             /** Tooltip/link for clearing the add-download source field. */

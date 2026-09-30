@@ -13,7 +13,10 @@ class GetDownloadsUseCase(private val repository: DownloadRepository) {
 }
 
 class FetchMetadataUseCase(private val repository: DownloadRepository) {
-    suspend operator fun invoke(url: String): DownloadMetadata? = repository.fetchMetadata(url)
+    suspend operator fun invoke(
+        url: String,
+        credentials: Map<String, String> = emptyMap(),
+    ): DownloadMetadata? = repository.fetchMetadata(url, credentials)
 }
 
 class AddDownloadUseCase(private val repository: DownloadRepository) {
@@ -26,7 +29,8 @@ class AddDownloadUseCase(private val repository: DownloadRepository) {
         files: List<DownloadFile>? = null,
         scheduledAt: Long? = null,
         priority: DownloadPriority? = null,
-    ) = repository.addDownload(url, savePath, name, fileIndices, totalSize, files, scheduledAt, priority)
+        credentials: Map<String, String> = emptyMap(),
+    ) = repository.addDownload(url, savePath, name, fileIndices, totalSize, files, scheduledAt, priority, credentials)
 }
 
 class GetDestinationPathUseCase(private val repository: DownloadRepository) {

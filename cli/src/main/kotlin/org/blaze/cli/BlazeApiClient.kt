@@ -99,6 +99,7 @@ class BlazeApiClient(
         autoStart: Boolean,
         referer: String?,
         userAgent: String?,
+        credentials: Map<String, String> = emptyMap(),
     ): Response {
         val body = buildJsonObject {
             put(sourceKey, sourceValue)
@@ -109,6 +110,13 @@ class BlazeApiClient(
             put("autoStart", autoStart)
             referer?.let { put("referer", it) }
             userAgent?.let { put("userAgent", it) }
+            // Ephemeral auth material: sent for this transfer only, never echoed back or stored.
+            if (credentials.isNotEmpty()) {
+                put(
+                    "credentials",
+                    buildJsonObject { credentials.forEach { (k, v) -> put(k, v) } },
+                )
+            }
         }
         return post("/api/v1/downloads", body = body.toString())
     }

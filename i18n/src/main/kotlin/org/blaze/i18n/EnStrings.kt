@@ -177,6 +177,14 @@ object EnStrings : BlazeStrings {
             override val scheduleDelayLabel = "Schedule start delay (minutes):"
             override val scheduleDelayPlaceholder = "0 for immediate start"
 
+            override val authSectionTitle = "Authentication (optional)"
+            override val bearerTokenLabel = "Bearer token:"
+            override val bearerTokenPlaceholder = "Sent as \"Authorization: Bearer …\""
+            override val cookieLabel = "Cookie:"
+            override val cookiePlaceholder = "name=value; name2=value2"
+            override val authHint =
+                "Used only for this download. It is never saved, shown again or written to the log."
+
             override val pasteFromClipboard = "Paste from clipboard"
             override val clearSource = "Clear"
             override val advancedOptions = "Advanced options"

@@ -100,7 +100,7 @@ fun FilePickerDialog(
         } ?: Path.of(System.getProperty("user.home"))
     }
 
-    BaseDialog(onDismiss = onDismiss, width = 620.dp, requestFocus = false) {
+    BaseDialog(onDismiss = onDismiss, width = 620.dp, requestFocus = false, title = actualTitle) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             IdeDialogTitle(actualTitle)
             val desc = state.description

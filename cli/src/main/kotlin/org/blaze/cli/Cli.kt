@@ -81,6 +81,7 @@ class Cli(
                     autoStart = !parsed.flags.contains("--no-start"),
                     referer = parsed.opts["--referer"],
                     userAgent = parsed.opts["--user-agent"],
+                    credentials = buildDownloadCredentials(parsed),
                 )
                 return emitObject(resp, out, err, json, quiet) { dto ->
                     if (!quiet) out.println("Added download #${dto.id.take(8)} (${dto.state})")
@@ -245,6 +246,20 @@ class Cli(
     private fun requireId(args: List<String>): String =
         args.getOrNull(0) ?: throw IllegalArgumentException("missing <id>")
 
+    /**
+     * Assembles the ephemeral authentication headers a download should carry. Distinct from the
+     * global `--token` (which authenticates the CLI to the local service): these go to the *source*
+     * server for this one transfer and are never persisted, echoed or logged.
+     */
+    private fun buildDownloadCredentials(parsed: ParsedArgs): Map<String, String> = buildMap {
+        parsed.opts["--bearer"]?.takeIf { it.isNotBlank() }?.let { put("Authorization", "Bearer $it") }
+        parsed.opts["--cookie"]?.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
+        parsed.opts["--auth-header"]?.let { raw ->
+            val idx = raw.indexOf('=')
+            if (idx > 0) put(raw.substring(0, idx).trim(), raw.substring(idx + 1).trim())
+        }
+    }
+
     private fun printUsage(out: PrintStream) {
         out.println(
             """
@@ -273,6 +288,9 @@ class Cli(
                   --no-start            Queue without starting
                   --referer URL         HTTP Referer to send
                   --user-agent UA       HTTP User-Agent to send
+                  --bearer TOKEN        Send "Authorization: Bearer TOKEN" to the source
+                  --cookie VALUE        Send "Cookie: VALUE" to the source
+                  --auth-header N=V     Any other raw request header (e.g. "X-Key=abc")
 
             Global options:
                   --json               Machine-readable JSON output (for scripts)
@@ -296,6 +314,7 @@ class Cli(
     private companion object {
         private val VALUE_OPTS = setOf(
             "--output", "-o", "--filename", "--connections", "--bandwidth", "--referer", "--user-agent",
+            "--bearer", "--cookie", "--auth-header",
             "--url", "--token", "--storage-dir",
         )
         private val BOOL_FLAGS = setOf("--json", "--quiet", "--verbose", "--no-start", "--delete-files", "--help")

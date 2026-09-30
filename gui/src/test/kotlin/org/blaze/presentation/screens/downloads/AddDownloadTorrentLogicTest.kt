@@ -164,6 +164,26 @@ class AddDownloadTorrentLogicTest {
     }
 
     @Test
+    fun `credentials fold a bearer token and cookie into auth headers only when typed`() {
+        AddDownloadState(saveDir).apply {
+            assertTrue(credentials.isEmpty(), "nothing typed means no auth headers")
+
+            bearerToken = TextFieldValue("  abc123  ")
+            assertEquals(mapOf("Authorization" to "Bearer abc123"), credentials, "token is trimmed and prefixed")
+
+            cookie = TextFieldValue("session=xyz")
+            assertEquals(
+                mapOf("Authorization" to "Bearer abc123", "Cookie" to "session=xyz"),
+                credentials,
+            )
+
+            // A blank-only token drops out, leaving just the cookie.
+            bearerToken = TextFieldValue("   ")
+            assertEquals(mapOf("Cookie" to "session=xyz"), credentials)
+        }
+    }
+
+    @Test
     fun `a batch torrent item starts with every file selected`() {
         val files = listOf(
             DownloadFile("a.bin", 10L, index = 0),

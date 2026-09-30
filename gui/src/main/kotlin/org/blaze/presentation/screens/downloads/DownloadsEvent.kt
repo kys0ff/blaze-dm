@@ -53,6 +53,8 @@ sealed interface DownloadsEvent {
         val files: List<DownloadFile>? = null,
         val scheduledAt: Long? = null,
         val priority: DownloadPriority? = null,
+        /** Ephemeral auth headers for this transfer only; forwarded to the engine, never stored. */
+        val credentials: Map<String, String> = emptyMap(),
     ) : DownloadsEvent
     data class Pause(val id: String) : DownloadsEvent
     data class Resume(val id: String) : DownloadsEvent

@@ -391,6 +391,7 @@ class DownloadsScreenModel(
                         files = event.files,
                         scheduledAt = event.scheduledAt,
                         priority = event.priority,
+                        credentials = event.credentials,
                     )
                 } catch (e: Exception) {
                     fail("Failed to add download", e)
@@ -506,7 +507,8 @@ class DownloadsScreenModel(
      */
     private fun Download.destinationPath(): Path = Path.of(savePath)
 
-    suspend fun fetchMetadata(url: String): DownloadMetadata? = fetchMetadataUseCase(url)
+    suspend fun fetchMetadata(url: String, credentials: Map<String, String> = emptyMap()): DownloadMetadata? =
+        fetchMetadataUseCase(url, credentials)
 
     suspend fun resolveDestinationPath(url: String, savePath: String, name: String?): String =
         getDestinationPath(url, savePath, name)

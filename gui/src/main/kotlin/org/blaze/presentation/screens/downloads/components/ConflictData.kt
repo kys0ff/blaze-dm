@@ -11,4 +11,6 @@ data class ConflictData(
     val fileIndices: List<Int>? = null,
     val conflictingDownloadId: String? = null,
     val priority: DownloadPriority? = null,
+    /** Ephemeral auth headers carried straight to the retried add; never persisted. */
+    val credentials: Map<String, String> = emptyMap(),
 )

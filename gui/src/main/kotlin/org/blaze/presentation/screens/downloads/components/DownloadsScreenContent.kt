@@ -72,7 +72,7 @@ import java.nio.file.Path
 fun DownloadsScreenContent(
     state: DownloadsState,
     onEvent: (DownloadsEvent) -> Unit,
-    onFetchMetadata: suspend (String) -> DownloadMetadata?,
+    onFetchMetadata: suspend (String, Map<String, String>) -> DownloadMetadata?,
     onResolveDestinationPath: suspend (String, String, String?) -> String,
     onDetectPortable: suspend (String) -> PortableInfo?,
     onImportPortable: suspend (String, String) -> Boolean,
@@ -328,7 +328,7 @@ fun DownloadsScreenContent(
         AddDownloadDialog(
             onDismiss = { showAddDialog = false },
             initialSource = addDialogSource,
-            onAdd = { url, destination, name, fileIndices, totalSize, files, scheduledAt, priority ->
+            onAdd = { url, destination, name, fileIndices, totalSize, files, scheduledAt, priority, credentials ->
                 if (fileConflictBehavior == FileConflictBehavior.ASK) {
                     scope.launch {
                         val fullPathStr = onResolveDestinationPath(url, destination, name)
@@ -348,10 +348,11 @@ fun DownloadsScreenContent(
                                 fullPathStr = fullPathStr,
                                 fileIndices = fileIndices,
                                 conflictingDownloadId = conflictingDownload?.id,
-                                priority = priority
+                                priority = priority,
+                                credentials = credentials
                             )
                         } else {
-                            onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt, priority))
+                            onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt, priority, credentials))
                         }
                     }
                 } else {
@@ -363,7 +364,7 @@ fun DownloadsScreenContent(
                             NotificationType.WARNING
                         )
                     }
-                    onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt, priority))
+                    onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt, priority, credentials))
                 }
             },
             onFetchMetadata = onFetchMetadata
@@ -385,7 +386,7 @@ fun DownloadsScreenContent(
                             f.delete()
                             val partFile = File(data.fullPathStr + ".part")
                             partFile.delete()
-                            onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices, priority = data.priority))
+                            onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices, priority = data.priority, credentials = data.credentials))
                         }
                     }
                     FileConflictBehavior.RENAME -> {
@@ -394,7 +395,7 @@ fun DownloadsScreenContent(
                         // service for a torrent's folder, and by the engine for an HTTP file. Choosing
                         // rename here must not invent a name a layer that can see the whole folder has
                         // better rules for.
-                        onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices, priority = data.priority))
+                        onEvent(DownloadsEvent.AddDownload(data.url, data.savePath, data.name, data.fileIndices, priority = data.priority, credentials = data.credentials))
                     }
                     else -> {} // SKIP: do nothing
                 }
