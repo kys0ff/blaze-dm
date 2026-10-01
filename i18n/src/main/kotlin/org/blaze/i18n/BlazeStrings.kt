@@ -12,6 +12,7 @@ interface BlazeStrings {
     val search: Search
     val extensions: Extensions
     val consent: Consent
+    val options: Options
 
     interface Common {
         val ok: String
@@ -880,6 +881,21 @@ interface BlazeStrings {
         fun networkFailure(message: String): String
         fun diskError(message: String): String
         fun unknown(message: String): String
+    }
+
+    /**
+     * Copy shared by the extension option editors (the link-handler and theme dialogs): the live
+     * validation messages raised under a field whose current text is not a value the option accepts.
+     * Field labels and descriptions come from the plugin's own descriptors, so only the app-owned
+     * validation wording lives here.
+     */
+    interface Options {
+        /** A numeric option holds text that is not a whole number. */
+        val integerRequired: String
+        /** A numeric option is a whole number but outside its declared inclusive range. */
+        fun integerRange(min: Long, max: Long): String
+        /** A color option holds hex text the parser cannot read. */
+        val colorInvalid: String
     }
 
     /**

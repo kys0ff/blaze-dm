@@ -721,4 +721,10 @@ object EnStrings : BlazeStrings {
         override val deny = "Reject"
         override val subjectLabel = "Identifier:"
     }
+
+    override val options = object : BlazeStrings.Options {
+        override val integerRequired = "Enter a whole number"
+        override fun integerRange(min: Long, max: Long) = "Must be between $min and $max"
+        override val colorInvalid = "Enter a valid hex color"
+    }
 }

@@ -727,4 +727,10 @@ object ArStrings : BlazeStrings {
         override val deny = "الرفض"
         override val subjectLabel = "المُعرِّف:"
     }
+
+    override val options = object : BlazeStrings.Options {
+        override val integerRequired = "أدخل عددًا صحيحًا"
+        override fun integerRange(min: Long, max: Long) = "يجب أن يكون بين \u0024min و\u0024max"
+        override val colorInvalid = "أدخل لونًا سداسيًا صالحًا"
+    }
 }
