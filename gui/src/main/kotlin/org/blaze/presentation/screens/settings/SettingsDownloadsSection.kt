@@ -232,5 +232,18 @@ internal fun DownloadsSection(
                 onValueChange = { onEvent(SettingsEvent.UpdateSeedRatioLimit(it)) }
             )
         }
+        SettingRow("downloads.torrentFilePreviewEnabled") {
+            CheckboxRow(
+                text = strings.settings.torrentFilePreviewLabel,
+                checked = state.appSettings.torrentFilePreviewEnabled,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateTorrentFilePreview(it)) }
+            )
+            Text(
+                text = strings.settings.torrentFilePreviewDesc,
+                style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent),
+            )
+        }
     }
 }

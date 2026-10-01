@@ -14,6 +14,7 @@ import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.repository.PortableKind
+import org.blaze.domain.repository.TorrentPreview
 import org.blaze.download.api.DownloadDto
 import org.blaze.download.api.DownloadFileHint
 import org.blaze.download.api.DownloadPriority
@@ -69,6 +70,20 @@ class DownloadRepositoryImpl(
                 resumeSupported = meta.resumeSupported,
             )
         }
+    }
+
+    override suspend fun prepareTorrentFromUrl(
+        url: String,
+        credentials: Map<String, String>,
+    ): TorrentPreview? = api.prepareTorrent(url, credentials)?.let { preview ->
+        TorrentPreview(
+            torrentFile = preview.torrentFile,
+            name = preview.name,
+            totalSize = preview.totalBytes,
+            files = preview.files?.mapIndexed { index, file ->
+                DownloadFile(name = file.path, size = file.size, index = index)
+            },
+        )
     }
 
     override suspend fun addDownload(

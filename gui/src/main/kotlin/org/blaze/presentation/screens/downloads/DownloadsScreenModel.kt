@@ -18,6 +18,7 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.PortableInfo
+import org.blaze.domain.repository.TorrentPreview
 import org.blaze.domain.usecase.AddDownloadUseCase
 import org.blaze.domain.usecase.CancelDownloadUseCase
 import org.blaze.domain.usecase.ClearCompletedDownloadsUseCase
@@ -28,6 +29,7 @@ import org.blaze.domain.usecase.GetDownloadsUseCase
 import org.blaze.domain.usecase.ImportPortableDownloadUseCase
 import org.blaze.domain.usecase.PauseAllDownloadsUseCase
 import org.blaze.domain.usecase.PauseDownloadUseCase
+import org.blaze.domain.usecase.PrepareTorrentUseCase
 import org.blaze.domain.usecase.RemoveDownloadUseCase
 import org.blaze.domain.usecase.ResumeAllDownloadsUseCase
 import org.blaze.domain.usecase.ResumeDownloadUseCase
@@ -46,6 +48,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class DownloadsScreenModel(
     getDownloads: GetDownloadsUseCase,
     private val fetchMetadataUseCase: FetchMetadataUseCase,
+    private val prepareTorrentUseCase: PrepareTorrentUseCase,
     private val addDownload: AddDownloadUseCase,
     private val getDestinationPath: GetDestinationPathUseCase,
     val settingsRepository: EngineSettingsRepository,
@@ -509,6 +512,13 @@ class DownloadsScreenModel(
 
     suspend fun fetchMetadata(url: String, credentials: Map<String, String> = emptyMap()): DownloadMetadata? =
         fetchMetadataUseCase(url, credentials)
+
+    /**
+     * Downloads and parses the `.torrent` served at [url] so the add-download dialog can preview its files
+     * and then queue it as a normal local torrent. Null when the URL serves nothing parsable as a torrent.
+     */
+    suspend fun prepareTorrent(url: String, credentials: Map<String, String> = emptyMap()): TorrentPreview? =
+        prepareTorrentUseCase(url, credentials)
 
     suspend fun resolveDestinationPath(url: String, savePath: String, name: String?): String =
         getDestinationPath(url, savePath, name)

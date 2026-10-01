@@ -38,6 +38,8 @@ sealed interface SettingsEvent {
     data class UpdateSeedTimeLimitMinutes(val value: TextFieldValue) : SettingsEvent
     data class UpdateUnlimitedSeeding(val enabled: Boolean) : SettingsEvent
     data class UpdateSeedRatioLimit(val value: TextFieldValue) : SettingsEvent
+    /** Opt-in: preview a `.torrent` download link's files and add it as a local torrent (app-settings draft). */
+    data class UpdateTorrentFilePreview(val enabled: Boolean) : SettingsEvent
 
     // Appearance
     data class UpdateThemeMode(val mode: ThemeMode) : SettingsEvent

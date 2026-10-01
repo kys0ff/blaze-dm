@@ -25,6 +25,17 @@ internal fun isHttpSource(source: String): Boolean =
     source.startsWith("http://", ignoreCase = true) || source.startsWith("https://", ignoreCase = true)
 
 /**
+ * True when an http(s) link serves a `.torrent` metainfo file - a torrent whose descriptor arrives over
+ * the web rather than a swarm-resolved magnet or a local file. The query never names the file, so
+ * "…/My.torrent?token=1" counts. This is the shape the opt-in torrent-preview flow keys off.
+ */
+internal fun isHttpTorrentFileUrl(source: String): Boolean {
+    val trimmed = source.trim()
+    if (!isHttpSource(trimmed)) return false
+    return trimmed.substringBefore('?').endsWith(".torrent", ignoreCase = true)
+}
+
+/**
  * True when an http(s) link reads as a **page** rather than a file: its path is empty (a site root),
  * its last segment carries no extension (a route such as `/share/abc123` or `/download?id=5`), or it
  * ends in a page/script extension.

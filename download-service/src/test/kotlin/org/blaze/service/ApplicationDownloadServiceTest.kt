@@ -195,6 +195,32 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
+    fun `prepareTorrent forwards url and credentials and maps the preview dto`() = runBlocking {
+        val preview = org.blaze.engine.api.TorrentFilePreview(
+            torrentFile = Path.of("/cache/abc.torrent"),
+            metadata = DownloadMetadata("Big.Buck", 4321L, listOf(DownloadFileMetadata("buck.mkv", 4321))),
+        )
+        val engine = FakeEngine(torrentFilePreview = preview)
+        val api = service(engine)
+
+        val dto = api.prepareTorrent("https://example.com/big.torrent", mapOf("Authorization" to "Bearer t"))
+
+        assertNotNull(dto)
+        assertEquals("/cache/abc.torrent", dto.torrentFile)
+        assertEquals("Big.Buck", dto.name)
+        assertEquals(4321L, dto.totalBytes)
+        assertEquals("buck.mkv", dto.files?.single()?.path)
+        // The engine saw exactly the URL + credentials handed to the api.
+        assertEquals("https://example.com/big.torrent" to mapOf("Authorization" to "Bearer t"), engine.lastTorrentFileRequest)
+    }
+
+    @Test
+    fun `prepareTorrent returns null when the engine declines`() = runBlocking {
+        val api = service(FakeEngine())
+        assertNull(api.prepareTorrent("https://example.com/not-a-torrent"))
+    }
+
+    @Test
     fun `portable detection and import map through the api`() = runBlocking {
         val portable = PortableDownloadInfo(PortableTransferKind.HTTP, "file.bin", "https://x/file.bin", 100, 40, true)
         val engine = FakeEngine(portableResult = portable, importResult = DownloadId("imported-1"))

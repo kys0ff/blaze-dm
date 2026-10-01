@@ -13,6 +13,7 @@ import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadState
 import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.PortableDownloadInfo
+import org.blaze.engine.api.TorrentFilePreview
 import java.time.Instant
 import java.nio.file.Path
 import java.util.Collections
@@ -31,7 +32,12 @@ class FakeEngine(
     private val metadataResult: DownloadMetadata? = null,
     private val portableResult: PortableDownloadInfo? = null,
     private val importResult: DownloadId? = null,
+    private val torrentFilePreview: TorrentFilePreview? = null,
 ) : DownloadEngine {
+
+    /** The last (url, credentials) pair handed to [fetchTorrentFile], so tests can assert the forwarding. */
+    var lastTorrentFileRequest: Pair<String, Map<String, String>>? = null
+        private set
 
     private val counter = AtomicInteger(0)
     private val _tasks = MutableStateFlow(initial)
@@ -55,6 +61,11 @@ class FakeEngine(
     }
 
     override suspend fun fetchMetadata(request: DownloadRequest): DownloadMetadata? = metadataResult
+
+    override suspend fun fetchTorrentFile(url: String, credentials: Map<String, String>): TorrentFilePreview? {
+        lastTorrentFileRequest = url to credentials
+        return torrentFilePreview
+    }
 
     override suspend fun detectPortableDownload(path: Path): PortableDownloadInfo? = portableResult
 

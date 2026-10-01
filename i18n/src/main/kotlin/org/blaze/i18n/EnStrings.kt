@@ -532,6 +532,8 @@ object EnStrings : BlazeStrings {
         override val unlimitedSeedingLabel = "Seed indefinitely (until stopped manually)"
         override val seedRatioLimitLabel = "Stop seeding at share ratio"
         override val seedRatioLimitDesc = "Stop seeding once the uploaded/downloaded ratio reaches this value. Set 0 for no ratio limit."
+        override val torrentFilePreviewLabel = "Preview .torrent links before adding"
+        override val torrentFilePreviewDesc = "When you add an http(s) link to a .torrent file, Blaze downloads it, shows the files inside, and then starts it as a local torrent. Off by default: such links are resolved through the swarm instead."
         override val snailModeEnabledLabel = "Snail Mode — crawl all downloads"
         override val snailSpeedLabel = "Snail speed (KB/s)"
         override val snailSpeedDesc = "Engine-wide ceiling applied while Snail Mode is on. It overrides the normal speed limit so your connection stays free for other work."

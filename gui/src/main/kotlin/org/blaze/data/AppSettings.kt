@@ -27,6 +27,13 @@ data class AppSettings(
      */
     val clipboardMonitoringEnabled: Boolean = false,
     /**
+     * When a `.torrent` download link (an http/https URL serving metainfo) is added, fetch the torrent
+     * file first, preview the files inside it, and then queue the content as a normal local torrent
+     * instead of leaving the engine to resolve the URL through the swarm. Off by default: it reaches out
+     * to the URL and writes a cached metainfo file on the user's behalf, so it must be opted into.
+     */
+    val torrentFilePreviewEnabled: Boolean = false,
+    /**
      * Master switch for desktop (toast / notification-center) notices about download lifecycle
      * changes. In-app balloons are unaffected — they belong to the window, not the desktop.
      */

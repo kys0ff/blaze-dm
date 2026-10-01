@@ -278,6 +278,10 @@ class SettingsScreenModel(
             it.copy(appSettings = it.appSettings.copy(clipboardMonitoringEnabled = event.enabled))
         }
 
+        is SettingsEvent.UpdateTorrentFilePreview -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(torrentFilePreviewEnabled = event.enabled))
+        }
+
         is SettingsEvent.UpdateApproveExternalClients -> _state.update {
             it.copy(appSettings = it.appSettings.copy(approveExternalClients = event.enabled))
         }

@@ -45,6 +45,14 @@ class AddDownloadState(
     var metadata by mutableStateOf<DownloadMetadata?>(null)
 
     /**
+     * The local path of a `.torrent` metainfo file downloaded from an http(s) link during the preview step.
+     * When non-null, [submit][org.blaze.presentation.screens.downloads.components.AddDownloadDialog] queues
+     * the download from this local file (a normal torrent) instead of re-fetching the URL. Cleared whenever
+     * the source is edited, so a stale preview can never leak into a different download.
+     */
+    var preparedTorrentFile by mutableStateOf<String?>(null)
+
+    /**
      * True while step 2 renders a torrent whose metadata the swarm hasn't supplied yet - the
      * review step shows a "details pending" notice instead of a name/size/file list.
      */
@@ -130,6 +138,7 @@ class AddDownloadState(
     fun resetMetadata() {
         metadata = null
         metadataUnresolved = false
+        preparedTorrentFile = null
         selectedFileIndices = emptySet()
         batchItems.clear()
         resolvedDirectUrl = null

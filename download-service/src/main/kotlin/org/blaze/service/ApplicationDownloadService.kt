@@ -20,6 +20,7 @@ import org.blaze.download.api.DownloadsApi
 import org.blaze.download.api.NewDownloadRequest
 import org.blaze.download.api.PortableInfoDto
 import org.blaze.download.api.PrioritySupport
+import org.blaze.download.api.TorrentPreviewDto
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadTask
@@ -234,6 +235,9 @@ class ApplicationDownloadService(
         val engineRequest = RequestMapper.toEngineRequest(request, tmpDir)
         return engine.fetchMetadata(engineRequest)?.toDto()
     }
+
+    override suspend fun prepareTorrent(url: String, credentials: Map<String, String>): TorrentPreviewDto? =
+        engine.fetchTorrentFile(url, credentials)?.toDto()
 
     override suspend fun detectPortable(path: String): PortableInfoDto? =
         engine.detectPortableDownload(java.nio.file.Path.of(path))?.toDto()

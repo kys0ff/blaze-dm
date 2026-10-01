@@ -6,6 +6,7 @@ import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.DownloadRepository
 import org.blaze.domain.repository.PortableInfo
+import org.blaze.domain.repository.TorrentPreview
 import org.blaze.download.api.DownloadPriority
 
 class GetDownloadsUseCase(private val repository: DownloadRepository) {
@@ -17,6 +18,13 @@ class FetchMetadataUseCase(private val repository: DownloadRepository) {
         url: String,
         credentials: Map<String, String> = emptyMap(),
     ): DownloadMetadata? = repository.fetchMetadata(url, credentials)
+}
+
+class PrepareTorrentUseCase(private val repository: DownloadRepository) {
+    suspend operator fun invoke(
+        url: String,
+        credentials: Map<String, String> = emptyMap(),
+    ): TorrentPreview? = repository.prepareTorrentFromUrl(url, credentials)
 }
 
 class AddDownloadUseCase(private val repository: DownloadRepository) {

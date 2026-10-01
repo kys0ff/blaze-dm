@@ -6,6 +6,7 @@ import org.koin.dsl.module
 val useCaseModule = module {
     factory { GetDownloadsUseCase(get()) }
     factory { FetchMetadataUseCase(get()) }
+    factory { PrepareTorrentUseCase(get()) }
     factory { AddDownloadUseCase(get()) }
     factory { GetDestinationPathUseCase(get()) }
     factory { PauseDownloadUseCase(get()) }

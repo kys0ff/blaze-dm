@@ -4,10 +4,12 @@ import org.blaze.download.api.DownloadFile
 import org.blaze.download.api.DownloadMetadataDto
 import org.blaze.download.api.PortableInfoDto
 import org.blaze.download.api.PortableKindDto
+import org.blaze.download.api.TorrentPreviewDto
 import org.blaze.engine.api.DownloadFileMetadata
 import org.blaze.engine.api.DownloadMetadata
 import org.blaze.engine.api.PortableDownloadInfo
 import org.blaze.engine.api.PortableTransferKind
+import org.blaze.engine.api.TorrentFilePreview
 
 private fun DownloadFileMetadata.toFile(selected: Boolean = true) =
     DownloadFile(path = path, size = size, selected = selected)
@@ -17,6 +19,13 @@ fun DownloadMetadata.toDto(): DownloadMetadataDto = DownloadMetadataDto(
     totalBytes = totalSize,
     files = files?.map { it.toFile() },
     resumeSupported = resumeSupported,
+)
+
+fun TorrentFilePreview.toDto(): TorrentPreviewDto = TorrentPreviewDto(
+    torrentFile = torrentFile.toString(),
+    name = metadata.name,
+    totalBytes = metadata.totalSize,
+    files = metadata.files?.map { it.toFile() },
 )
 
 fun PortableDownloadInfo.toDto(): PortableInfoDto = PortableInfoDto(

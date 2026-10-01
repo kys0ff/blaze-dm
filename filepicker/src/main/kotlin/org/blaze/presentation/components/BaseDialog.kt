@@ -74,8 +74,6 @@ fun BaseDialog(
         title = title.orEmpty(),
         resizable = false,
     ) {
-        // Dialogs are not minimizable in the IDE: make the caption's minimize a no-op instead of
-        // letting a (group-)iconification fold into the app's hide-to-tray behavior.
         preventDialogMinimize()
 
         Column(

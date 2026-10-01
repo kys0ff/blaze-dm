@@ -37,6 +37,7 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.PortableInfo
+import org.blaze.domain.repository.TorrentPreview
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.i18n.blazeStrings
 import org.blaze.osintegration.ExternalOpenRequest
@@ -75,6 +76,7 @@ fun DownloadsScreenContent(
     state: DownloadsState,
     onEvent: (DownloadsEvent) -> Unit,
     onFetchMetadata: suspend (String, Map<String, String>) -> DownloadMetadata?,
+    onPrepareTorrent: suspend (String, Map<String, String>) -> TorrentPreview? = { _, _ -> null },
     onResolveDestinationPath: suspend (String, String, String?) -> String,
     onDetectPortable: suspend (String) -> PortableInfo?,
     onImportPortable: suspend (String, String) -> Boolean,
@@ -376,7 +378,8 @@ fun DownloadsScreenContent(
                     onEvent(DownloadsEvent.AddDownload(url, destination, name, fileIndices, totalSize, files, scheduledAt, priority, credentials))
                 }
             },
-            onFetchMetadata = onFetchMetadata
+            onFetchMetadata = onFetchMetadata,
+            onPrepareTorrent = onPrepareTorrent
         )
     }
 

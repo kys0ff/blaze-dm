@@ -1,5 +1,7 @@
 package org.blaze.engine.core
 
+import bt.bencoding.serializers.BEParser
+import bt.metainfo.MetadataConstants
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
 import io.ktor.client.plugins.HttpTimeout
@@ -31,6 +33,7 @@ import org.blaze.engine.api.DownloadTask
 import org.blaze.engine.api.PortableDownloadInfo
 import org.blaze.engine.api.PortableTransferKind
 import org.blaze.engine.api.TorrentSource
+import org.blaze.engine.api.TorrentFilePreview
 import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.execution.DownloadExecutorImpl
 import org.blaze.engine.metrics.EngineMetrics
@@ -51,6 +54,7 @@ import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.engine.storage.DefaultFileStorage
 import org.blaze.engine.storage.FileStorage
 import org.slf4j.LoggerFactory
+import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -147,6 +151,15 @@ class DownloadManager(
     companion object {
         /** Upper bound on how often the whole download list is re-serialized to disk. */
         private val PERSIST_DEBOUNCE = 1.seconds
+
+        /** How long to wait for a `.torrent` metainfo file to arrive over HTTP before giving up. */
+        private val TORRENT_FILE_TIMEOUT = 30.seconds
+
+        /**
+         * A `.torrent` is a tiny descriptor, so anything larger than this is not metainfo but a body
+         * mis-served under a torrent URL; refuse it rather than buffer a runaway download in memory.
+         */
+        private const val TORRENT_FILE_MAX_BYTES = 50L * 1024 * 1024
 
         /**
          * The production HTTP client.
@@ -322,11 +335,15 @@ class DownloadManager(
                 is TorrentSource.Url -> s.url
             }
         }
+        return sha256(sourceString)
+    }
+
+    /** A stable, filesystem-safe cache identity for a source string: its lowercase SHA-256 hex. */
+    private fun sha256(sourceString: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(sourceString.toByteArray(StandardCharsets.UTF_8))
         return hashBytes.joinToString("") { "%02x".format(it) }
     }
-
     private fun cleanupMetadata(id: DownloadId) {
         scope.launch(Dispatchers.IO) {
             try {
@@ -387,6 +404,80 @@ class DownloadManager(
 
         metadata?.let { DownloadMetadata(it.name, it.totalBytes, it.files, resumeSupported = true) }
     }
+
+    /**
+     * Fetches the `.torrent` served at [url] over HTTP(S), validates it is metainfo, caches it under the
+     * source's hash and parses it into a preview. The caller starts the download from the returned cached
+     * file, so it behaves exactly like a torrent the user picked from disk rather than a URL the swarm has
+     * to resolve again.
+     */
+    override suspend fun fetchTorrentFile(url: String, credentials: Map<String, String>): TorrentFilePreview? =
+        withContext(Dispatchers.IO) {
+            val trimmed = url.trim()
+            if (!(trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true))) {
+                return@withContext null
+            }
+
+            val client = HttpNetworkClient(
+                client = httpClient,
+                userAgent = settingsRepository.settings.value.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+                maxRedirects = settingsRepository.settings.value.maxRedirects
+            )
+            val httpRequest = DownloadRequest.Http(
+                name = trimmed.substringAfterLast('/').substringBefore('?').ifBlank { "download.torrent" },
+                url = trimmed,
+                destination = repository.storageDir.resolve("cache"),
+                headers = credentials,
+            )
+
+            // Buffer the whole (bounded) body: a `.torrent` is a tiny descriptor, so reading it into
+            // memory is cheaper than streaming it to disk and lets a non-torrent body be rejected before
+            // anything is cached. Exceeding the cap throws inside the sink, which surfaces as a Failed.
+            val out = ByteArrayOutputStream()
+            val streamResult = withTimeoutOrNull(TORRENT_FILE_TIMEOUT) {
+                runCatching {
+                    client.stream(httpRequest) { bytes, len ->
+                        if (out.size().toLong() + len > TORRENT_FILE_MAX_BYTES) {
+                            throw java.io.IOException("torrent metainfo exceeds ${TORRENT_FILE_MAX_BYTES / (1024 * 1024)} MiB")
+                        }
+                        out.write(bytes, 0, len)
+                    }
+                }.getOrNull()
+            }
+            if (streamResult !is HttpNetworkClient.StreamResult.Success || streamResult.received <= 0) {
+                return@withContext null
+            }
+
+            val bytes = out.toByteArray()
+            if (!looksLikeTorrentBytes(bytes)) return@withContext null
+
+            try {
+                val cacheDir = repository.storageDir.resolve("cache")
+                storage.ensureDirectory(cacheDir)
+                val torrentFile = cacheDir.resolve("${sha256(trimmed)}.torrent")
+                Files.write(torrentFile, bytes)
+
+                // Reading a File source resolves the name/size/file list without waiting on the swarm,
+                // so the preview reflects the exact metainfo the download will start from.
+                val metadata = fetchMetadata(
+                    DownloadRequest.Torrent(
+                        name = torrentFile.fileName.toString().removeSuffix(".torrent"),
+                        torrentSource = TorrentSource.File(torrentFile),
+                        destination = cacheDir,
+                    )
+                ) ?: return@withContext null
+
+                TorrentFilePreview(torrentFile, metadata)
+            } catch (e: Exception) {
+                logger.warn("Failed to prepare torrent from {}", trimmed, e)
+                null
+            }
+        }
+
+    /** True when [bytes] bencode-decode to a map carrying an `info` dictionary, i.e. real torrent metainfo. */
+    private fun looksLikeTorrentBytes(bytes: ByteArray): Boolean = runCatching {
+        BEParser(bytes).readMap().value.containsKey(MetadataConstants.INFOMAP_KEY)
+    }.getOrDefault(false)
 
     override suspend fun detectPortableDownload(path: Path): PortableDownloadInfo? =
         withContext(Dispatchers.IO) { runCatching { PortableImport.detect(path) }.getOrNull() }

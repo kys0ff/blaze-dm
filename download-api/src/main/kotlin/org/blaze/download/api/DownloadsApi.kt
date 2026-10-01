@@ -62,6 +62,15 @@ interface DownloadsApi {
     suspend fun probe(request: NewDownloadRequest): DownloadMetadataDto?
 
     /**
+     * Downloads the `.torrent` metainfo served at [url] (an http/https link), parses its file list and
+     * saves the file to the engine's cache, returning a [TorrentPreviewDto] whose [TorrentPreviewDto.torrentFile]
+     * can be handed to [create] to start the transfer as a normal local torrent. [credentials] are ephemeral
+     * auth headers sent only for this fetch and never stored. Returns null when the URL serves nothing
+     * parsable as a torrent.
+     */
+    suspend fun prepareTorrent(url: String, credentials: Map<String, String> = emptyMap()): TorrentPreviewDto?
+
+    /**
      * Reads a moved artifact at [path] as a candidate portable download and returns a display-only summary
      * (never any secret material), or null when it is not a Blaze portable artifact.
      */

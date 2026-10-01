@@ -13,6 +13,7 @@ val screenModelModule = module {
         DownloadsScreenModel(
             getDownloads = get(),
             fetchMetadataUseCase = get(),
+            prepareTorrentUseCase = get(),
             addDownload = get(),
             getDestinationPath = get(),
             settingsRepository = get(),

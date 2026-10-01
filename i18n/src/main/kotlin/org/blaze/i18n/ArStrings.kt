@@ -538,6 +538,8 @@ object ArStrings : BlazeStrings {
         override val unlimitedSeedingLabel = "مشاركة بلا حد (حتى الإيقاف يدويًا)"
         override val seedRatioLimitLabel = "حد نسبة المشاركة"
         override val seedRatioLimitDesc = "تتوقف المشاركة عندما تُرسل بيانات بنسبة محددة من حجم التنزيل؛ 0 يعني بلا حد."
+        override val torrentFilePreviewLabel = "معاينة روابط ‎.torrent قبل الإضافة"
+        override val torrentFilePreviewDesc = "عند إضافة رابط http(s) إلى ملف ‎.torrent يقوم Blaze بتنزيله وعرض الملفات بداخله ثم بدء التنزيل كتورنت محلي. هذا الخيار معطّل افتراضيًا: تُحلَّل هذه الروابط عبر الشبكة بدلًا من ذلك."
         override val snailModeEnabledLabel = "وضع الحلزون — إبطاء جميع التنزيلات إلى أقصى حد"
         override val snailSpeedLabel = "سرعة الحلزون (KB/s)"
         override val snailSpeedDesc = "سقف على مستوى المحرك يُطبَّق أثناء تفعيل وضع الحلزون؛ يتجاوز حد السرعة العادي لإتاحة اتصالك لأعمال أخرى."

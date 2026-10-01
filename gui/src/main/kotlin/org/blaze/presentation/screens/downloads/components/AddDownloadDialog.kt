@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
+import org.blaze.domain.repository.TorrentPreview
+import org.blaze.data.AppSettingsRepository
 import org.blaze.download.api.DownloadPriority
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
@@ -30,6 +32,7 @@ import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadFetchOutcome
 import org.blaze.presentation.screens.downloads.components.add.ResolvedPick
 import org.blaze.presentation.screens.downloads.components.add.isHttpSource
+import org.blaze.presentation.screens.downloads.components.add.isHttpTorrentFileUrl
 import org.blaze.presentation.screens.downloads.components.add.loadSourceFile
 import org.blaze.presentation.screens.downloads.components.add.resolvedLinkToMetadata
 import org.blaze.presentation.screens.downloads.components.add.resolvedLinksToBatchItems
@@ -62,9 +65,13 @@ fun AddDownloadDialog(
         credentials: Map<String, String>,
     ) -> Unit,
     onFetchMetadata: suspend (url: String, credentials: Map<String, String>) -> DownloadMetadata?,
+    onPrepareTorrent: suspend (url: String, credentials: Map<String, String>) -> TorrentPreview?,
     initialSource: String? = null
 ) {
     val settingsRepository = koinInject<EngineSettingsRepository>()
+    val appSettingsRepository = koinInject<AppSettingsRepository>()
+    // Opt-in: when off, a `.torrent` URL keeps the existing behavior (probe the URL through the swarm).
+    val torrentFilePreviewEnabled = appSettingsRepository.settings.value.torrentFilePreviewEnabled
     val registry = koinInject<LinkResolverRegistry>()
     val resolverSettings = koinInject<LinkResolverSettingsRepository>()
     val defaultPath = remember { settingsRepository.settings.value.defaultDownloadDir }
@@ -203,6 +210,32 @@ fun AddDownloadDialog(
         }
     }
 
+    // The opt-in torrent-preview path for a `.torrent` download link. Rather than leave the engine to
+    // resolve the URL through the swarm (which can stall and only ever previews a URL source), fetch the
+    // metainfo file directly, preview the files inside it, and remember its local path so submitting
+    // queues a normal local torrent. Any failure falls back to the ordinary probe so the switch on can
+    // never be worse than the switch off.
+    fun prepareTorrentAndReview(source: String) {
+        state.isFetching = true
+        scope.launch {
+            val preview = runCatching { onPrepareTorrent(source, state.effectiveCredentials) }.getOrNull()
+            state.isFetching = false
+            if (preview == null) {
+                probeDirectly(source)
+                return@launch
+            }
+            state.preparedTorrentFile = preview.torrentFile
+            state.metadata = DownloadMetadata(
+                name = preview.name,
+                totalSize = preview.totalSize,
+                files = preview.files,
+                resumeSupported = true,
+            )
+            state.metadataUnresolved = false
+            state.step = 2
+        }
+    }
+
     fun fetch() {
         if (!state.canFetch || state.isFetching) return
         state.fetchError = null
@@ -241,9 +274,12 @@ fun AddDownloadDialog(
             // a web page rather than a file, that fetch saves the page — HTML the user almost
             // certainly didn't want — so the outcome is confirmed before a request is spent, and
             // only a "yes" turns it into the plain-page download they asked for.
-            handlers.isEmpty() ->
-                if (state.looksLikeWebPage) state.pendingPlainPageSource = source
-                else probeDirectly(source)
+            handlers.isEmpty() -> when {
+                state.looksLikeWebPage -> state.pendingPlainPageSource = source
+                // A `.torrent` link with the preview switch on: download, review and add as a local torrent.
+                torrentFilePreviewEnabled && isHttpTorrentFileUrl(source) -> prepareTorrentAndReview(source)
+                else -> probeDirectly(source)
+            }
             // A single match is never worth interrupting the user for: use it directly.
             // The AddDownloadInputView already shows an inline notice naming the extension.
             handlers.size == 1 -> resolveAndFetch(source, handlers[0])
@@ -300,7 +336,9 @@ fun AddDownloadDialog(
             }
         } else {
             onAdd(
-                state.effectiveSource,
+                // When a `.torrent` link was previewed, submit the cached local metainfo file so the
+                // transfer runs as a normal local torrent; otherwise keep the source as typed.
+                state.preparedTorrentFile ?: state.effectiveSource,
                 state.destination.text,
                 state.metadata?.name,
                 if (state.metadata?.files != null) state.selectedFileIndices.toList()

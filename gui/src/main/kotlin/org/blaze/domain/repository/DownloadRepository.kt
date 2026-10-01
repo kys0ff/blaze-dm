@@ -14,6 +14,17 @@ interface DownloadRepository {
      */
     suspend fun fetchMetadata(url: String, credentials: Map<String, String> = emptyMap()): DownloadMetadata?
 
+    /**
+     * Downloads the `.torrent` served at [url] (an http/https link), parses its file list and stashes the
+     * metainfo on disk so the caller can preview it and then queue it as a normal local torrent.
+     * [credentials] are ephemeral auth headers sent only for this fetch. Returns null when the URL serves
+     * nothing parsable as a torrent. The returned [TorrentPreview.torrentFile] is the local path to add.
+     */
+    suspend fun prepareTorrentFromUrl(
+        url: String,
+        credentials: Map<String, String> = emptyMap(),
+    ): TorrentPreview?
+
     suspend fun addDownload(
         url: String,
         savePath: String,
@@ -74,6 +85,18 @@ data class DownloadMetadata(
     val files: List<DownloadFile>? = null,
     /** Proven resume capability of the source, or null when the probe could not tell. */
     val resumeSupported: Boolean? = null
+)
+
+/**
+ * A downloaded-and-parsed `.torrent` metainfo file, ready to preview and then queue as a local torrent.
+ * [torrentFile] is the absolute path of the metainfo on disk - handing it back to [addDownload] starts the
+ * transfer from the local file instead of re-fetching [url].
+ */
+data class TorrentPreview(
+    val torrentFile: String,
+    val name: String,
+    val totalSize: Long?,
+    val files: List<DownloadFile>?,
 )
 
 data class DownloadFile(

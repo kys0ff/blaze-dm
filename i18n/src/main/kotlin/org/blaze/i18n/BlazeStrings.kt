@@ -675,6 +675,9 @@ interface BlazeStrings {
         val unlimitedSeedingLabel: String
         val seedRatioLimitLabel: String
         val seedRatioLimitDesc: String
+        /** Opt-in: preview a `.torrent` download link's files, then add it as a local torrent. */
+        val torrentFilePreviewLabel: String
+        val torrentFilePreviewDesc: String
         val snailModeEnabledLabel: String
         val snailSpeedLabel: String
         val snailSpeedDesc: String

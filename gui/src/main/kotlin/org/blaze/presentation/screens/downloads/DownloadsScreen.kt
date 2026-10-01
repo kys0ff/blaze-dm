@@ -72,6 +72,7 @@ class DownloadsScreen : Screen {
                     state = state,
                     onEvent = screenModel::onEvent,
                     onFetchMetadata = { url, credentials -> screenModel.fetchMetadata(url, credentials) },
+                    onPrepareTorrent = { url, credentials -> screenModel.prepareTorrent(url, credentials) },
                     onResolveDestinationPath = { url, savePath, name -> screenModel.resolveDestinationPath(url, savePath, name) },
                     onDetectPortable = { path -> screenModel.detectPortable(path) },
                     onImportPortable = { artifact, dest -> screenModel.importPortable(artifact, dest) },

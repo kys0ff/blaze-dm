@@ -21,6 +21,23 @@ data class DownloadMetadataDto(
 )
 
 /**
+ * The outcome of fetching a web-served `.torrent` file so it can be previewed and then added as an
+ * ordinary local torrent.
+ *
+ * [torrentFile] is the absolute path of the metainfo file the engine saved to its own cache, so a
+ * client hands that path back to [DownloadsApi.create] to start the transfer from a local `.torrent`
+ * rather than re-fetching the URL. It is display/selection metadata only - never any credential
+ * material. Returns null (rather than an empty preview) when the URL served nothing parsable.
+ */
+@Serializable
+data class TorrentPreviewDto(
+    val torrentFile: String,
+    val name: String,
+    val totalBytes: Long? = null,
+    val files: List<DownloadFile>? = null,
+)
+
+/**
  * A safe, display-only summary of a portable (crash-/transfer-) download found on disk.
  *
  * It is deliberately free of secrets: no headers, cookies or tokens are ever carried here. [source] is a

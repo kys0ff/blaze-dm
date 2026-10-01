@@ -197,6 +197,11 @@ object SettingsRegistry {
             title = { it.settings.seedRatioLimitLabel }, description = { it.settings.seedRatioLimitDesc },
             keywords = listOf("seed", "ratio", "torrent", "share"),
         ),
+        SettingsOption(
+            id = "downloads.torrentFilePreviewEnabled", category = SettingsCategory.DOWNLOADS, groupKey = "torrent",
+            title = { it.settings.torrentFilePreviewLabel }, description = { it.settings.torrentFilePreviewDesc },
+            keywords = listOf("torrent", "preview", ".torrent", "metainfo", "add download", "files"),
+        ),
 
         // ── Files ────────────────────────────────────────────────────────────
         SettingsOption(
