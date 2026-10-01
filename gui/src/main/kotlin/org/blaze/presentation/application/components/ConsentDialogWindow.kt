@@ -5,9 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -94,19 +94,29 @@ fun ConsentDialogWindow(
             disableTitlePaneButtons(window.rootPane)
         }
 
+        // The window height tracks the content's natural size, capped so a long consent message still
+        // fits the screen. The scrollable viewport is the outer Column; the inner Column reports its own
+        // laid-out height (unbounded *inside* the scroll, hence the true content height) so we can size
+        // the window to it. The previous `wrapContentHeight(unbounded = true)` sat directly above
+        // `verticalScroll`, so it measured the scroll container against an infinity max height, which
+        // Compose forbids - that crashed the whole composition with an IllegalStateException.
         Column(
             modifier = Modifier
                 .width(BlazeLayout.ConsentDialogWidth)
-                .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                .onSizeChanged { height = with(density) { it.height.toDp() + 20.dp }.coerceAtMost(480.dp) }
+                .height(height)
                 .background(JewelTheme.globalColors.panelBackground)
-                .padding(
-                    horizontal = BlazeLayout.DialogPaddingHorizontal,
-                    vertical = BlazeLayout.DialogPaddingVertical,
-                )
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { height = (with(density) { it.height.toDp() } + 20.dp).coerceAtMost(480.dp) }
+                    .padding(
+                        horizontal = BlazeLayout.DialogPaddingHorizontal,
+                        vertical = BlazeLayout.DialogPaddingVertical,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
             DialogHeader(title)
             Text(text = body, style = JewelTheme.defaultTextStyle)
             Text(
@@ -149,6 +159,7 @@ fun ConsentDialogWindow(
                 DefaultButton(onClick = { onDecision(ConsentDecision.ALLOW_ALWAYS) }) {
                     Text(strings.allowAlways)
                 }
+            }
             }
         }
     }

@@ -16,6 +16,7 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.net.http.HttpTimeoutException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -50,6 +51,15 @@ class BlazeApiClient(
     companion object {
         /** Human-readable name shown in the user's consent prompt for this first-party client. */
         const val CLIENT_NAME: String = "Blaze CLI"
+
+        /**
+         * Per-request read timeout. A request that trips the GUI's consent gate is held open until the
+         * user answers, and the server only gives up after its own consent window (5 minutes, see
+         * `LocalApiServer.CONSENT_TIMEOUT_MS`). The client must therefore outlast the server, or a
+         * perfectly valid - and eventually approved - call dies here with a misleading "cannot reach the
+         * service". The connect timeout stays short so a genuinely dead endpoint still fails fast.
+         */
+        private val REQUEST_TIMEOUT: Duration = Duration.ofMinutes(6)
 
         fun discover(storageDir: Path, urlOverride: String?, tokenOverride: String?): Endpoint {
             val clientId = readOrMintClientId(storageDir)
@@ -182,7 +192,7 @@ class BlazeApiClient(
 
     private fun get(path: String, auth: Boolean = true): Response {
         val builder = HttpRequest.newBuilder(URI.create(endpoint.baseUrl + path))
-            .timeout(Duration.ofSeconds(15))
+            .timeout(REQUEST_TIMEOUT)
             .GET()
         addIdentity(builder)
         if (auth) addAuth(builder)
@@ -191,7 +201,7 @@ class BlazeApiClient(
 
     private fun post(path: String, body: String?): Response {
         val builder = HttpRequest.newBuilder(URI.create(endpoint.baseUrl + path))
-            .timeout(Duration.ofSeconds(15))
+            .timeout(REQUEST_TIMEOUT)
             .header("Content-Type", "application/json")
         addIdentity(builder)
         addAuth(builder)
@@ -203,7 +213,7 @@ class BlazeApiClient(
 
     private fun delete(path: String): Response {
         val builder = HttpRequest.newBuilder(URI.create(endpoint.baseUrl + path))
-            .timeout(Duration.ofSeconds(15))
+            .timeout(REQUEST_TIMEOUT)
         addIdentity(builder)
         addAuth(builder)
         return execute(builder.DELETE().build())
@@ -213,7 +223,14 @@ class BlazeApiClient(
         val resp = runCatching {
             http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
         }.getOrElse {
-            throw CliError(ExitCodes.SERVICE_UNAVAILABLE, "Cannot reach the Blaze service: ${it.message}")
+            // A read timeout almost always means the consent prompt is still waiting on the user, not
+            // that the service is gone; say so rather than misleading them into thinking it's unreachable.
+            val detail = if (it is HttpTimeoutException) {
+                "request timed out - it may still be waiting for your approval in the Blaze window"
+            } else {
+                it.message ?: "unreachable"
+            }
+            throw CliError(ExitCodes.SERVICE_UNAVAILABLE, "Cannot reach the Blaze service: $detail")
         }
         checkAuth(resp.statusCode(), Response(resp.statusCode(), resp.body()))
         return Response(resp.statusCode(), resp.body())

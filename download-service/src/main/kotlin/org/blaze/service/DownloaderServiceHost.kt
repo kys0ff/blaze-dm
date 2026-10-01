@@ -111,6 +111,9 @@ class DownloaderServiceHost(
                 )
             }
             val server = LocalApiServer(api, apiSettings, tokenStore, scope, consentGate)
+            // Ensure the owner-only token exists before the descriptor is published, so a client reading
+            // it (the CLI) can authenticate its very first request instead of being rejected at the gate.
+            tokenStore.token()
             server.start()
             val host = DownloaderServiceHost(api, engine, server, lock, ServiceDiscovery(storageDir), tokenFile)
             host.publish()

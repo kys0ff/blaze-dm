@@ -51,6 +51,11 @@ class LocalApiLauncher(
             return false
         }
         val tokenStore = ApiTokenStore(ServicePaths.tokenFileFor(storageDir))
+        // Mint/persist the bearer token *before* publishing the descriptor. Clients (the CLI, a browser
+        // bridge) read this owner-only file to authenticate their very first request; if it were left
+        // lazy - created only once a non-empty token is presented - that first request would find no file,
+        // connect without a token and be rejected at the auth gate, and nothing would reach the consent UI.
+        tokenStore.token()
         val srv = LocalApiServer(api, settings, tokenStore, scope, consentGate)
         return try {
             srv.start()
