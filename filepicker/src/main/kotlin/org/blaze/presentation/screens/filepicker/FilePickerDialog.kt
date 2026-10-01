@@ -1,7 +1,5 @@
 package org.blaze.presentation.screens.filepicker
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -16,7 +14,6 @@ import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.screens.filepicker.components.FilePickerPathField
 import org.blaze.presentation.screens.filepicker.components.FilePickerToolbar
 import org.blaze.presentation.screens.filepicker.components.FilePickerTree
@@ -101,12 +98,10 @@ fun FilePickerDialog(
     }
 
     BaseDialog(onDismiss = onDismiss, width = 620.dp, requestFocus = false, title = actualTitle) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            DialogHeader(actualTitle)
-            val desc = state.description
-            if (desc != null) {
-                Text(text = desc, style = small, color = secondary)
-            }
+        // The title lives in the window caption (single source of truth), so the content opens with
+        // the optional description rather than repeating the heading.
+        state.description?.let { desc ->
+            Text(text = desc, style = small, color = secondary)
         }
 
         FilePickerToolbar(state = state, onEvent = screenModel::onEvent, strings = strings)

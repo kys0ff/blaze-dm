@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.sp
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.screens.filepicker.FilePickerEvent
 import org.blaze.presentation.screens.filepicker.FilePickerState
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -48,9 +47,12 @@ internal fun NewFolderDialog(
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    BaseDialog(onDismiss = { onEvent(FilePickerEvent.DismissNewFolder) }, width = 420.dp, requestFocus = false) {
-        DialogHeader(strings.filePicker.newFolderTitle)
-
+    BaseDialog(
+        onDismiss = { onEvent(FilePickerEvent.DismissNewFolder) },
+        width = 420.dp,
+        requestFocus = false,
+        title = strings.filePicker.newFolderTitle,
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(strings.filePicker.newFolderName)
             TextField(

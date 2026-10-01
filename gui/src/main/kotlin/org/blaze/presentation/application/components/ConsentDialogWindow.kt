@@ -28,7 +28,6 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.security.ConsentRequest
 import org.blaze.security.ConsentSubjectKind
 import org.blaze.service.security.ConsentDecision
@@ -117,7 +116,7 @@ fun ConsentDialogWindow(
                     ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-            DialogHeader(title)
+            // The title lives in the window caption, so the body starts with the explanatory copy.
             Text(text = body, style = JewelTheme.defaultTextStyle)
             Text(
                 text = meaning,

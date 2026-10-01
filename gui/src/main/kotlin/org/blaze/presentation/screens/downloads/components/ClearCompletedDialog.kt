@@ -7,7 +7,6 @@ import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 
@@ -40,9 +39,7 @@ fun ClearCompletedDialog(
     val strings = blazeStrings
     val cStrings = strings.downloads.dialogs.clearCompleted
 
-    BaseDialog(onDismiss = onDismiss, width = 440.dp) {
-        DialogHeader(cStrings.title)
-
+    BaseDialog(onDismiss = onDismiss, width = 440.dp, title = cStrings.title) {
         Text(
             text = cStrings.message(scope.total),
             maxLines = 3,

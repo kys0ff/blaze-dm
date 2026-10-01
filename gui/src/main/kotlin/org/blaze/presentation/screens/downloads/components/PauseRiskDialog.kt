@@ -10,7 +10,6 @@ import org.blaze.domain.models.Download
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.screens.downloads.percentDone
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.CheckboxRow
@@ -37,8 +36,7 @@ fun PauseRiskDialog(
     val percent = download.percentDone()
     var doNotAskAgain by remember { mutableStateOf(false) }
 
-    BaseDialog(onDismiss = onDismiss, width = 440.dp) {
-        DialogHeader(risk.title)
+    BaseDialog(onDismiss = onDismiss, width = 440.dp, title = risk.title) {
         Text(text = risk.message(download.name))
 
         AdvisoryCallout(text = risk.detail(percent), tone = AdvisoryTone.WARNING)

@@ -19,7 +19,6 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LoadedResolver
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -48,8 +47,7 @@ fun HandlerChoiceDialog(
     var selected by remember { mutableStateOf(handlers.firstOrNull()?.resolver?.id) }
     val selectedHandler = handlers.firstOrNull { it.resolver.id == selected }
 
-    BaseDialog(onDismiss = onDismiss) {
-        DialogHeader(dStrings.handlerChoiceTitle)
+    BaseDialog(onDismiss = onDismiss, title = dStrings.handlerChoiceTitle) {
         Text(
             text = dStrings.handlerChoicePrompt,
             style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),

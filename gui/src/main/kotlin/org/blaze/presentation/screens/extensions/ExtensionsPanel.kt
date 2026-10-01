@@ -26,7 +26,6 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.ResolverOptionsDialog
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
@@ -231,8 +230,7 @@ private fun RemoveExtensionDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    BaseDialog(onDismiss = onDismiss) {
-        DialogHeader(title)
+    BaseDialog(onDismiss = onDismiss, title = title) {
         Text(text = body)
         StandardDialogButtons(
             dismissText = cancelLabel,

@@ -6,7 +6,6 @@ import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.jetbrains.jewel.ui.component.Text
 
 /**
@@ -28,9 +27,7 @@ fun PlainPageDownloadDialog(
 
     // A touch wider than the other dialogs: the link itself is the subject of the warning, and a
     // truncated "...share/abc" would leave the user guessing which URL they just approved.
-    BaseDialog(onDismiss = onDismiss, width = 500.dp) {
-        DialogHeader(pStrings.title)
-
+    BaseDialog(onDismiss = onDismiss, width = 500.dp, title = pStrings.title) {
         Text(
             text = pStrings.message(url),
             maxLines = 4,

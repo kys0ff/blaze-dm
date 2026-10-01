@@ -9,7 +9,6 @@ import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.Text
@@ -31,8 +30,7 @@ fun BulkRemoveDialog(
     val selection = strings.downloads.selection
     val dialogs = strings.downloads.dialogs
 
-    BaseDialog(onDismiss = onDismiss, width = 420.dp) {
-        DialogHeader(selection.bulkRemoveTitle)
+    BaseDialog(onDismiss = onDismiss, width = 420.dp, title = selection.bulkRemoveTitle) {
         Text(text = selection.bulkRemoveMessage(count))
 
         StandardDialogButtons(

@@ -29,11 +29,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
@@ -103,19 +101,6 @@ fun BaseDialog(
             content = content
         )
     }
-}
-
-/** Standard dialog heading (15sp, semibold) used above the dialog body. */
-@Composable
-fun DialogHeader(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        modifier = modifier,
-        style = JewelTheme.defaultTextStyle.copy(
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-    )
 }
 
 /**

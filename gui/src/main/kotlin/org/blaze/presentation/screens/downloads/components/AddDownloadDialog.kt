@@ -23,7 +23,6 @@ import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadListView
 import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
@@ -336,8 +335,6 @@ fun AddDownloadDialog(
     // Focus stays on the source field (managed above), so the shell must not grab it.
     val dialogTitle = if (state.isBatch) dStrings.batchTitle else dStrings.addTitle
     BaseDialog(onDismiss = onDismiss, requestFocus = false, title = dialogTitle) {
-        DialogHeader(dialogTitle)
-
         when {
             state.step == 1 -> AddDownloadInputView(
                 state = state,

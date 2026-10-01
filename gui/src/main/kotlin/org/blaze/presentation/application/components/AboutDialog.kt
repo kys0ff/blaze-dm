@@ -1,7 +1,6 @@
 package org.blaze.presentation.application.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,7 +11,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.icons.BlazeFlame
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.DefaultButton
@@ -32,7 +30,7 @@ private const val APP_VERSION = "1.0.0"
 @Composable
 fun AboutDialog(onDismiss: () -> Unit) {
     val menu = blazeStrings.menu
-    BaseDialog(onDismiss = onDismiss, width = 380.dp) {
+    BaseDialog(onDismiss = onDismiss, width = 380.dp, title = menu.aboutTitle) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -43,14 +41,12 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 tint = Color.Unspecified,
                 modifier = Modifier.size(40.dp),
             )
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                DialogHeader(menu.aboutTitle)
-                Text(
-                    text = "Blaze $APP_VERSION",
-                    style = JewelTheme.typography.small,
-                    color = JewelTheme.globalColors.text.info,
-                )
-            }
+            // The title lives in the window caption, so the identity row carries just the version.
+            Text(
+                text = "Blaze $APP_VERSION",
+                style = JewelTheme.typography.small,
+                color = JewelTheme.globalColors.text.info,
+            )
         }
         Text(
             text = menu.aboutBody,

@@ -15,7 +15,6 @@ import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.RadioButtonRow
 import org.jetbrains.jewel.ui.component.Text
@@ -33,9 +32,7 @@ fun FileConflictDialog(
     val dStrings = strings.downloads.dialogs
     val sStrings = strings.settings
 
-    BaseDialog(onDismiss = onDismiss, width = 440.dp) {
-        DialogHeader(dStrings.conflictTitle)
-
+    BaseDialog(onDismiss = onDismiss, width = 440.dp, title = dStrings.conflictTitle) {
         Text(
             text = dStrings.conflictMessage(fileName),
             maxLines = 3,

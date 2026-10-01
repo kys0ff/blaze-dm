@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.blaze.presentation.screens.downloads.components.add.ResolvedPick
 import org.blaze.presentation.screens.downloads.components.add.pickResolvedLinks
 import org.blaze.presentation.util.formatSize
@@ -49,8 +48,7 @@ fun ResolvedLinksChoiceDialog(
     val selected = links.filter { it.directUrl in selectedKeys }
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-    BaseDialog(onDismiss = onDismiss) {
-        DialogHeader(dStrings.resolvedLinksTitle)
+    BaseDialog(onDismiss = onDismiss, title = dStrings.resolvedLinksTitle) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = dStrings.resolvedLinksPrompt,

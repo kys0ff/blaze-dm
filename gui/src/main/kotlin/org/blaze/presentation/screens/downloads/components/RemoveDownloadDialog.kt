@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.DialogHeader
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.CheckboxRow
@@ -41,9 +40,7 @@ fun RemoveDownloadDialog(
     val secondary = JewelTheme.globalColors.text.info
     val hintStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-    BaseDialog(onDismiss = onDismiss, width = 440.dp) {
-        DialogHeader(dStrings.removeTitle)
-
+    BaseDialog(onDismiss = onDismiss, width = 440.dp, title = dStrings.removeTitle) {
         // The name sits in the sentence in the same regular weight as the rest of it - the chrome is
         // regular-weight everywhere except dialog titles and group headers, and this is body text.
         Text(
