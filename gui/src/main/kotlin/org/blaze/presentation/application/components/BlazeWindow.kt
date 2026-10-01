@@ -24,6 +24,7 @@ import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.application.AppShell
 import org.blaze.presentation.components.BlazeKeymap
 import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.DialogChromeGuard
 import org.blaze.presentation.components.LocalAmbientGlowEnabled
 import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.LocalWindowActive
@@ -114,12 +115,24 @@ fun BlazeWindow(shell: AppShell) {
         // the single hide-to-tray model: un-iconify and report it as hidden.
         // NOTE: `windowStateChanged` is a WindowStateListener callback, so the adapter must
         // be registered with addWindowStateListener (addWindowListener alone never fires it).
+        // NOTE: dialogs are not minimizable (see [preventDialogMinimize]), but a window manager
+        // that iconifies transient groups still lands an ICONIFIED on this frame when the user
+        // presses a dialog's caption button. While a dialog is composed that is the *only* way
+        // the frame can iconify - the modal blocks the app's own title-bar buttons - so the
+        // minimize is simply undone instead of hiding the app to the tray.
         DisposableEffect(window) {
             val listener = object : WindowAdapter() {
                 override fun windowStateChanged(e: WindowEvent) {
                     if (e.newState and Frame.ICONIFIED != 0) {
                         window.extendedState = Frame.NORMAL
-                        shell.onMinimize()
+                        if (DialogChromeGuard.hasOpenDialog()) {
+                            // Dialog caption minimize (direct or group-propagated): bring the
+                            // frame and its transient dialog back and keep the app shown.
+                            window.toFront()
+                            window.requestFocus()
+                        } else {
+                            shell.onMinimize()
+                        }
                     }
                 }
             }

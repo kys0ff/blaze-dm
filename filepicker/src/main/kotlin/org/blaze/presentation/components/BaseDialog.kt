@@ -60,7 +60,6 @@ fun BaseDialog(
         height = height,
     )
 
-    // rememberDialogState treats its args as initial values only, so push updates in manually.
     LaunchedEffect(width, height) {
         state.size = DpSize(width, height)
     }
@@ -75,11 +74,13 @@ fun BaseDialog(
         title = title.orEmpty(),
         resizable = false,
     ) {
+        // Dialogs are not minimizable in the IDE: make the caption's minimize a no-op instead of
+        // letting a (group-)iconification fold into the app's hide-to-tray behavior.
+        preventDialogMinimize()
+
         Column(
             modifier = modifier
                 .width(width)
-                // Measure the content with unbounded height so it reports its natural size
-                // instead of being clamped to the current window height.
                 .wrapContentHeight(align = Alignment.Top, unbounded = true)
                 .onSizeChanged { height = with(density) { it.height.toDp() + 20.dp } }
                 .background(JewelTheme.globalColors.panelBackground)
@@ -127,9 +128,6 @@ fun StandardDialogButtons(
     ) {
         leading()
         Spacer(Modifier.weight(1f))
-        // The row follows the platform's own order off the centralized switch: OK then Cancel on
-        // Windows/Linux, Cancel then OK on macOS. A plain dialog has no Apply, so the exhaustive
-        // branch for it is intentionally empty.
         dialogButtonOrder(hasApply = false).forEach { button ->
             when (button) {
                 DialogButton.Ok -> DefaultButton(

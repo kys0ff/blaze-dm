@@ -28,6 +28,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.preventDialogMinimize
 import org.blaze.security.ConsentRequest
 import org.blaze.security.ConsentSubjectKind
 import org.blaze.service.security.ConsentDecision
@@ -88,6 +89,10 @@ fun ConsentDialogWindow(
         title = title,
         resizable = false,
     ) {
+        // Not closable and not minimizable: the request can only be answered, and a dialog
+        // iconification must never fold into the app's hide-to-tray behavior.
+        preventDialogMinimize()
+
         LaunchedEffect(window) {
             window.isResizable = false
             disableTitlePaneButtons(window.rootPane)
