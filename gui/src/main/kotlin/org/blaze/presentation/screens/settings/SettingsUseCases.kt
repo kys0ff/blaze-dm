@@ -13,6 +13,9 @@ import org.blaze.presentation.screens.settings.state.ThemeUiState
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
 import org.blaze.resolver.core.ResolverSource
+import org.blaze.security.ConsentService
+import org.blaze.security.ConsentSubjectKind
+import org.blaze.service.security.ConsentDecision
 import org.blaze.theming.core.ThemeRegistry
 import org.blaze.theming.core.ThemeSettingsRepository
 import org.blaze.theming.core.ThemeSource
@@ -83,6 +86,7 @@ class SettingsUseCases(
     private val resolverSettingsRepository: LinkResolverSettingsRepository,
     private val themeRegistry: ThemeRegistry,
     private val themeSettingsRepository: ThemeSettingsRepository,
+    private val consentService: ConsentService,
 ) {
 
     /** The persisted values a freshly-opened Settings screen seeds its draft from. */
@@ -141,8 +145,18 @@ class SettingsUseCases(
 
     // ---- plugin registry mutations ----
 
-    suspend fun installHandler(jarPath: String) {
-        resolverRegistry.install(Path.of(jarPath))
+    /**
+     * Install a link-handler jar, gated by the consent layer: the user acknowledges what running a
+     * third-party extension means *before* the jar is copied into the extensions directory, so a
+     * refusal leaves the registry exactly as it was. The approval is recorded by content hash, so
+     * the reload the install triggers reads the jar as trusted.
+     */
+    suspend fun installHandler(jarPath: String): String? {
+        val jar = Path.of(jarPath)
+        val decision = consentService.awaitExtensionApproval(ConsentSubjectKind.LINK_RESOLVER, jar)
+        if (decision == ConsentDecision.DENY) return DENIED_INSTALL
+        return resolverRegistry.install(jar)
+            .exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
     }
 
     suspend fun uninstallHandler(id: String) {
@@ -153,8 +167,13 @@ class SettingsUseCases(
         resolverRegistry.reload()
     }
 
-    suspend fun installTheme(jarPath: String) {
-        themeRegistry.install(Path.of(jarPath))
+    /** Install a theme jar under the same consent gate as [installHandler], with the theme kind. */
+    suspend fun installTheme(jarPath: String): String? {
+        val jar = Path.of(jarPath)
+        val decision = consentService.awaitExtensionApproval(ConsentSubjectKind.THEME, jar)
+        if (decision == ConsentDecision.DENY) return DENIED_INSTALL
+        return themeRegistry.install(jar)
+            .exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
     }
 
     suspend fun uninstallTheme(id: String) {
@@ -263,5 +282,10 @@ class SettingsUseCases(
         // persisted selection), then point the live registry id back at what is actually saved.
         themeSettingsRepository.revertToPersisted()
         themeRegistry.restoreSelectionFromSettings()
+    }
+
+    companion object {
+        /** The install methods' sentinel for "the user refused the consent prompt", vs a real error. */
+        const val DENIED_INSTALL = "denied"
     }
 }

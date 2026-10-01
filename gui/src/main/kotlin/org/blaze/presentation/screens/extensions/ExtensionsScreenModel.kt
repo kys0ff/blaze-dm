@@ -12,6 +12,9 @@ import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
 import org.blaze.resolver.core.LoadedResolver
 import org.blaze.resolver.core.ResolverSource
+import org.blaze.security.ConsentService
+import org.blaze.security.ConsentSubjectKind
+import org.blaze.service.security.ConsentDecision
 import java.nio.file.Path
 
 /**
@@ -69,6 +72,7 @@ data class ExtensionsPanelState(
 class ExtensionsScreenModel(
     private val registry: LinkResolverRegistry,
     private val settingsRepository: LinkResolverSettingsRepository,
+    private val consentService: ConsentService,
 ) : ScreenModel {
 
     val state: StateFlow<ExtensionsPanelState> =
@@ -92,7 +96,14 @@ class ExtensionsScreenModel(
                 settingsRepository.setPriority(event.id, event.priority)
             }
 
-            is ExtensionsEvent.Install -> launchRescan { registry.install(Path.of(event.jarPath)) }
+            // Consent gate first: the jar's code may only run after the user acknowledged what
+            // installing a third-party extension means; a refusal copies nothing into the directory.
+            is ExtensionsEvent.Install -> screenModelScope.launch {
+                val jar = Path.of(event.jarPath)
+                if (consentService.awaitExtensionApproval(ConsentSubjectKind.LINK_RESOLVER, jar) != ConsentDecision.DENY) {
+                    registry.install(jar)
+                }
+            }
 
             is ExtensionsEvent.Uninstall -> launchRescan { registry.uninstall(event.id) }
 

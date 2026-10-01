@@ -168,7 +168,7 @@ private fun ThemeOptionField(
 @Composable
 private fun ColorField(
     value: String,
-    alphaAllowed: Boolean,
+    alphaAllowed: Boolean, // TODO: make use of param or remove it
     hint: String,
     infoStyle: TextStyle,
     onValueChange: (String) -> Unit,

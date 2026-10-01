@@ -2,6 +2,7 @@ package org.blaze.download.api
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.net.URI
 
 /**
  * The transport-agnostic description of what to download.
@@ -117,7 +118,7 @@ data class NewDownloadRequest(
 }
 
 private fun String.originOf(): String = runCatching {
-    java.net.URI(this).let { "${it.scheme}://${it.host}" }
+    URI(this).let { "${it.scheme}://${it.host}" }
 }.getOrDefault("<invalid-url>")
 
 private fun DownloadSource.TorrentFile.filenameHint(): String = path.substringAfterLast('/')
@@ -127,7 +128,7 @@ private fun DownloadSource.TorrentFile.filenameHint(): String = path.substringAf
  * source. Display-only; it carries no credential material, and the engine still confines every written
  * file beneath the validated destination directory regardless of the paths listed here.
  */
-@kotlinx.serialization.Serializable
+@Serializable
 data class DownloadFileHint(
     val path: String,
     val size: Long = 0,

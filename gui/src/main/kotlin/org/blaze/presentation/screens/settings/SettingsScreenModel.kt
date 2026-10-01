@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.blaze.engine.settings.DownloadSettings
+import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.screens.settings.state.SettingsState
 
 /**
@@ -22,6 +23,7 @@ import org.blaze.presentation.screens.settings.state.SettingsState
  */
 class SettingsScreenModel(
     private val useCases: SettingsUseCases,
+    private val strings: BlazeStrings,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -276,6 +278,32 @@ class SettingsScreenModel(
             it.copy(appSettings = it.appSettings.copy(clipboardMonitoringEnabled = event.enabled))
         }
 
+        is SettingsEvent.UpdateApproveExternalClients -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(approveExternalClients = event.enabled))
+        }
+
+        is SettingsEvent.UpdateApproveExtensions -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(approveExtensions = event.enabled))
+        }
+
+        is SettingsEvent.RevokeRememberedClient -> _state.update {
+            it.copy(
+                appSettings = it.appSettings.copy(
+                    rememberedClients = it.appSettings.rememberedClients.filterNot { client -> client.id == event.clientId }
+                )
+            )
+        }
+
+        is SettingsEvent.ForgetTrustedExtension -> _state.update {
+            it.copy(
+                appSettings = it.appSettings.copy(
+                    trustedExtensions = it.appSettings.trustedExtensions.filterNot { extension ->
+                        extension.sha256 == event.sha256 && extension.kind == event.kind
+                    }
+                )
+            )
+        }
+
         is SettingsEvent.UpdateDesktopNotificationsEnabled -> _state.update {
             it.copy(appSettings = it.appSettings.copy(desktopNotificationsEnabled = event.enabled))
         }
@@ -367,7 +395,9 @@ class SettingsScreenModel(
         }
 
         is SettingsEvent.InstallExtension -> screenModelScope.launch {
-            useCases.installHandler(event.jarPath)
+            // The use case answers null on success, DENIED_INSTALL when the consent dialog was
+            // refused, and an error message on a real failure; either way the user hears back.
+            reportInstall(useCases.installHandler(event.jarPath))
         }
 
         is SettingsEvent.RemoveExtension -> screenModelScope.launch {
@@ -385,7 +415,7 @@ class SettingsScreenModel(
         }
 
         is SettingsEvent.InstallTheme -> screenModelScope.launch {
-            useCases.installTheme(event.jarPath)
+            reportInstall(useCases.installTheme(event.jarPath))
         }
 
         is SettingsEvent.RemoveTheme -> screenModelScope.launch {
@@ -465,6 +495,18 @@ class SettingsScreenModel(
         selectedThemeOverride = selectedThemeOverride,
         themeOptionOverrides = themeOptionOverrides,
     )
+
+    /**
+     * Turn an install result (see [SettingsUseCases.installHandler]) into one line the screen shows:
+     * nothing on success, the consent-refusal copy when the user declined, the error otherwise.
+     */
+    private suspend fun reportInstall(error: String?) {
+        when (error) {
+            null -> Unit
+            SettingsUseCases.DENIED_INSTALL -> _effects.emit(SettingsEffect.Message(strings.settings.handlers.installRefused))
+            else -> _effects.emit(SettingsEffect.Message(strings.settings.handlers.installFailed(error)))
+        }
+    }
 
     /** Re-seed the numeric/text fields from [s] after a commit or reset. */
     private fun resetTextFieldsTo(s: DownloadSettings) {

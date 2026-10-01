@@ -11,6 +11,7 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import org.blaze.presentation.components.BlazeKeymap.displayValue
+import org.blaze.presentation.components.BlazeKeymap.effectiveBinding
 import org.blaze.presentation.components.BlazeKeymap.matches
 
 /**
@@ -106,6 +107,7 @@ object BlazeKeymap {
     }
 
     /** Re-read the live overrides from a source of truth (used by the app at startup and on settings change). */
+    // TODO: make use of the function or remove it
     fun applyPersisted(overrides: Map<Action, Binding>, cleared: Set<Action>) =
         replaceOverrides(overrides, cleared)
 

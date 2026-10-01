@@ -11,6 +11,7 @@ interface BlazeStrings {
     val menu: Menu
     val search: Search
     val extensions: Extensions
+    val consent: Consent
 
     interface Common {
         val ok: String
@@ -693,6 +694,21 @@ interface BlazeStrings {
         val runAtStartupDesc: String
         val clipboardMonitoringLabel: String
         val clipboardMonitoringDesc: String
+        /** Security group: consent prompts for external API clients and untrusted extension jars. */
+        val approveExternalClientsLabel: String
+        val approveExternalClientsDesc: String
+        val rememberedClientsLabel: String
+        val rememberedClientsEmpty: String
+        val revokeAccessAction: String
+        val approveExtensionsLabel: String
+        val approveExtensionsDesc: String
+        val trustedExtensionsLabel: String
+        val trustedExtensionsEmpty: String
+        val forgetAction: String
+        /** Kind tag beside a trusted extension ("link handler" / "theme"); the two never share trust. */
+        val trustedKindHandler: String
+        val trustedKindTheme: String
+        val securityHeader: String
         val destinationHeader: String
         val defaultDownloadDirLabel: String
         val askWhereToSaveLabel: String
@@ -752,6 +768,10 @@ interface BlazeStrings {
             /** Timeout preference shared by all handlers. */
             val requestTimeoutLabel: String
             val requestTimeoutDesc: String
+            /** Balloon shown when an install was refused through the consent dialog. */
+            val installRefused: String
+            /** Balloon shown when an install failed after approval; [reason] is the underlying error. */
+            fun installFailed(reason: String): String
         }
 
         val themes: Themes
@@ -860,5 +880,37 @@ interface BlazeStrings {
         fun networkFailure(message: String): String
         fun diskError(message: String): String
         fun unknown(message: String): String
+    }
+
+    /**
+     * Copy of the security consent dialogs: the app-wide prompt that pauses an external client or an
+     * untrusted extension jar until the user acknowledges what accepting actually means and picks
+     * "only this time", "always" or "reject".
+     */
+    interface Consent {
+        /** Title when a third-party program wants to use the local download API. */
+        val clientTitle: String
+        /** Body naming the requesting client and its stable id. */
+        fun clientBody(name: String, id: String): String
+        /** The plain statement of what allowing a client permits it to do. */
+        val clientMeaning: String
+        /** Title before an extension jar would run for the first time. */
+        val extensionTitle: String
+        /** Body naming the jar about to be installed or loaded. */
+        fun extensionBody(fileName: String): String
+        /** The plain statement of what allowing an extension permits its code to do. */
+        val extensionMeaning: String
+        /** Explains the difference between the two allow buttons so the choice is informed. */
+        val choiceHelp: String
+        /** Points at the Settings page where prompts can be switched off and approvals revoked. */
+        val settingsHint: String
+        /** Button: allow this occurrence only; ask again after a restart. */
+        val allowOnce: String
+        /** Button: allow and remember until revoked in Settings. */
+        val allowAlways: String
+        /** Button: refuse. */
+        val deny: String
+        /** Label of the row showing the client id / jar hash of the subject. */
+        val subjectLabel: String
     }
 }

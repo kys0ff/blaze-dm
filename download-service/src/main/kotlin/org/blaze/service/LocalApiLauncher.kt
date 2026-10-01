@@ -9,6 +9,7 @@ import org.blaze.service.auth.ApiTokenStore
 import org.blaze.service.config.LocalApiSettings
 import org.blaze.service.instance.ServiceDiscovery
 import org.blaze.service.instance.ServiceLock
+import org.blaze.service.security.ClientConsentGate
 import org.blaze.service.transport.LocalApiServer
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -33,7 +34,16 @@ class LocalApiLauncher(
     val isRunning: Boolean get() = server != null
     val port: Int get() = server?.boundPort ?: -1
 
-    fun tryStart(api: DownloadsApi, settings: LocalApiSettings): Boolean {
+    /**
+     * Exposes the API if the directory is free. [consentGate] is the GUI's chance to make the user
+     * acknowledge every new third-party client; a host with no UI leaves it as
+     * [ClientConsentGate.ALLOW_ALL] and nobody is asked.
+     */
+    fun tryStart(
+        api: DownloadsApi,
+        settings: LocalApiSettings,
+        consentGate: ClientConsentGate = ClientConsentGate.ALLOW_ALL,
+    ): Boolean {
         if (!settings.enabled) return false
         val candidate = ServiceLock(ServicePaths.lockFileFor(storageDir))
         if (!candidate.acquire()) {
@@ -41,7 +51,7 @@ class LocalApiLauncher(
             return false
         }
         val tokenStore = ApiTokenStore(ServicePaths.tokenFileFor(storageDir))
-        val srv = LocalApiServer(api, settings, tokenStore, scope)
+        val srv = LocalApiServer(api, settings, tokenStore, scope, consentGate)
         return try {
             srv.start()
             discovery.publish(

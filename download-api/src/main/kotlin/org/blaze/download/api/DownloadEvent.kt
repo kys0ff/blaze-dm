@@ -1,5 +1,6 @@
 package org.blaze.download.api
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -15,15 +16,15 @@ sealed interface DownloadEvent {
     val downloadId: String
 
     @Serializable
-    @kotlinx.serialization.SerialName("created")
+    @SerialName("created")
     data class Created(override val downloadId: String, val download: DownloadDto) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("started")
+    @SerialName("started")
     data class Started(override val downloadId: String) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("progress")
+    @SerialName("progress")
     data class Progress(
         override val downloadId: String,
         val downloadedBytes: Long,
@@ -34,30 +35,30 @@ sealed interface DownloadEvent {
     ) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("paused")
+    @SerialName("paused")
     data class Paused(override val downloadId: String) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("resumed")
+    @SerialName("resumed")
     data class Resumed(override val downloadId: String) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("completed")
+    @SerialName("completed")
     data class Completed(override val downloadId: String, val download: DownloadDto) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("failed")
+    @SerialName("failed")
     data class Failed(override val downloadId: String, val error: ApiErrorBody) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("cancelled")
+    @SerialName("cancelled")
     data class Cancelled(override val downloadId: String) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("removed")
+    @SerialName("removed")
     data class Removed(override val downloadId: String) : DownloadEvent
 
     @Serializable
-    @kotlinx.serialization.SerialName("errorChanged")
+    @SerialName("errorChanged")
     data class ErrorChanged(override val downloadId: String, val error: ApiErrorBody?) : DownloadEvent
 }

@@ -558,6 +558,19 @@ object ArStrings : BlazeStrings {
         override val runAtStartupDesc = "يسجّل Blaze للعمل تلقائيًا عند تسجيل دخولك."
         override val clipboardMonitoringLabel = "مراقبة الحافظة عن الروابط المنزَّلة"
         override val clipboardMonitoringDesc = "عند نسخ رابط ويب أو رابط magnet أو مسار ملف ‎.torrent سيعرضه Blaze تنزيلًا جديدًا؛ لا يُضاف شيء حتى تؤكد."
+        override val securityHeader = "الأمان"
+        override val approveExternalClientsLabel = "اطلب الإذن قبل السماح لتطبيقات أخرى بالتحكم في Blaze"
+        override val approveExternalClientsDesc = "يوفّر واجهة API المحلية للتطبيقات الموثوقة إمكانية إضافة التنزيلات وإدارتها؛ عند التفعيل يوقف Blaze أول طلب من تطبيق جديد ويسألك عن السماح له، وعند التعطيل يمر أي تطبيق يملك رمز الوصول دون سؤال."
+        override val rememberedClientsLabel = "التطبيقات المسموح لها"
+        override val rememberedClientsEmpty = "لا توجد تطبيقات مسموح لها دون سؤال؛ كل تطبيق تسمح له هنا يتحكم في Blaze بصمت."
+        override val revokeAccessAction = "سحب الإذن"
+        override val approveExtensionsLabel = "اطلب الإذن قبل تثبيت أو تحميل الامتدادات"
+        override val approveExtensionsDesc = "امتدادات معالجات الروابط والسمات هي أكواد طرف ثالث تعمل داخل Blaze؛ عند التفعيل تؤكد كل ملف jar غير معتمد قبل تنفيذ شيفرته، وعند التعطيل تُحمَّل الملفات الموضوعة في مجلدات الامتدادات دون سؤال."
+        override val trustedExtensionsLabel = "الامتدادات الموثوقة"
+        override val trustedExtensionsEmpty = "لا توجد امتدادات موثوقة للتحميل دون سؤال."
+        override val forgetAction = "إزالة الثقة"
+        override val trustedKindHandler = "معالج روابط"
+        override val trustedKindTheme = "سمة"
         override val destinationHeader = "وجهات التنزيل"
         override val defaultDownloadDirLabel = "مجلد التنزيل الافتراضي"
         override val askWhereToSaveLabel = "السؤال عن موضع الحفظ قبل بدء كل تنزيل"
@@ -610,6 +623,8 @@ object ArStrings : BlazeStrings {
             override val restoreDefaultsAction = "استعادة الافتراضيات"
             override val requestTimeoutLabel = "مهلة طلب المعالج (ثوانٍ)"
             override val requestTimeoutDesc = "المدة التي يُسمح لمعالج الروابط بقضائها في جلب صفحة قبل أن يتخلى Blaze عنها."
+            override val installRefused = "تم إلغاء التثبيت: لم تسمح للامتداد بالتنفيذ."
+            override fun installFailed(reason: String) = "فشل التثبيت: $reason"
         }
 
         override val themes = object : BlazeStrings.Settings.Themes {
@@ -691,5 +706,25 @@ object ArStrings : BlazeStrings {
         override fun networkFailure(message: String) = "عطل في الشبكة: $message"
         override fun diskError(message: String) = "خطأ في القرص: $message"
         override fun unknown(message: String) = "خطأ غير معروف: $message"
+    }
+
+    override val consent = object : BlazeStrings.Consent {
+        override val clientTitle = "تطبيق خارجي يريد التحكم في Blaze"
+        override fun clientBody(name: String, id: String) =
+            "اتصل «$name» بواجهة التنزيل المحلية في Blaze وقدّم رمز وصول صالحًا."
+        override val clientMeaning =
+            "إذا سمحت له، يستطيع هذا البرنامج إضافة التنزيلات وإيقافها مؤقتًا واستئنافها وإعادة تشغيلها وحذفها على هذا الجهاز ومراقبة تقدّمها؛ لا تسمح إلا للتطبيقات التي تتوقع اتصالها وتثق بها."
+        override val extensionTitle = "امتداد غير معتمد يريد التنفيذ"
+        override fun extensionBody(fileName: String) =
+            "«$fileName» امتداد طرف ثالث لـ Blaze."
+        override val extensionMeaning =
+            "الامتدادات ليست بيانات خاملة: شيفراتها تعمل داخل Blaze بنفس صلاحية التطبيق على ملفاتك وشبكتك، وقد يمتد ضرر امتداد خبيث إلى جهازك فعليًا؛ لا تسمح إلا بملفات jar من مصادر تثق بها."
+        override val choiceHelp =
+            "«السماح هذه المرة فقط» يوافق على هذا الطلب ويسأل مجددًا بعد إعادة تشغيل Blaze؛ أما «السماح دائمًا» فيحفظ الموافقة فلا يُعاد السؤال — ويمكنك التراجع عنها في الإعدادات ← عام ← الأمان."
+        override val settingsHint = "يمكنك إيقاف هذه الرسائل ومراجعة كل ما سمحت به من الإعدادات ← عام ← الأمان."
+        override val allowOnce = "السماح هذه المرة فقط"
+        override val allowAlways = "السماح دائمًا"
+        override val deny = "الرفض"
+        override val subjectLabel = "المُعرِّف:"
     }
 }

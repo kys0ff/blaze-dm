@@ -37,6 +37,7 @@ object SettingsRegistry {
     private val groups: Map<String, (BlazeStrings) -> String> = mapOf(
         "appearance" to { it.settings.appearanceHeader },
         "systemIntegration" to { it.settings.systemIntegrationHeader },
+        "security" to { it.settings.securityHeader },
         "startup" to { it.settings.startupHeader },
         "concurrency" to { it.settings.concurrencyHeader },
         "bandwidth" to { it.settings.bandwidthHeader },
@@ -85,6 +86,26 @@ object SettingsRegistry {
             id = "general.clipboardMonitoring", category = SettingsCategory.GENERAL, groupKey = "systemIntegration",
             title = { it.settings.clipboardMonitoringLabel }, description = { it.settings.clipboardMonitoringDesc },
             keywords = listOf("clipboard", "paste", "link", "magnet"),
+        ),
+        SettingsOption(
+            id = "general.security.approveExternalClients", category = SettingsCategory.GENERAL, groupKey = "security",
+            title = { it.settings.approveExternalClientsLabel }, description = { it.settings.approveExternalClientsDesc },
+            keywords = listOf("security", "consent", "api", "local api", "third party", "client", "external"),
+        ),
+        SettingsOption(
+            id = "general.security.rememberedClients", category = SettingsCategory.GENERAL, groupKey = "security",
+            title = { it.settings.rememberedClientsLabel }, description = { it.settings.rememberedClientsEmpty },
+            keywords = listOf("security", "approval", "allowed apps", "revoke"),
+        ),
+        SettingsOption(
+            id = "general.security.approveExtensions", category = SettingsCategory.GENERAL, groupKey = "security",
+            title = { it.settings.approveExtensionsLabel }, description = { it.settings.approveExtensionsDesc },
+            keywords = listOf("security", "consent", "extension", "plugin", "jar", "theme", "link handler"),
+        ),
+        SettingsOption(
+            id = "general.security.trustedExtensions", category = SettingsCategory.GENERAL, groupKey = "security",
+            title = { it.settings.trustedExtensionsLabel }, description = { it.settings.trustedExtensionsEmpty },
+            keywords = listOf("security", "approval", "trusted", "extension", "forget"),
         ),
         SettingsOption(
             id = "general.resumeOnStartup", category = SettingsCategory.GENERAL, groupKey = "startup",

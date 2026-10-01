@@ -34,6 +34,7 @@ import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.logging.LogConfigurator
 import org.blaze.presentation.components.BlazeLayout
+import org.blaze.presentation.components.notifications.LocalNotifications
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.settings.components.NothingFoundPanel
@@ -109,11 +110,15 @@ class SettingsScreen : Screen {
         LaunchedEffect(state.currentCategory) { scrollState.scrollTo(0) }
 
         // The screen model owns when to leave; it just signals Close once OK/Cancel have done their
-        // work, and removing the window is the host's business.
+        // work, and removing the window is the host's business. Balloons go to the main frame's
+        // notification host (Settings' own DialogWindow has no host surface), and a message emitted
+        // while Settings is closing still shows because the frame outlives the dialog.
+        val notifications = LocalNotifications.current
         LaunchedEffect(onDismiss) {
             screenModel.effects.collect { effect ->
                 when (effect) {
                     SettingsEffect.Close -> onDismiss()
+                    is SettingsEffect.Message -> notifications?.info(effect.text)
                 }
             }
         }

@@ -552,6 +552,19 @@ object EnStrings : BlazeStrings {
         override val runAtStartupDesc = "Registers Blaze to start automatically when you log in."
         override val clipboardMonitoringLabel = "Monitor the clipboard for downloaded links"
         override val clipboardMonitoringDesc = "When you copy a web link, magnet link or .torrent path, Blaze offers it as a new download. Nothing is added until you confirm."
+        override val securityHeader = "Security"
+        override val approveExternalClientsLabel = "Ask before letting other apps control Blaze"
+        override val approveExternalClientsDesc = "The local API lets trusted programs add and manage downloads. When on, Blaze pauses a new program's first request and asks you to approve it; when off, any program holding the access token gets through without being asked."
+        override val rememberedClientsLabel = "Allowed apps"
+        override val rememberedClientsEmpty = "No apps are allowed without asking. Each app you allow here can control Blaze silently."
+        override val revokeAccessAction = "Revoke"
+        override val approveExtensionsLabel = "Ask before installing or loading extensions"
+        override val approveExtensionsDesc = "Link-handler and theme extensions are third-party code that runs inside Blaze. When on, you confirm every unapproved extension jar before its code runs; when off, jars dropped into the extension folders load without asking."
+        override val trustedExtensionsLabel = "Trusted extensions"
+        override val trustedExtensionsEmpty = "No extensions are trusted to load without asking."
+        override val forgetAction = "Forget"
+        override val trustedKindHandler = "Link handler"
+        override val trustedKindTheme = "Theme"
         override val destinationHeader = "Download Destinations"
         override val defaultDownloadDirLabel = "Default download directory"
         override val askWhereToSaveLabel = "Ask where to save each download before starting"
@@ -604,6 +617,8 @@ object EnStrings : BlazeStrings {
             override val restoreDefaultsAction = "Restore defaults"
             override val requestTimeoutLabel = "Handler request timeout (seconds)"
             override val requestTimeoutDesc = "How long a link handler may spend fetching a page before Blaze gives up."
+            override val installRefused = "Installation canceled: you did not allow the extension to run."
+            override fun installFailed(reason: String) = "Installation failed: $reason"
         }
 
         override val themes = object : BlazeStrings.Settings.Themes {
@@ -685,5 +700,25 @@ object EnStrings : BlazeStrings {
         override fun networkFailure(message: String) = "Network failure: $message"
         override fun diskError(message: String) = "Disk error: $message"
         override fun unknown(message: String) = "Unknown error: $message"
+    }
+
+    override val consent = object : BlazeStrings.Consent {
+        override val clientTitle = "An external app wants to control Blaze"
+        override fun clientBody(name: String, id: String) =
+            "“$name” has connected to Blaze's local download API and presented a valid access token."
+        override val clientMeaning =
+            "If you allow it, this program can add, pause, resume, restart and remove downloads on this computer, and watch their progress. Only allow apps you trust and expected to connect."
+        override val extensionTitle = "Untrusted extension wants to run"
+        override fun extensionBody(fileName: String) =
+            "“$fileName” is a third-party extension for Blaze."
+        override val extensionMeaning =
+            "Extensions are not sandboxed data: their code runs inside Blaze with the same access your own files and network have. A malicious extension can do real damage. Only allow jars from sources you trust."
+        override val choiceHelp =
+            "“Allow only this time” approves this occurrence and asks again after Blaze restarts. “Allow always” remembers the approval so it never asks again — you can take it back any time under Settings → General → Security."
+        override val settingsHint = "You can switch these prompts off, and review everything you have allowed, under Settings → General → Security."
+        override val allowOnce = "Allow only this time"
+        override val allowAlways = "Allow always"
+        override val deny = "Reject"
+        override val subjectLabel = "Identifier:"
     }
 }

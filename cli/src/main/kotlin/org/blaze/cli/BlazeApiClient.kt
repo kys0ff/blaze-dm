@@ -8,6 +8,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.blaze.download.api.ApiCapabilities
+import org.blaze.download.api.ApiHeaders
 import org.blaze.download.api.DownloadDto
 import org.blaze.download.api.ServiceDescriptor
 import org.blaze.download.api.ServicePaths
@@ -19,6 +20,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
+import java.util.UUID
 
 /**
  * Discovers and calls the running Blaze downloader over its loopback HTTP API.
@@ -37,7 +39,7 @@ class BlazeApiClient(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    data class Endpoint(val baseUrl: String, val token: String?)
+    data class Endpoint(val baseUrl: String, val token: String?, val clientId: String? = null)
 
     data class Response(val status: Int, val body: String)
 
@@ -46,9 +48,13 @@ class BlazeApiClient(
     // ---- discovery ----------------------------------------------------------------------------
 
     companion object {
+        /** Human-readable name shown in the user's consent prompt for this first-party client. */
+        const val CLIENT_NAME: String = "Blaze CLI"
+
         fun discover(storageDir: Path, urlOverride: String?, tokenOverride: String?): Endpoint {
+            val clientId = readOrMintClientId(storageDir)
             urlOverride?.let { url ->
-                return Endpoint(url.trimEnd('/'), tokenOverride ?: readEnvToken())
+                return Endpoint(url.trimEnd('/'), tokenOverride ?: readEnvToken(), clientId)
             }
             val envUrl = System.getenv("BLAZE_API_URL")
             val descriptor = readDescriptor(storageDir)
@@ -59,7 +65,26 @@ class BlazeApiClient(
             )
             val token = tokenOverride ?: System.getenv("BLAZE_API_TOKEN")
                 ?: descriptor?.let { readToken(Path.of(it.tokenFile)) }
-            return Endpoint(baseUrl, token)
+            return Endpoint(baseUrl, token, clientId)
+        }
+
+        /**
+         * Returns this CLI install's stable identity, minting and persisting a UUID on first use. Advisory
+         * only: it lets the user approve "Blaze CLI" once instead of a fresh anonymous id every run. Best-
+         * effort - if the data directory isn't writable we fall back to a process-lifetime id.
+         */
+        private fun readOrMintClientId(storageDir: Path): String {
+            val file = ServicePaths.clientIdFileFor(storageDir)
+            val existing = runCatching {
+                if (Files.exists(file)) Files.readString(file).trim().takeIf { it.isNotBlank() } else null
+            }.getOrNull()
+            if (existing != null) return existing
+            val fresh = UUID.randomUUID().toString()
+            runCatching {
+                Files.createDirectories(file.parent)
+                Files.writeString(file, fresh)
+            }
+            return fresh
         }
 
         private fun readDescriptor(storageDir: Path): ServiceDescriptor? {
@@ -127,6 +152,7 @@ class BlazeApiClient(
         val builder = HttpRequest.newBuilder(uri)
             .header("Accept", "text/event-stream")
             .timeout(null as Duration?)
+        addIdentity(builder)
         addAuth(builder)
         val resp = runCatching {
             http.send(builder.build(), HttpResponse.BodyHandlers.ofLines())
@@ -158,6 +184,7 @@ class BlazeApiClient(
         val builder = HttpRequest.newBuilder(URI.create(endpoint.baseUrl + path))
             .timeout(Duration.ofSeconds(15))
             .GET()
+        addIdentity(builder)
         if (auth) addAuth(builder)
         return execute(builder.build())
     }
@@ -166,6 +193,7 @@ class BlazeApiClient(
         val builder = HttpRequest.newBuilder(URI.create(endpoint.baseUrl + path))
             .timeout(Duration.ofSeconds(15))
             .header("Content-Type", "application/json")
+        addIdentity(builder)
         addAuth(builder)
         val publisher = body?.let {
             HttpRequest.BodyPublishers.ofString(it, StandardCharsets.UTF_8)
@@ -176,6 +204,7 @@ class BlazeApiClient(
     private fun delete(path: String): Response {
         val builder = HttpRequest.newBuilder(URI.create(endpoint.baseUrl + path))
             .timeout(Duration.ofSeconds(15))
+        addIdentity(builder)
         addAuth(builder)
         return execute(builder.DELETE().build())
     }
@@ -192,6 +221,15 @@ class BlazeApiClient(
 
     private fun addAuth(builder: HttpRequest.Builder) {
         endpoint.token?.let { builder.header("Authorization", "Bearer $it") }
+    }
+
+    /**
+     * Announces who we are so the user sees "Blaze CLI" in the consent prompt instead of an anonymous
+     * socket. Advisory: it keys approval, it never authorizes - the bearer token gate still runs first.
+     */
+    private fun addIdentity(builder: HttpRequest.Builder) {
+        endpoint.clientId?.let { builder.header(ApiHeaders.CLIENT_ID, it) }
+        builder.header(ApiHeaders.CLIENT_NAME, CLIENT_NAME)
     }
 
     /** Turns API error statuses into meaningful exit codes; successful statuses are a no-op. */

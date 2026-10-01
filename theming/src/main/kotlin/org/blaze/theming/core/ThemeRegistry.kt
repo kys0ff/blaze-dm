@@ -35,11 +35,17 @@ import java.nio.file.StandardCopyOption
  *
  * The registry is UI-framework agnostic: it only ever deals with [ThemePalette] (packed
  * ARGB numbers), never with Compose or Jewel types.
+ *
+ * Plugin jars are gated by [jarTrust] before any of their code runs: an untrusted jar is skipped
+ * by [reload] and surfaced through [onUntrustedJars] so the host can ask the user to consent first.
+ * Both default to "trust everything", keeping hosts without a consent UI on the legacy behavior.
  */
 class ThemeRegistry(
     private val builtIns: List<BlazeThemeProvider>,
     private val pluginLoader: ThemePluginLoader,
-    private val settingsRepository: ThemeSettingsRepository
+    private val settingsRepository: ThemeSettingsRepository,
+    private val jarTrust: (Path) -> Boolean = { true },
+    private val onUntrustedJars: (List<Path>) -> Unit = {},
 ) {
     private val logger = LoggerFactory.getLogger(ThemeRegistry::class.java)
 
@@ -69,7 +75,7 @@ class ThemeRegistry(
 
     /** Re-scan the themes directory and rebuild the theme list, keeping the selection valid. */
     fun reload() {
-        val result = pluginLoader.load(themesDir())
+        val result = pluginLoader.load(themesDir(), jarTrust)
         pluginLoaders = result.classLoaders
 
         val merged = buildList {
@@ -83,6 +89,9 @@ class ThemeRegistry(
         if (merged.none { it.provider.id == selected }) {
             _selectedThemeId.update { DEFAULT_THEME_ID }
         }
+
+        // Hand the refused jars to the host: it can prompt the user and reload once they approve.
+        if (result.untrustedJars.isNotEmpty()) onUntrustedJars(result.untrustedJars)
     }
 
     fun themesDir(): Path = Path.of(settingsRepository.settings.value.extensionDir)

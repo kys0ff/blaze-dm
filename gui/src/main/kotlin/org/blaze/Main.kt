@@ -11,6 +11,7 @@ import org.blaze.di.platformModule
 import org.blaze.di.repositoryModule
 import org.blaze.di.resolverModule
 import org.blaze.di.screenModelModule
+import org.blaze.di.securityModule
 import org.blaze.di.themeModule
 import org.blaze.di.useCaseModule
 import org.blaze.download.api.DownloadsApi
@@ -38,6 +39,7 @@ import org.blaze.presentation.application.BlazeApplication
 import org.blaze.presentation.screens.filepicker.di.filePickerModule
 import org.blaze.service.LocalApiLauncher
 import org.blaze.service.config.LocalApiSettingsRepository
+import org.blaze.service.security.ClientConsentGate
 import org.blaze.tray.di.trayModule
 import org.koin.core.context.startKoin
 import org.slf4j.Logger
@@ -84,6 +86,7 @@ fun main(rawArgs: Array<String>) {
             notificationsModule(appName = BlazePlatformIdentity.appName),
             repositoryModule,
             resolverModule,
+            securityModule,
             themeModule,
             useCaseModule,
             screenModelModule,
@@ -165,9 +168,15 @@ fun main(rawArgs: Array<String>) {
     // Best-effort: expose the same running downloads to external clients (CLI, a future browser bridge)
     // over the loopback API. Ownership of the data directory's endpoint is locked, so a second instance
     // simply declines to publish a duplicate. Any failure here must never stop the window from opening.
+    // The consent gate is the GUI's: a new third-party client's first request pauses until the user
+    // acknowledges and answers it (or refuses) in the app-wide consent dialog.
     val launcher = LocalApiLauncher(storageDir, koin.get<CoroutineScope>())
     runCatching {
-        launcher.tryStart(koin.get<DownloadsApi>(), LocalApiSettingsRepository(storageDir).load())
+        launcher.tryStart(
+            koin.get<DownloadsApi>(),
+            LocalApiSettingsRepository(storageDir).load(),
+            consentGate = koin.get<ClientConsentGate>(),
+        )
     }.onFailure {
         log.warn("Local download API did not start; the GUI is unaffected.", it)
     }

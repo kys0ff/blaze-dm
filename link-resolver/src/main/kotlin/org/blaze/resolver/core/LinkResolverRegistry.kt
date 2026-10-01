@@ -24,11 +24,17 @@ import java.util.Base64
  * Central registry of link handlers: the built-ins bundled with the app plus any plugin
  * jars found in the extensions directory. Handles enable/disable state, plugin install /
  * uninstall and the actual (blocking) resolve call, dispatched onto an IO thread.
+ *
+ * Plugin jars are gated by [jarTrust] before any of their code runs: an untrusted jar is skipped
+ * by [reload] and surfaced through [onUntrustedJars] so the host can ask the user to consent first.
+ * Both default to "trust everything", keeping hosts without a consent UI on the legacy behavior.
  */
 class LinkResolverRegistry(
     private val builtIns: List<LinkResolver>,
     private val pluginLoader: PluginLoader,
-    private val settingsRepository: LinkResolverSettingsRepository
+    private val settingsRepository: LinkResolverSettingsRepository,
+    private val jarTrust: (Path) -> Boolean = { true },
+    private val onUntrustedJars: (List<Path>) -> Unit = {},
 ) {
     private val logger = LoggerFactory.getLogger(LinkResolverRegistry::class.java)
 
@@ -48,7 +54,7 @@ class LinkResolverRegistry(
     /** Re-scan the extensions directory and rebuild the handler list. */
     fun reload() {
         val dir = extensionDir()
-        val result = pluginLoader.load(dir)
+        val result = pluginLoader.load(dir, jarTrust)
         pluginLoaders = result.classLoaders
 
         val merged = buildList {
@@ -56,6 +62,9 @@ class LinkResolverRegistry(
             addAll(result.resolvers)
         }
         _handlers.update { merged }
+
+        // Hand the refused jars to the host: it can prompt the user and reload once they approve.
+        if (result.untrustedJars.isNotEmpty()) onUntrustedJars(result.untrustedJars)
     }
 
     fun extensionDir(): Path =

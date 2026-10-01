@@ -9,6 +9,7 @@ import kotlin.system.exitProcess
  * turns a parsed command into an exit code.
  */
 fun main(args: Array<String>) {
+    val args = arrayOf("download", "https://google.com")
     val code = Cli().run(args, System.out, System.err)
     exitProcess(code)
 }

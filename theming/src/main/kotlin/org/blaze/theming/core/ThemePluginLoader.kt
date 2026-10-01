@@ -13,6 +13,11 @@ import java.util.ServiceLoader
  * Every jar is read with its own [URLClassLoader] whose parent is this module's class
  * loader, so the shared [BlazeThemeProvider] interface resolves to the same class and
  * [ServiceLoader] can discover providers declared in `META-INF/services`.
+ *
+ * A jar is only ever opened after [trustFilter] vouches for it: theme plugins run inside the app,
+ * so an unapproved jar is skipped (and reported in [Result.untrustedJars]) instead of being
+ * class-loaded, keeping the "ask the user first" consent possible *before* any of its code
+ * executes. The default filter trusts everything, for hosts without a consent UI.
  */
 class ThemePluginLoader {
     private val logger = LoggerFactory.getLogger(ThemePluginLoader::class.java)
@@ -20,12 +25,15 @@ class ThemePluginLoader {
     /** Result keeps the class loaders alive so their loaded classes aren't collected. */
     data class Result(
         val themes: List<LoadedTheme>,
-        val classLoaders: List<URLClassLoader>
+        val classLoaders: List<URLClassLoader>,
+        /** Jars found on disk that [trustFilter] refused, in scan order — candidates for a prompt. */
+        val untrustedJars: List<Path> = emptyList(),
     )
 
-    fun load(themesDir: Path): Result {
+    fun load(themesDir: Path, trustFilter: (Path) -> Boolean = { true }): Result {
         val themes = mutableListOf<LoadedTheme>()
         val loaders = mutableListOf<URLClassLoader>()
+        val untrusted = mutableListOf<Path>()
 
         if (!Files.isDirectory(themesDir)) return Result(themes, loaders)
 
@@ -37,6 +45,11 @@ class ThemePluginLoader {
         }
 
         for (jar in jars.sortedBy { it.fileName.toString() }) {
+            if (!trustFilter(jar)) {
+                logger.info("Skipping untrusted theme jar {} (awaiting user consent)", jar)
+                untrusted.add(jar)
+                continue
+            }
             val loader = runCatching {
                 URLClassLoader(arrayOf(jar.toUri().toURL()), javaClass.classLoader)
             }.getOrElse {
@@ -64,6 +77,6 @@ class ThemePluginLoader {
             }
         }
 
-        return Result(themes, loaders)
+        return Result(themes, loaders, untrusted)
     }
 }

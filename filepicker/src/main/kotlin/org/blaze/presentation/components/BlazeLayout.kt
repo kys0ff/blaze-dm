@@ -124,6 +124,13 @@ object BlazeLayout {
     /** Initial height of the modal Settings window (see [SettingsDialogWidth]). */
     val SettingsDialogHeight = 640.dp
 
+    /**
+     * Width of the security consent dialog. It is a pure reading task — no form, no list — so it
+     * stays at the plain-dialog width [BaseDialog] uses, letting the multi-paragraph warning copy
+     * wrap at a comfortable measure.
+     */
+    val ConsentDialogWidth = 460.dp
+
     /** Invisible drag hit-area around a split divider (Jewel default is 8dp; IDE chrome is thinner). */
     val SplitDragWidth = 8.dp
 

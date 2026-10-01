@@ -17,9 +17,13 @@ import org.blaze.download.api.ApiErrorCode
 import org.blaze.download.api.DownloadApiException
 import org.blaze.download.api.DownloadEvent
 import org.blaze.download.api.DownloadsApi
+import org.blaze.download.api.ApiHeaders
 import org.blaze.service.auth.ApiTokenStore
 import org.blaze.service.config.LocalApiSettings
 import org.blaze.service.mapping.toApiError
+import org.blaze.service.security.ClientConsentGate
+import org.blaze.service.security.ClientIdentity
+import org.blaze.service.security.ConsentDecision
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.net.InetAddress
@@ -42,7 +46,10 @@ import java.util.concurrent.Executors
  *  - **explicit origins**: a cross-origin browser request is only answered for an allow-listed `Origin`;
  *    CORS is a *guardrail*, never the authentication itself (the token still has to be right);
  *  - **body cap + rate limit**: oversized bodies and abusive clients are rejected before parsing;
- *  - **confined destinations**: untrusted creates are limited to [LocalApiSettings.allowedDownloadRoots].
+ *  - **confined destinations**: untrusted creates are limited to [LocalApiSettings.allowedDownloadRoots];
+ *  - **user consent**: a client the person in front of the app has never approved is paused at the
+ *    gate until they answer a consent prompt (allow once / allow always / reject), delegated to
+ *    [ClientConsentGate] — see [approveClient].
  *
  * `GET /api/v1/health` and `GET /api/v1/capabilities` stay unauthenticated because they leak only liveness
  * and feature flags, which a client needs before it can even know to authenticate.
@@ -52,6 +59,7 @@ class LocalApiServer(
     private val settings: LocalApiSettings,
     private val tokenStore: ApiTokenStore,
     private val scope: CoroutineScope,
+    private val consentGate: ClientConsentGate = ClientConsentGate.ALLOW_ALL,
     private val destinationValidator: org.blaze.service.security.PathValidator =
         org.blaze.service.security.PathValidator(
             settings.allowedDownloadRoots.takeIf { it.isNotEmpty() }
@@ -65,6 +73,16 @@ class LocalApiServer(
     private val running = java.util.concurrent.atomic.AtomicBoolean(false)
     private val activeStreams = ConcurrentHashMap.newKeySet<Job>()
     private val rate = SlidingWindowRateLimiter(windowMillis = 60_000, maxPerWindow = 240)
+
+    /**
+     * Clients the user has allowed *during this process*: both one-time and remembered approvals land
+     * here, so a "just this time" answer costs the user one prompt per run, not one per request. A
+     * remembered approval additionally lives in the consent store and survives a restart.
+     */
+    private val sessionApproved = ConcurrentHashMap<String, ConsentDecision>()
+
+    /** One lock per client id so N racing first-requests raise one prompt, not N. */
+    private val consentLocks = ConcurrentHashMap<String, Any>()
 
     val boundPort: Int get() = server?.address?.port ?: -1
     val boundHost: String get() = settings.host
@@ -221,15 +239,82 @@ class LocalApiServer(
     }
 
     private inline fun withAuth(exchange: HttpExchange, block: () -> Unit) {
-        if (!settings.requireAuth) return block()
-        val presented = exchange.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer")?.trim()
-            ?: queryToken(exchange)
-        if (!tokenStore.matches(presented)) {
-            writeError(exchange, ApiErrorBody(ApiErrorCode.AUTH_REQUIRED, "a valid bearer token is required"), 401)
+        if (settings.requireAuth) {
+            val presented = exchange.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer")?.trim()
+                ?: queryToken(exchange)
+            if (!tokenStore.matches(presented)) {
+                writeError(exchange, ApiErrorBody(ApiErrorCode.AUTH_REQUIRED, "a valid bearer token is required"), 401)
+                return
+            }
+        }
+        // The token proves the caller *may* connect; consent asks the user whether it *should*.
+        if (!approveClient(exchange)) {
+            writeError(
+                exchange,
+                ApiErrorBody(ApiErrorCode.PERMISSION_DENIED, "access to Blaze was not approved by the user"),
+                403,
+            )
             return
         }
         block()
     }
+
+    /**
+     * The human gate: before an unrecognized client reaches the domain, the consent gate is asked and
+     * the request parks until the user answers (or the prompt times out, which is a refusal). Once a
+     * client is approved it serves every request of the current process; an ALLOW_ALWAYS additionally
+     * persists on the gate's side so future runs skip the prompt.
+     *
+     * The check runs after the token gate, so a random local process cannot spam the user's dialog:
+     * only a caller that already holds the owner-readable token can trigger a prompt at all.
+     */
+    private fun approveClient(exchange: HttpExchange): Boolean {
+        if (consentGate === ClientConsentGate.ALLOW_ALL) return true
+        val client = clientIdentity(exchange)
+        if (sessionApproved.containsKey(client.id)) return true
+        // Serialize per id: racing first requests share one prompt instead of stacking several.
+        val lock = consentLocks.computeIfAbsent(client.id) { Any() }
+        synchronized(lock) {
+            if (sessionApproved.containsKey(client.id)) return true
+            val decision = try {
+                runBlocking { withTimeoutOrNull(CONSENT_TIMEOUT_MS) { consentGate.decide(client) } }
+            } catch (e: Exception) {
+                logger.warn("Client consent for {} failed; treating as a refusal", client.id, e)
+                null
+            } ?: ConsentDecision.DENY
+            if (decision != ConsentDecision.DENY) sessionApproved[client.id] = decision
+            consentLocks.remove(client.id)
+            logger.info(
+                "Local API client '{}' ({}) was {} by the user.",
+                client.displayName, client.id,
+                when (decision) {
+                    ConsentDecision.ALLOW_ONCE -> "allowed once"
+                    ConsentDecision.ALLOW_ALWAYS -> "always allowed"
+                    ConsentDecision.DENY -> "rejected"
+                },
+            )
+            return decision != ConsentDecision.DENY
+        }
+    }
+
+    /**
+     * Derives who this request came from. A well-behaved client names itself through
+     * [ApiHeaders.CLIENT_ID]/[ApiHeaders.CLIENT_NAME]; anything else (curl, a browser page, a hostile
+     * caller) falls back to its user agent, then its address. Client-supplied strings are sanitized:
+     * length-capped and control-character-free, because they are rendered in the user's dialog.
+     */
+    private fun clientIdentity(exchange: HttpExchange): ClientIdentity {
+        val agent = sanitize(exchange.requestHeaders.getFirst("User-Agent"), max = 120)
+        val id = sanitize(exchange.requestHeaders.getFirst(ApiHeaders.CLIENT_ID), max = 80)
+            ?: "agent:" + (agent ?: exchange.remoteAddress.address.hostAddress)
+        val name = sanitize(exchange.requestHeaders.getFirst(ApiHeaders.CLIENT_NAME), max = 80)
+            ?: agent
+            ?: "Unknown client"
+        return ClientIdentity(id, name, agent ?: "n/a")
+    }
+
+    private fun sanitize(raw: String?, max: Int): String? =
+        raw?.map { if (it.isISOControl()) ' ' else it }?.joinToString("")?.trim()?.takeIf { it.isNotEmpty() }?.take(max)
 
     private fun enforceRate(exchange: HttpExchange) {
         val key = exchange.remoteAddress.address.hostAddress
@@ -340,6 +425,9 @@ class LocalApiServer(
 
     private companion object {
         const val HEARTBEAT_MS = 15_000L
+
+        /** How long a request waits for the user to answer a consent prompt before it is refused. */
+        const val CONSENT_TIMEOUT_MS = 5L * 60 * 1000
     }
 }
 

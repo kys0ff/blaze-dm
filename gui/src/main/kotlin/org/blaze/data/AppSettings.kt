@@ -100,6 +100,24 @@ data class AppSettings(
      * Kept separate from [keyBindings] so "unbound" is distinct from "default"; cleared by a per-row reset.
      */
     val unboundShortcuts: List<String> = emptyList(),
+
+    // ── Security & consent ───────────────────────────────────────────────────
+    /**
+     * Ask the user to acknowledge every *new* third-party client before it may drive Blaze through
+     * the local API (allow once / always / reject). Switching this off is the deliberate override:
+     * any token-holding caller gets through without a prompt, so only do it on a trusted machine.
+     */
+    val approveExternalClients: Boolean = true,
+    /** Third-party clients the user chose "allow always" for; each is prompt-free from now on. */
+    val rememberedClients: List<RememberedClient> = emptyList(),
+    /**
+     * Ask the user before an untrusted extension jar (link handler or theme) is installed or loaded.
+     * Extension code runs inside Blaze with the app's own permissions, so this is the prompt that
+     * stands between a hostile jar and executing. Off = load without asking.
+     */
+    val approveExtensions: Boolean = true,
+    /** Extension jars the user chose "allow always" for, keyed by content hash. */
+    val trustedExtensions: List<TrustedExtension> = emptyList(),
 )
 
 /**
@@ -114,4 +132,29 @@ data class StoredKeyBinding(
     val ctrl: Boolean = true,
     val shift: Boolean = false,
     val alt: Boolean = false,
+)
+
+/**
+ * A local-API client the user permanently approved through the consent dialog.
+ * [id] is the stable client identity (the `X-Blaze-Client-Id` header, or the server-derived fallback);
+ * [displayName] is only remembered so the Settings manager can show a human-readable label.
+ */
+@Serializable
+data class RememberedClient(
+    val id: String,
+    val displayName: String,
+    val approvedAtEpochMs: Long = 0L,
+)
+
+/**
+ * An extension jar the user permanently approved, identified by the SHA-256 [sha256] of its bytes
+ * (renaming the file cannot reuse the approval). [kind] is "LINK_RESOLVER" or "THEME", so trusting
+ * one kind never vouches for the other.
+ */
+@Serializable
+data class TrustedExtension(
+    val sha256: String,
+    val fileName: String,
+    val kind: String,
+    val approvedAtEpochMs: Long = 0L,
 )

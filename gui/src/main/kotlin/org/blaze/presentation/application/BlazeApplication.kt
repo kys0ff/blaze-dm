@@ -16,6 +16,7 @@ import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.isRtl
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.presentation.application.components.BlazeWindow
+import org.blaze.security.ConsentService
 import org.koin.compose.koinInject
 
 /**
@@ -64,6 +65,15 @@ fun ApplicationScope.BlazeApplication() {
     val bringToFront by inbox.bringToFrontSignal.collectAsState()
     LaunchedEffect(pendingOpens.size, bringToFront) {
         if (pendingOpens.isNotEmpty() || bringToFront > 0L) shell.raiseWindow()
+    }
+
+    // A consent prompt is the one request that must reach the user, not sit queued: an external
+    // client's call and an extension jar's load are both suspended behind it, and Blaze may well be
+    // hidden to the tray when it arrives - so surfacing the window is part of asking.
+    val consentService = koinInject<ConsentService>()
+    val pendingConsent by consentService.pending.collectAsState()
+    LaunchedEffect(pendingConsent.size) {
+        if (pendingConsent.isNotEmpty()) shell.raiseWindow()
     }
 
     AppTrayHost(strings = strings, shell = shell)

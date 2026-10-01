@@ -7,6 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +34,7 @@ import org.blaze.presentation.components.platformShortcutLabels
 import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.search.SearchEverywherePopup
 import org.blaze.presentation.theme.BlazeIslandColors
+import org.blaze.security.ConsentService
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.koin.compose.koinInject
 import java.awt.Dimension
@@ -214,6 +216,22 @@ fun BlazeWindow(shell: AppShell) {
                 SettingsDialogWindow(
                     state = settingsDialogState,
                     onDismiss = shell::closeSettings,
+                )
+            }
+
+            // The security consent queue, rendered one dialog at a time (oldest first) above every
+            // screen. It lives here — composed inside the frame and around the same providers as the
+            // rest of the content — so the DialogWindow takes Blaze's frame as its owner (document-
+            // modal, no taskbar entry) and the copy follows the app strings, theme and RTL like
+            // everything else. The shell has already raised the frame when the request arrived;
+            // answering (or the request being withdrawn) removes the dialog from the composition and
+            // the suspended caller resumes on the service side.
+            val consentService = koinInject<ConsentService>()
+            val pendingConsent by consentService.pending.collectAsState()
+            pendingConsent.firstOrNull()?.let { request ->
+                ConsentDialogWindow(
+                    request = request,
+                    onDecision = { decision -> consentService.respond(request.id, decision) },
                 )
             }
         }

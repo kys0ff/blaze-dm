@@ -56,6 +56,17 @@ sealed interface SettingsEvent {
     data class UpdateRunAtStartup(val enabled: Boolean) : SettingsEvent
     data class UpdateClipboardMonitoring(val enabled: Boolean) : SettingsEvent
 
+    // Security & consent — like every app-shell option these are buffered in the app-settings draft,
+    // so a prompt switch flips and an approval is revoked only on Apply/OK (and reverts on Cancel).
+    // Revoking is draft-only on purpose: a *persisted* approval is what dies, while an in-memory
+    // "allow once" grant from the current run is deliberately short-lived already.
+    data class UpdateApproveExternalClients(val enabled: Boolean) : SettingsEvent
+    data class UpdateApproveExtensions(val enabled: Boolean) : SettingsEvent
+    /** Take back a remembered client's "allow always" so it must ask again (or is refused). */
+    data class RevokeRememberedClient(val clientId: String) : SettingsEvent
+    /** Drop a trusted extension's approval by content hash + kind, so its jar stops loading. */
+    data class ForgetTrustedExtension(val sha256: String, val kind: String) : SettingsEvent
+
     // Desktop notifications — all buffered in the app-settings draft like the rest of the shell
     // options, so nothing reaches the notification service before Apply/OK.
     data class UpdateDesktopNotificationsEnabled(val enabled: Boolean) : SettingsEvent

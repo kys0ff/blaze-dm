@@ -16,6 +16,7 @@ import org.blaze.service.auth.ApiTokenStore
 import org.blaze.service.config.LocalApiSettings
 import org.blaze.service.instance.ServiceDiscovery
 import org.blaze.service.instance.ServiceLock
+import org.blaze.service.security.ClientConsentGate
 import org.blaze.service.transport.LocalApiServer
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -77,6 +78,7 @@ class DownloaderServiceHost(
             scope: CoroutineScope,
             apiSettings: LocalApiSettings,
             startServer: Boolean,
+            consentGate: ClientConsentGate = ClientConsentGate.ALLOW_ALL,
         ): DownloaderServiceHost {
             val repository = DownloadRepository(storageDir)
             val settingsRepository = EngineSettingsRepository(storageDir)
@@ -108,7 +110,7 @@ class DownloaderServiceHost(
                     "another downloader service already owns $storageDir",
                 )
             }
-            val server = LocalApiServer(api, apiSettings, tokenStore, scope)
+            val server = LocalApiServer(api, apiSettings, tokenStore, scope, consentGate)
             server.start()
             val host = DownloaderServiceHost(api, engine, server, lock, ServiceDiscovery(storageDir), tokenFile)
             host.publish()

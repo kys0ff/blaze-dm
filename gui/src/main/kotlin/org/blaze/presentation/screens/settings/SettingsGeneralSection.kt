@@ -2,9 +2,11 @@ package org.blaze.presentation.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -15,6 +17,7 @@ import org.blaze.presentation.screens.settings.state.SettingsState
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.CheckboxRow
+import org.jetbrains.jewel.ui.component.Link
 import org.jetbrains.jewel.ui.component.RadioButtonRow
 import org.jetbrains.jewel.ui.component.Text
 
@@ -133,6 +136,84 @@ internal fun GeneralSection(
         }
     }
 
+    SettingsGroup("security", strings) {
+        SettingRow("general.security.approveExternalClients") {
+            CheckboxRow(
+                text = strings.settings.approveExternalClientsLabel,
+                checked = state.appSettings.approveExternalClients,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateApproveExternalClients(it)) }
+            )
+            Text(
+                text = strings.settings.approveExternalClientsDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
+        }
+        // The manager rides the switch it belongs to: with prompts off there is nothing remembered
+        // to revoke (every caller passes on the token), so the list would only confuse.
+        if (state.appSettings.approveExternalClients) {
+            SettingRow("general.security.rememberedClients", modifier = Modifier.padding(start = DependentIndent)) {
+                Text(text = strings.settings.rememberedClientsLabel)
+                if (state.appSettings.rememberedClients.isEmpty()) {
+                    Text(
+                        text = strings.settings.rememberedClientsEmpty,
+                        style = infoStyle,
+                        color = JewelTheme.globalColors.text.info,
+                    )
+                }
+                state.appSettings.rememberedClients.forEach { client ->
+                    NamedItemRow(
+                        name = client.displayName,
+                        detail = client.id,
+                        actionLabel = strings.settings.revokeAccessAction,
+                        onAction = { onEvent(SettingsEvent.RevokeRememberedClient(client.id)) },
+                    )
+                }
+            }
+        }
+
+        SettingRow("general.security.approveExtensions") {
+            CheckboxRow(
+                text = strings.settings.approveExtensionsLabel,
+                checked = state.appSettings.approveExtensions,
+                onCheckedChange = { onEvent(SettingsEvent.UpdateApproveExtensions(it)) }
+            )
+            Text(
+                text = strings.settings.approveExtensionsDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+                modifier = Modifier.padding(start = DependentIndent)
+            )
+        }
+        if (state.appSettings.approveExtensions) {
+            SettingRow("general.security.trustedExtensions", modifier = Modifier.padding(start = DependentIndent)) {
+                Text(text = strings.settings.trustedExtensionsLabel)
+                if (state.appSettings.trustedExtensions.isEmpty()) {
+                    Text(
+                        text = strings.settings.trustedExtensionsEmpty,
+                        style = infoStyle,
+                        color = JewelTheme.globalColors.text.info,
+                    )
+                }
+                state.appSettings.trustedExtensions.forEach { extension ->
+                    // Trust is per kind: a "link handler" approval never vouches for a theme jar with
+                    // the same bytes, so the row says which of the two it is revoking.
+                    NamedItemRow(
+                        name = extension.fileName,
+                        detail = if (extension.kind == "THEME") {
+                            strings.settings.trustedKindTheme
+                        } else {
+                            strings.settings.trustedKindHandler
+                        },
+                        actionLabel = strings.settings.forgetAction,
+                        onAction = { onEvent(SettingsEvent.ForgetTrustedExtension(extension.sha256, extension.kind)) },
+                    )
+                }
+            }
+        }
+    }
+
     SettingsGroup("startup", strings) {
         SettingRow("general.resumeOnStartup") {
             CheckboxRow(
@@ -148,5 +229,35 @@ internal fun GeneralSection(
                 onCheckedChange = { onEvent(SettingsEvent.UpdateStartQueuedOnStartup(it)) }
             )
         }
+    }
+}
+
+/**
+ * One line in a consent manager: the approved item's human name, its stable identifier beside it
+ * (a client id, an extension's kind), and a trailing link that takes the "allow always" back.
+ * Revoking touches only the persisted approval staged in the draft — Apply/OK writes it away.
+ */
+@Composable
+private fun NamedItemRow(
+    name: String,
+    detail: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(text = name, style = JewelTheme.defaultTextStyle)
+        Text(
+            text = detail,
+            style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
+            color = JewelTheme.globalColors.text.info,
+            modifier = Modifier.weight(1f),
+        )
+        Link(text = actionLabel, onClick = onAction)
     }
 }
