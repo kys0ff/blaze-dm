@@ -160,20 +160,26 @@ private fun ThemeOptionField(
 /**
  * A hex color editor with a live swatch. The text is filtered to valid hex so the field can't hold
  * a character the parser would reject; the swatch paints from the value [ThemeConfig.parseArgbHex]
- * yields (6-digit RGB is treated as opaque, matching the parser) and falls back to a neutral hatch
+ * yields (6-digit RGB is treated as opaque, matching the parser) and falls back to a neutral swatch
  * while the field is incomplete. A `#`/`0x` prefix is preserved as typed.
+ *
+ * [alphaAllowed] decides how many hex digits the option can carry: an alpha-capable color takes the
+ * full `#AARRGGBB` (8 digits), while an RGB-only option is clamped to `#RRGGBB` (6) so no alpha can
+ * be typed into a value the palette would ignore.
  */
 @OptIn(ExperimentalJewelApi::class)
 @Composable
 private fun ColorField(
     value: String,
-    alphaAllowed: Boolean, // TODO: make use of param or remove it
+    alphaAllowed: Boolean,
     hint: String,
     infoStyle: TextStyle,
     onValueChange: (String) -> Unit,
 ) {
     val parsed = ThemeConfig.parseArgbHex(value)
     val swatch = parsed?.toColor() ?: Color.Unspecified
+    // An alpha-less option caps at 6 RGB digits; an alpha-capable one takes the full 8-digit ARGB.
+    val maxDigits = if (alphaAllowed) 8 else 6
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -188,7 +194,9 @@ private fun ColorField(
         CursorStableField(
             value = value,
             onValueChange = { raw ->
-                val keepHex = raw.filter { c -> c.isDigit() || c in 'a'..'f' || c in 'A'..'F' }
+                val keepHex = raw
+                    .filter { c -> c.isDigit() || c in 'a'..'f' || c in 'A'..'F' }
+                    .take(maxDigits)
                 // Preserve a leading # / 0x marker so the swatch parser still recognizes the format.
                 val prefix = when {
                     raw.startsWith("#") -> "#"
