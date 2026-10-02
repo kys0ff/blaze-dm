@@ -576,6 +576,12 @@ interface BlazeStrings {
         val toggleDetails: String
         val about: String
         val exit: String
+        /** Title-bar main menu headers. */
+        val file: String
+        val edit: String
+        val view: String
+        val tools: String
+        val help: String
         /** The speed-limit widget's label / tooltip and its two dropdown options. */
         val speedLimit: String
         val fullSpeed: String

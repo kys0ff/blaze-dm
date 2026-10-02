@@ -517,6 +517,9 @@ fun BlazeMenu(
     alignRootToEnd: Boolean = false,
     inScene: Boolean = false,
     initialOpenSubmenu: Int? = null,
+    headerBounds: Map<out Any, Rect> = emptyMap(),
+    onHeaderHovered: ((Any) -> Unit)? = null,
+    onHeaderClicked: ((Any) -> Unit)? = null,
 ) {
     val model = remember { BlazeMenuModel(entries) }
     val style = JewelTheme.menuStyle
@@ -555,6 +558,9 @@ fun BlazeMenu(
             onDismissRequest = onDismissRequest,
             alignRootToEnd = alignRootToEnd,
             modifier = surfaceModifier,
+            headerBounds = headerBounds,
+            onHeaderHovered = onHeaderHovered,
+            onHeaderClicked = onHeaderClicked,
         )
     }
 
@@ -598,6 +604,9 @@ private fun MenuSurface(
     onDismissRequest: () -> Unit,
     alignRootToEnd: Boolean,
     modifier: Modifier = Modifier,
+    headerBounds: Map<out Any, Rect> = emptyMap(),
+    onHeaderHovered: ((Any) -> Unit)? = null,
+    onHeaderClicked: ((Any) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     var containerSize by remember { mutableStateOf(Size.Zero) }
@@ -606,7 +615,7 @@ private fun MenuSurface(
         modifier = modifier
             .fillMaxSize()
             .onGloballyPositioned { containerSize = it.size.let { s -> Size(s.width.toFloat(), s.height.toFloat()) } }
-            .pointerInput(model, onDismissRequest) {
+            .pointerInput(model, onDismissRequest, headerBounds) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Main)
@@ -618,13 +627,33 @@ private fun MenuSurface(
                                     // loss of the pointer as "outside" and let the grace timer decide.
                                     model.onPointerExit()
                                 } else {
-                                    model.onPointerPosition(position)
+                                    var overHeader = false
+                                    for ((key, bounds) in headerBounds) {
+                                        if (bounds.contains(position)) {
+                                            overHeader = true
+                                            onHeaderHovered?.invoke(key)
+                                            break
+                                        }
+                                    }
+                                    if (!overHeader) {
+                                        model.onPointerPosition(position)
+                                    }
                                 }
                             }
 
                             PointerEventType.Release -> {
                                 val position = event.changes.firstOrNull()?.position ?: continue
-                                if (!activateAt(model, position)) onDismissRequest()
+                                var clickedHeader = false
+                                for ((key, bounds) in headerBounds) {
+                                    if (bounds.contains(position)) {
+                                        clickedHeader = true
+                                        onHeaderClicked?.invoke(key)
+                                        break
+                                    }
+                                }
+                                if (!clickedHeader) {
+                                    if (!activateAt(model, position)) onDismissRequest()
+                                }
                             }
 
                             else -> Unit

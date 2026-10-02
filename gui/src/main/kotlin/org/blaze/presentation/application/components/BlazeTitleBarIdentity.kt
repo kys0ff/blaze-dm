@@ -6,15 +6,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.icons.BlazeFlame
-import org.blaze.presentation.theme.BlazeTypography
 import org.jetbrains.jewel.ui.component.Icon
-import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.TitleBarScope
 import org.jetbrains.jewel.window.utils.clientRegion
 import org.koin.compose.koinInject
@@ -35,6 +37,7 @@ import org.koin.compose.koinInject
 @Composable
 fun TitleBarScope.BlazeTitleBarIdentity() {
     val commandBus = koinInject<AppCommandBus>()
+    var isMenuExpanded by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
@@ -45,8 +48,6 @@ fun TitleBarScope.BlazeTitleBarIdentity() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        HamburgerMenuButton(commandBus)
-
         Icon(
             BlazeFlame,
             contentDescription = null,
@@ -54,12 +55,9 @@ fun TitleBarScope.BlazeTitleBarIdentity() {
             modifier = Modifier.size(20.dp),
         )
 
-        Text(
-            text = "Blaze",
-            style = BlazeTypography.titleBarLabel,
-        )
+        HamburgerMenuButton(commandBus) { isMenuExpanded = it }
 
-        SpeedLimitWidget()
+        if (!isMenuExpanded) SpeedLimitWidget()
     }
 
     Row(
