@@ -36,7 +36,6 @@ import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.CurrentUiPlatform
-import org.blaze.presentation.components.LocalShortcutLabels
 import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.components.UiPlatform
@@ -316,27 +315,3 @@ fun SpeedLimitWidget() {
     }
 }
 
-/**
- * The trailing icon cluster: the search button. It aligns to the end, so Jewel lays it out to the
- * left of the auto-emitted window controls.
- *
- * There is deliberately no settings gear here: the tool-window stripe already carries one at its
- * bottom, and the IDE keeps exactly one entry point per view — two gears, one window apart, is the
- * duplicate the reference never shows.
- */
-@Composable
-fun TitleBarTrailingIcons(commandBus: AppCommandBus) {
-    val menu = blazeStrings.menu
-    val shortcuts = LocalShortcutLabels.current
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        ToolbarIconButton(
-            key = AllIconsKeys.Actions.Find,
-            tooltip = menu.searchEverywhere,
-            shortcut = shortcuts.quickSearch,
-            onClick = { commandBus.send(AppCommand.SearchEverywhere) },
-        )
-    }
-}

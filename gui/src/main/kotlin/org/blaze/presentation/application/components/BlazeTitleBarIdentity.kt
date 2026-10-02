@@ -59,15 +59,4 @@ fun TitleBarScope.BlazeTitleBarIdentity() {
 
         if (!isMenuExpanded) SpeedLimitWidget()
     }
-
-    Row(
-        modifier = Modifier
-            .align(Alignment.End)
-            .height(40.dp)
-            .padding(end = 8.dp)
-            .clientRegion("title_bar_right"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TitleBarTrailingIcons(commandBus)
-    }
 }
