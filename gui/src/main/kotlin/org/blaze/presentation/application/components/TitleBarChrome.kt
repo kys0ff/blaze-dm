@@ -37,9 +37,11 @@ import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.CurrentUiPlatform
 import org.blaze.presentation.components.MenuEntry
+import org.blaze.presentation.components.MenuWidthPreloader
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.components.UiPlatform
 import org.blaze.presentation.components.rememberMenuAnchor
+import org.blaze.presentation.components.rememberMenuWidthGroup
 import org.blaze.presentation.components.trackingModifier
 import org.blaze.presentation.search.AppActions
 import org.blaze.presentation.theme.BlazeColors
@@ -123,6 +125,10 @@ internal fun entriesForCategory(
  * ("File", "Edit", "View", "Tools", "Help"). Hovering across headers switches the open menu;
  * clicking a menu command or clicking outside closes the title-bar menu items and restores
  * the hamburger button.
+ *
+ * Every header's popup draws at one width — the width of the widest menu in the bar — measured up
+ * front by [MenuWidthPreloader] and shared through [MenuWidthGroup], exactly like IntelliJ's menu
+ * bar, where the popups never resize as you slide between headers.
  */
 @Composable
 fun HamburgerMenuButton(
@@ -133,6 +139,14 @@ fun HamburgerMenuButton(
     val strings = blazeStrings
     var isExpanded by remember { mutableStateOf(false) }
     var activeCategory by remember { mutableStateOf<TitleBarMenuCategory?>(null) }
+
+    // One width for the whole bar. The lists are measured with no-op click handlers: only the drawn
+    // shape (labels, icons, accelerators) costs width, so the closures are irrelevant here.
+    val menuWidthGroup = rememberMenuWidthGroup()
+    val categoryMenus = remember(strings, commandBus) {
+        TitleBarMenuCategory.entries.map { entriesForCategory(it, strings, commandBus) {} }
+    }
+    MenuWidthPreloader(menus = categoryMenus, group = menuWidthGroup)
 
     val fileAnchor = rememberMenuAnchor()
     val editAnchor = rememberMenuAnchor()
@@ -232,6 +246,7 @@ fun HamburgerMenuButton(
                                     }
                                 }
                             },
+                            rootWidthGroup = menuWidthGroup,
                         )
                     }
                 }

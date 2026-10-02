@@ -16,11 +16,13 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +45,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -128,6 +131,56 @@ val MenuAnchor.trackingModifier: Modifier
 @Composable
 fun rememberMenuAnchorAt(position: Offset): MenuAnchor =
     remember(position) { MenuAnchor(Rect(position, Size(1f, 1f))) }
+
+/**
+ * One width shared by a group of sibling menus — the title bar's File/Edit/View/Tools/Help — the way
+ * the IDE's menu bar opens every popup at the width of its widest menu instead of one width per
+ * command list. [MenuWidthPreloader] fills the group before any popup shows; [BlazeMenu] clamps its
+ * root level to it when handed one.
+ */
+@Stable
+class MenuWidthGroup internal constructor() {
+    var widthPx: Float by mutableFloatStateOf(0f)
+        internal set
+}
+
+@Composable
+fun rememberMenuWidthGroup(): MenuWidthGroup = remember { MenuWidthGroup() }
+
+/** Bound handed to the intrinsic-size query; no real menu is anywhere near this wide or tall. */
+private const val IntrinsicSizeCeilingPx = 10_000
+
+/**
+ * Measures every menu in [menus] — laid out exactly as a popup would lay its rows — and raises
+ * [group] to the widest, in window pixels. It draws nothing: a zero-size [SubcomposeLayout] can ask
+ * its uncomposed content for its intrinsic width, which is the same measurement the popup's own
+ * `IntrinsicSize.Max` column resolves to when it is really placed.
+ */
+@Composable
+fun MenuWidthPreloader(
+    menus: List<List<MenuEntry>>,
+    group: MenuWidthGroup,
+    modifier: Modifier = Modifier,
+) {
+    val style = JewelTheme.menuStyle
+    SubcomposeLayout(modifier = modifier.size(0.dp)) { _ ->
+        var widest = 0f
+        menus.forEachIndexed { index, entries ->
+            if (entries.isEmpty()) return@forEachIndexed
+            val content = subcompose(index) {
+                MenuLevelRows(entries = entries, style = style, highlightedIndex = -1)
+            }.single()
+            // The query takes a proposed height, but a menu row's natural width never depends on it,
+            // so any bound (here: one no menu reaches) answers "how wide does this column want" the same.
+            val width = content.maxIntrinsicWidth(IntrinsicSizeCeilingPx).toFloat()
+            if (width > widest) widest = width
+        }
+        // The group holds the *rows'* width; the popup's padding and border sit on top of it in the
+        // same frame around every menu, so one rows width is one popup width.
+        if (widest > group.widthPx) group.widthPx = widest
+        layout(0, 0) {}
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The state machine
@@ -507,6 +560,8 @@ private fun Rect.withTolerance(px: Float): Rect = if (this == Rect.Zero) this el
  * @param initialOpenSubmenu the root row to render with its submenu already open. Only the screenshot
  *   harness uses it: an offscreen scene has no pointer to hover the parent with, and the open state is
  *   otherwise reachable exclusively through hover, click and the right arrow.
+ * @param rootWidthGroup when given, the root level is at least as wide as the group's shared width —
+ *   what makes a title-bar menu group (File/Edit/View/…) open at one width like the IDE's menu bar.
  */
 @Composable
 fun BlazeMenu(
@@ -520,6 +575,7 @@ fun BlazeMenu(
     headerBounds: Map<out Any, Rect> = emptyMap(),
     onHeaderHovered: ((Any) -> Unit)? = null,
     onHeaderClicked: ((Any) -> Unit)? = null,
+    rootWidthGroup: MenuWidthGroup? = null,
 ) {
     val model = remember { BlazeMenuModel(entries) }
     val style = JewelTheme.menuStyle
@@ -561,6 +617,7 @@ fun BlazeMenu(
             headerBounds = headerBounds,
             onHeaderHovered = onHeaderHovered,
             onHeaderClicked = onHeaderClicked,
+            rootWidthGroup = rootWidthGroup,
         )
     }
 
@@ -607,6 +664,7 @@ private fun MenuSurface(
     headerBounds: Map<out Any, Rect> = emptyMap(),
     onHeaderHovered: ((Any) -> Unit)? = null,
     onHeaderClicked: ((Any) -> Unit)? = null,
+    rootWidthGroup: MenuWidthGroup? = null,
 ) {
     val density = LocalDensity.current
     var containerSize by remember { mutableStateOf(Size.Zero) }
@@ -664,6 +722,7 @@ private fun MenuSurface(
     ) {
         val submenuOffsetPx = with(density) { style.metrics.submenuMetrics.offset.x.roundToPx().toFloat() }
         val rootGapPx = with(density) { style.metrics.offset.y.roundToPx().toFloat() }
+        val rootWidthPx = rootWidthGroup?.widthPx ?: 0f
         for (level in 0 until model.depth) {
             MenuLevel(
                 model = model,
@@ -674,6 +733,7 @@ private fun MenuSurface(
                 submenuOffsetPx = submenuOffsetPx,
                 rootGapPx = rootGapPx,
                 alignRootToEnd = alignRootToEnd,
+                rootMinWidthPx = if (level == 0) rootWidthPx else 0f,
             )
         }
     }
@@ -706,6 +766,7 @@ private fun MenuLevel(
     submenuOffsetPx: Float,
     rootGapPx: Float,
     alignRootToEnd: Boolean,
+    rootMinWidthPx: Float = 0f,
 ) {
     val entries = model.entriesAt(level)
     if (entries.isEmpty()) return
@@ -741,29 +802,58 @@ private fun MenuLevel(
             }
             .padding(style.metrics.contentPadding),
     ) {
-        val showIconColumn = entries.any { entry ->
-            when (entry) {
-                is MenuEntry.Action -> entry.icon != null || entry.checked != null
-                is MenuEntry.Submenu -> entry.icon != null
-                MenuEntry.Separator -> false
-            }
+        MenuLevelRows(
+            entries = entries,
+            style = style,
+            highlightedIndex = model.highlightedAt(level),
+            minWidthPx = rootMinWidthPx,
+            onRowBounds = { index, rect -> model.onRowBounds(level, index, rect) },
+        )
+    }
+}
+
+/**
+ * The rows of one level, inside the frame the theme draws around them. Shared by the placed level
+ * above and by [MenuWidthPreloader], so the width the preload measures is the width the popup draws
+ * — the two can never drift apart.
+ *
+ * One level is exactly as wide as its widest row, which is what makes the surface's hit test
+ * mean anything: without it every level would fill the window, the innermost would swallow
+ * every pointer position, and the parent menu could never be reached again. `IntrinsicSize.Max`
+ * is the standard way to give a group of `fillMaxWidth` rows one shared natural width.
+ */
+@Composable
+private fun MenuLevelRows(
+    entries: List<MenuEntry>,
+    style: MenuStyle,
+    highlightedIndex: Int,
+    modifier: Modifier = Modifier,
+    minWidthPx: Float = 0f,
+    onRowBounds: (index: Int, rect: Rect) -> Unit = { _, _ -> },
+) {
+    val density = LocalDensity.current
+    val showIconColumn = entries.any { entry ->
+        when (entry) {
+            is MenuEntry.Action -> entry.icon != null || entry.checked != null
+            is MenuEntry.Submenu -> entry.icon != null
+            MenuEntry.Separator -> false
         }
-        // One level is exactly as wide as its widest row, which is what makes the surface's hit test
-        // mean anything: without it every level would fill the window, the innermost would swallow
-        // every pointer position, and the parent menu could never be reached again. `IntrinsicSize.Max`
-        // is the standard way to give a group of `fillMaxWidth` rows one shared natural width.
-        Column(modifier = Modifier.width(IntrinsicSize.Max)) {
-            entries.forEachIndexed { index, entry ->
-                when (entry) {
-                    MenuEntry.Separator -> MenuSeparator(style)
-                    else -> MenuRow(
-                        style = style,
-                        entry = entry,
-                        highlighted = model.highlightedAt(level) == index,
-                        showIconColumn = showIconColumn,
-                        onBounds = { model.onRowBounds(level, index, it) },
-                    )
-                }
+    }
+    Column(
+        modifier = modifier
+            .width(IntrinsicSize.Max)
+            .widthIn(min = with(density) { minWidthPx.coerceAtLeast(0f).toDp() }),
+    ) {
+        entries.forEachIndexed { index, entry ->
+            when (entry) {
+                MenuEntry.Separator -> MenuSeparator(style)
+                else -> MenuRow(
+                    style = style,
+                    entry = entry,
+                    highlighted = highlightedIndex == index,
+                    showIconColumn = showIconColumn,
+                    onBounds = { rect -> onRowBounds(index, rect) },
+                )
             }
         }
     }
