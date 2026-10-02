@@ -3,6 +3,7 @@ package org.blaze.presentation.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ComposeUiTest
@@ -15,16 +16,17 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * The one-width contract of the IDE's menu bar, pinned for [MenuWidthGroup].
+ * The one-width contract of the IDE's menu bar, pinned for [MenuWidthGroup] and [LocalMenuWidthGroup].
  *
- * IntelliJ opens File, Edit, View and the rest at a single width — the width of the widest menu in
- * the bar — so the popups never resize as the pointer slides between headers. Blaze reaches that by
- * measuring every menu of a group up front ([MenuWidthPreloader], zero-size intrinsic pass) and
- * clamping each popup's root level to the shared width ([BlazeMenu.rootWidthGroup]).
+ * IntelliJ opens every popup — menu-bar or context — at one shared width, the widest menu's. Blaze
+ * reaches that app-wide: [BlazeMenu] joins the [LocalMenuWidthGroup] by default, clamping its root
+ * level to the group and reporting its own drawn width back so the group only grows; the title bar
+ * additionally pre-measures its five menus with [MenuWidthPreloader] so their popups settle before
+ * the first one is even shown.
  *
- * These tests check both halves: the group really takes the *maximum* across its menus (not the
- * first one measured), and a narrow menu handed a group opens strictly wider than the same menu
- * without one, at exactly the group's width.
+ * These tests pin the halves: the preloader takes the *maximum* (not the first menu measured), a
+ * unifying menu opens at the shared width instead of its own, an opted-out menu keeps its natural
+ * width, and simply opening a wide menu raises the group for everything that follows.
  */
 @OptIn(ExperimentalTestApi::class)
 class MenuWidthGroupTest {
@@ -38,25 +40,30 @@ class MenuWidthGroupTest {
         MenuEntry.Action("Pause All Downloads", onClick = {}),
     )
 
-    /** Composes a preloader over [menus] and one [BlazeMenu] of [menu], and returns the row width and group. */
+    /**
+     * Composes the app group over a [MenuWidthPreloader] of [menus] and one [BlazeMenu] of [menu],
+     * unifying it unless [unifyWidth] is false; returns the popup's row width and the group width.
+     */
     private fun ComposeUiTest.showPreloadedMenu(
         menus: List<List<MenuEntry>>,
         menu: List<MenuEntry>,
-        useGroup: Boolean,
+        unifyWidth: Boolean,
     ): Pair<Float, Float> {
         var capturedGroup: MenuWidthGroup? = null
         setContent {
             BlazeTheme(isDark = true) {
                 val group = rememberMenuWidthGroup()
                 capturedGroup = group
-                MenuWidthPreloader(menus = menus, group = group)
-                Box(Modifier.size(24.dp).padding(8.dp))
-                BlazeMenu(
-                    entries = menu,
-                    anchor = rememberMenuAnchorAt(Offset(20f, 40f)),
-                    onDismissRequest = {},
-                    rootWidthGroup = if (useGroup) group else null,
-                )
+                CompositionLocalProvider(LocalMenuWidthGroup provides group) {
+                    MenuWidthPreloader(menus = menus, group = group)
+                    Box(Modifier.size(24.dp).padding(8.dp))
+                    BlazeMenu(
+                        entries = menu,
+                        anchor = rememberMenuAnchorAt(Offset(20f, 40f)),
+                        onDismissRequest = {},
+                        unifyWidth = unifyWidth,
+                    )
+                }
             }
         }
         waitForIdle()
@@ -74,8 +81,8 @@ class MenuWidthGroupTest {
     @Test
     fun `the preloader raises the group to the widest menu of the group`() =
         runDesktopComposeUiTest(width = 800, height = 600) {
-            val (_, narrowOnlyWidth) = showPreloadedMenu(listOf(narrowMenu), narrowMenu, useGroup = true)
-            val (_, groupWidth) = showPreloadedMenu(listOf(narrowMenu, wideMenu), narrowMenu, useGroup = true)
+            val (_, narrowOnlyWidth) = showPreloadedMenu(listOf(narrowMenu), narrowMenu, unifyWidth = true)
+            val (_, groupWidth) = showPreloadedMenu(listOf(narrowMenu, wideMenu), narrowMenu, unifyWidth = true)
 
             assertTrue(narrowOnlyWidth > 0f, "the preloader must measure something")
             assertTrue(
@@ -88,8 +95,10 @@ class MenuWidthGroupTest {
     @Test
     fun `a menu sharing the group opens at the shared width, not its own`() =
         runDesktopComposeUiTest(width = 800, height = 600) {
-            val (unclampedRowWidth, _) = showPreloadedMenu(listOf(narrowMenu, wideMenu), narrowMenu, useGroup = false)
-            val (clampedRowWidth, groupWidth) = showPreloadedMenu(listOf(narrowMenu, wideMenu), narrowMenu, useGroup = true)
+            val (unclampedRowWidth, _) =
+                showPreloadedMenu(listOf(narrowMenu, wideMenu), narrowMenu, unifyWidth = false)
+            val (clampedRowWidth, groupWidth) =
+                showPreloadedMenu(listOf(narrowMenu, wideMenu), narrowMenu, unifyWidth = true)
 
             assertTrue(
                 clampedRowWidth > unclampedRowWidth,
@@ -102,10 +111,24 @@ class MenuWidthGroupTest {
         }
 
     @Test
-    fun `a menu without a group keeps its own natural width`() =
+    fun `a menu that opts out keeps its own natural width`() =
         runDesktopComposeUiTest(width = 800, height = 600) {
-            val (rowWidth, groupWidth) = showPreloadedMenu(listOf(narrowMenu, wideMenu), narrowMenu, useGroup = false)
+            val (rowWidth, groupWidth) =
+                showPreloadedMenu(listOf(narrowMenu, wideMenu), narrowMenu, unifyWidth = false)
 
-            assertTrue(groupWidth > rowWidth, "without the group the narrow menu must stay narrow")
+            assertTrue(groupWidth > rowWidth, "without unification the narrow menu must stay narrow")
+        }
+
+    @Test
+    fun `opening a wide menu raises the group for every menu that follows`() =
+        runDesktopComposeUiTest(width = 800, height = 600) {
+            // Nothing preloaded: the group can only grow from the width the open popup actually drew.
+            val (rowWidth, groupWidth) = showPreloadedMenu(emptyList(), wideMenu, unifyWidth = true)
+
+            assertTrue(groupWidth > 0f, "an opened menu must report its width into the group")
+            assertTrue(
+                groupWidth in rowWidth - 2f..rowWidth + 2f,
+                "the group must settle at exactly the width the menu drew (group=$groupWidth, row=$rowWidth)",
+            )
         }
 }

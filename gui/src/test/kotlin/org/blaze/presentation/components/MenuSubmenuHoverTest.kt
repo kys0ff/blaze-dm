@@ -165,6 +165,26 @@ class MenuSubmenuHoverTest {
             assertFalse(host.open, "activating a leaf closes the whole menu")
         }
 
+    @Test
+    fun `the highlight lands on the exact row under the pointer, not on a neighbour`() =
+        runDesktopComposeUiTest(width = 800, height = 600) {
+            val host = MenuHost()
+            showMenuWithSubmenu(host)
+
+            // Land a few pixels inside Remove, just below the separator that sits above it. Rows'
+            // hit areas used to be scanned inflated-first, so this position - inside the neighbour's
+            // tolerance band - still highlighted the row above: the reported "hover jumps before the
+            // cursor arrives". Exact containment must win whenever a row really holds the pointer.
+            nodeWithText("Remove").performMouseInput { moveTo(Offset(center.x, 2f)) }
+            waitForIdle()
+
+            assertEquals(
+                "Remove",
+                highlighted("Open", "Priority", "Remove"),
+                "a pointer a few pixels into a row must select that row, not the one above",
+            )
+        }
+
     // ── the keyboard ──────────────────────────────────────────────────────────
 
     @Test

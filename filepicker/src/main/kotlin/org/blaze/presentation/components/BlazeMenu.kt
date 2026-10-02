@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -142,10 +143,27 @@ fun rememberMenuAnchorAt(position: Offset): MenuAnchor =
 class MenuWidthGroup internal constructor() {
     var widthPx: Float by mutableFloatStateOf(0f)
         internal set
+
+    /**
+     * Grows the shared width to [widthPx]. The width only ever increases — the same rule the IDE
+     * follows, where opening one wide menu widens every later popup — so a reported width can never
+     * make another menu shrink and re-settle.
+     */
+    internal fun raise(widthPx: Float) {
+        if (widthPx > this.widthPx) this.widthPx = widthPx
+    }
 }
 
 @Composable
 fun rememberMenuWidthGroup(): MenuWidthGroup = remember { MenuWidthGroup() }
+
+/**
+ * The menu width group every [BlazeMenu] joins by default. Blaze's root provides one app-wide
+ * instance — [rememberMenuWidthGroup] at the composition root, passed down here — so every popup
+ * menu in the app draws at one shared width like the IDE's, whichever control opened it; a
+ * composition that provides nothing gets a private group and unifies only its own menus.
+ */
+val LocalMenuWidthGroup = compositionLocalOf { MenuWidthGroup() }
 
 /** Bound handed to the intrinsic-size query; no real menu is anywhere near this wide or tall. */
 private const val IntrinsicSizeCeilingPx = 10_000
@@ -177,7 +195,7 @@ fun MenuWidthPreloader(
         }
         // The group holds the *rows'* width; the popup's padding and border sit on top of it in the
         // same frame around every menu, so one rows width is one popup width.
-        if (widest > group.widthPx) group.widthPx = widest
+        group.raise(widest)
         layout(0, 0) {}
     }
 }
@@ -262,6 +280,14 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
     /** False while the pointer is outside every level, which is what collapses open submenus. */
     var pointerInside by mutableStateOf(true); private set
 
+    /**
+     * Whether the tracked highlight is *painted*. The IDE opens a menu with no selected-looking row
+     * until the pointer enters it or a key moves the selection, so the row the menu pre-tracks for
+     * the keyboard stays invisible until then — without this, the first item reads as hovered before
+     * the mouse is anywhere near the menu.
+     */
+    var selectionVisible by mutableStateOf(false); private set
+
     /** The submenu row the pointer is resting on but has not yet opened (the hover delay). */
     var pendingOpen by mutableStateOf<Pair<Int, Int>?>(null); private set
 
@@ -316,6 +342,7 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
      * close, `true` when it stays open (a submenu just expanded, or an inert row was pressed).
      */
     fun activateRow(level: Int, index: Int): Boolean {
+        revealSelection()
         if (highlightedAt(level) != index) highlight(level, index, openImmediately = false)
         return when (val row = entryAt(level, index)) {
             is MenuEntry.Action -> {
@@ -439,6 +466,8 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
             val bounds = _levelBounds[level] ?: continue
             if (position isIn bounds.withTolerance(TOLERANCE)) {
                 if (!pointerInside) pointerInside = true
+                // The pointer demonstrably entered the menu; from here the highlight it lands on is real.
+                revealSelection()
                 val index = rowAt(level, position) ?: return
                 highlight(level, index, openImmediately = false)
                 return
@@ -453,6 +482,16 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
 
     private fun rowAt(level: Int, position: Offset): Int? {
         val entries = entriesAt(level)
+        // Exact containment first. Every row's bounds are inflated for the *level* scan (crossing a
+        // submenu diagonally must not read as leaving), but neighbouring rows' inflated bounds overlap
+        // each other, so a tolerance-first scan hands the highlight to the row above or below the one
+        // the pointer is actually on — the reported "highlight jumps before the cursor arrives". The
+        // inflated pass only remains as the bridge over real gaps no exact row owns: separator margins
+        // and the level's own padding.
+        for (index in entries.indices) {
+            val bounds = _rowBounds[level to index] ?: continue
+            if (bounds.contains(position)) return index
+        }
         for (index in entries.indices) {
             val bounds = _rowBounds[level to index] ?: continue
             if (position isIn bounds.withTolerance(TOLERANCE)) return index
@@ -471,6 +510,8 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
         if (event.type != KeyEventType.KeyDown) return false
         val level = activeLevel.coerceIn(0, depth - 1)
         val entries = entriesAt(level)
+        // A key press is the other way the IDE lets the selection become visible.
+        revealSelection()
         when (event.key) {
             // One Escape peels off the innermost level; the one from the root level closes the menu.
             Key.Escape -> {
@@ -526,6 +567,10 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
         if (index >= 0) highlight(level, index, openImmediately = false)
     }
 
+    private fun revealSelection() {
+        if (!selectionVisible) selectionVisible = true
+    }
+
     private companion object {
         /** Hover tolerance, in px, applied to every measured level and row. */
         const val TOLERANCE = 12f
@@ -560,8 +605,10 @@ private fun Rect.withTolerance(px: Float): Rect = if (this == Rect.Zero) this el
  * @param initialOpenSubmenu the root row to render with its submenu already open. Only the screenshot
  *   harness uses it: an offscreen scene has no pointer to hover the parent with, and the open state is
  *   otherwise reachable exclusively through hover, click and the right arrow.
- * @param rootWidthGroup when given, the root level is at least as wide as the group's shared width —
- *   what makes a title-bar menu group (File/Edit/View/…) open at one width like the IDE's menu bar.
+ * @param unifyWidth whether the root level joins [LocalMenuWidthGroup]: it clamps to the group's shared
+ *   width and reports its own drawn width back, so every menu in the app comes out one width like the
+ *   IDE's, whoever opened it. The screenshot harness opts out to keep its reference shots at each
+ *   menu's own natural width.
  */
 @Composable
 fun BlazeMenu(
@@ -575,10 +622,11 @@ fun BlazeMenu(
     headerBounds: Map<out Any, Rect> = emptyMap(),
     onHeaderHovered: ((Any) -> Unit)? = null,
     onHeaderClicked: ((Any) -> Unit)? = null,
-    rootWidthGroup: MenuWidthGroup? = null,
+    unifyWidth: Boolean = true,
 ) {
     val model = remember { BlazeMenuModel(entries) }
     val style = JewelTheme.menuStyle
+    val widthGroup = if (unifyWidth) LocalMenuWidthGroup.current else null
     // Refresh the rows on every recomposition of the owner; the payload's shape decides whether that
     // costs a frame, so a menu sitting open over a downloading row keeps its hover state.
     model.submit(entries)
@@ -617,7 +665,7 @@ fun BlazeMenu(
             headerBounds = headerBounds,
             onHeaderHovered = onHeaderHovered,
             onHeaderClicked = onHeaderClicked,
-            rootWidthGroup = rootWidthGroup,
+            rootWidthGroup = widthGroup,
         )
     }
 
@@ -722,6 +770,7 @@ private fun MenuSurface(
     ) {
         val submenuOffsetPx = with(density) { style.metrics.submenuMetrics.offset.x.roundToPx().toFloat() }
         val rootGapPx = with(density) { style.metrics.offset.y.roundToPx().toFloat() }
+        // Read in composition, so a group grown by any other menu recomposes this surface wider.
         val rootWidthPx = rootWidthGroup?.widthPx ?: 0f
         for (level in 0 until model.depth) {
             MenuLevel(
@@ -734,6 +783,7 @@ private fun MenuSurface(
                 rootGapPx = rootGapPx,
                 alignRootToEnd = alignRootToEnd,
                 rootMinWidthPx = if (level == 0) rootWidthPx else 0f,
+                widthGroup = if (level == 0) rootWidthGroup else null,
             )
         }
     }
@@ -767,6 +817,7 @@ private fun MenuLevel(
     rootGapPx: Float,
     alignRootToEnd: Boolean,
     rootMinWidthPx: Float = 0f,
+    widthGroup: MenuWidthGroup? = null,
 ) {
     val entries = model.entriesAt(level)
     if (entries.isEmpty()) return
@@ -806,7 +857,13 @@ private fun MenuLevel(
             entries = entries,
             style = style,
             highlightedIndex = model.highlightedAt(level),
+            showHighlight = model.selectionVisible,
             minWidthPx = rootMinWidthPx,
+            // The root reports the width it actually drew back into the group: a menu wider than the
+            // group grows it (and every later popup), while one clamped to it reports no change.
+            modifier = widthGroup?.let { group ->
+                Modifier.onGloballyPositioned { group.raise(it.size.width.toFloat()) }
+            } ?: Modifier,
             onRowBounds = { index, rect -> model.onRowBounds(level, index, rect) },
         )
     }
@@ -828,6 +885,7 @@ private fun MenuLevelRows(
     style: MenuStyle,
     highlightedIndex: Int,
     modifier: Modifier = Modifier,
+    showHighlight: Boolean = true,
     minWidthPx: Float = 0f,
     onRowBounds: (index: Int, rect: Rect) -> Unit = { _, _ -> },
 ) {
@@ -851,6 +909,7 @@ private fun MenuLevelRows(
                     style = style,
                     entry = entry,
                     highlighted = highlightedIndex == index,
+                    showHighlight = showHighlight,
                     showIconColumn = showIconColumn,
                     onBounds = { rect -> onRowBounds(index, rect) },
                 )
@@ -921,31 +980,36 @@ private fun MenuRow(
     /** Whether this is the row the pointer or the keyboard is on. Named apart from the `Selected`
      * semantics property it publishes, which the lambda below would otherwise shadow. */
     highlighted: Boolean,
+    /** Whether the surface paints the tracked highlight at all; see [BlazeMenuModel.selectionVisible]. */
+    showHighlight: Boolean,
     showIconColumn: Boolean,
     onBounds: (Rect) -> Unit,
 ) {
     val metrics = style.metrics.itemMetrics
     val itemColors = style.colors.itemColors
     val enabled = entry.enabled
+    // The tracked row only *looks* selected once the pointer entered or a key moved it; before that
+    // the IDE shows no painted selection, and a pre-tracked first row must not read as hovered.
+    val marked = highlighted && showHighlight
 
     val background = when {
         !enabled -> itemColors.backgroundDisabled
-        highlighted -> itemColors.backgroundHovered
+        marked -> itemColors.backgroundHovered
         else -> Color.Transparent
     }
     val contentColor = when {
         !enabled -> itemColors.contentDisabled
-        highlighted -> itemColors.contentHovered
+        marked -> itemColors.contentHovered
         else -> itemColors.content
     }
     val iconColor = when {
         !enabled -> itemColors.iconTintDisabled
-        highlighted -> itemColors.iconTintHovered
+        marked -> itemColors.iconTintHovered
         else -> itemColors.iconTint
     }
     val keybindingColor = when {
         !enabled -> itemColors.keybindingTintDisabled
-        highlighted -> itemColors.keybindingTintHovered
+        marked -> itemColors.keybindingTintHovered
         else -> itemColors.keybindingTint
     }
     val action = entry as? MenuEntry.Action

@@ -36,12 +36,12 @@ import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.CurrentUiPlatform
+import org.blaze.presentation.components.LocalMenuWidthGroup
 import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.components.MenuWidthPreloader
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.components.UiPlatform
 import org.blaze.presentation.components.rememberMenuAnchor
-import org.blaze.presentation.components.rememberMenuWidthGroup
 import org.blaze.presentation.components.trackingModifier
 import org.blaze.presentation.search.AppActions
 import org.blaze.presentation.theme.BlazeColors
@@ -127,8 +127,8 @@ internal fun entriesForCategory(
  * the hamburger button.
  *
  * Every header's popup draws at one width — the width of the widest menu in the bar — measured up
- * front by [MenuWidthPreloader] and shared through [MenuWidthGroup], exactly like IntelliJ's menu
- * bar, where the popups never resize as you slide between headers.
+ * front by [MenuWidthPreloader] into the app-wide [LocalMenuWidthGroup], exactly like IntelliJ's
+ * menu bar, where the popups never resize as you slide between headers.
  */
 @Composable
 fun HamburgerMenuButton(
@@ -140,9 +140,11 @@ fun HamburgerMenuButton(
     var isExpanded by remember { mutableStateOf(false) }
     var activeCategory by remember { mutableStateOf<TitleBarMenuCategory?>(null) }
 
-    // One width for the whole bar. The lists are measured with no-op click handlers: only the drawn
-    // shape (labels, icons, accelerators) costs width, so the closures are irrelevant here.
-    val menuWidthGroup = rememberMenuWidthGroup()
+    // One width for the whole app. The lists are measured with no-op click handlers: only the drawn
+    // shape (labels, icons, accelerators) costs width, so the closures are irrelevant here. Seeding
+    // the app-wide group here is what lets every title-bar popup open at the settled width on its
+    // very first frame, before any menu has been hovered.
+    val menuWidthGroup = LocalMenuWidthGroup.current
     val categoryMenus = remember(strings, commandBus) {
         TitleBarMenuCategory.entries.map { entriesForCategory(it, strings, commandBus) {} }
     }
@@ -246,7 +248,6 @@ fun HamburgerMenuButton(
                                     }
                                 }
                             },
-                            rootWidthGroup = menuWidthGroup,
                         )
                     }
                 }

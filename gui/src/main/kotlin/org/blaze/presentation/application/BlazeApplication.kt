@@ -16,6 +16,8 @@ import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.isRtl
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.presentation.application.components.BlazeWindow
+import org.blaze.presentation.components.LocalMenuWidthGroup
+import org.blaze.presentation.components.rememberMenuWidthGroup
 import org.blaze.security.ConsentService
 import org.koin.compose.koinInject
 
@@ -95,10 +97,16 @@ fun ApplicationScope.BlazeApplication() {
     }
     val currentLocale by localeManager.currentLocale.collectAsState()
 
+    // One menu-width group for the whole app: every BlazeMenu popup — title-bar menus, row context
+    // menus, header and details menus — draws at the shared width the IDE gives all its popups,
+    // across windows and dialogs, not just within one menu bar.
+    val menuWidthGroup = rememberMenuWidthGroup()
+
     // RTL locales (Arabic) mirror the whole layout through Compose's layout-direction local;
     // text alignment, paddings and icon order all follow it.
     CompositionLocalProvider(
         LocalBlazeStrings provides strings,
+        LocalMenuWidthGroup provides menuWidthGroup,
         LocalLayoutDirection provides if (currentLocale.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
     ) {
         AppTheme {

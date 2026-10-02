@@ -300,6 +300,9 @@ fun main() {
                 anchor = rememberMenuAnchorAt(Offset(20f, 20f)),
                 onDismissRequest = {},
                 inScene = true,
+                // Reference shots keep each menu's own natural width; the app-wide unification is a
+                // runtime behaviour the harness must not bake into the pictures.
+                unifyWidth = false,
                 initialOpenSubmenu = menuEntries.indexOfFirst { it is MenuEntry.Submenu }.takeIf { it >= 0 },
             )
         }
