@@ -471,6 +471,35 @@ object ArStrings : BlazeStrings {
         override val snailMode = "وضع الحلزون"
         override val aboutTitle = "حول Blaze"
         override val aboutBody = "مدير تنزيلات سريع وعصري."
+        override val serverLogs = "سجلّات الخادم…"
+        override val server = "الخادم المحلي"
+        override val startServer = "تشغيل الخادم"
+        override val stopServer = "إيقاف الخادم"
+        override val restartServer = "إعادة تشغيل الخادم"
+        override val copyEndpoint = "نسخ نقطة النهاية"
+        override val endpointCopied = "نُسخَت نقطة نهاية الخادم إلى الحافظة."
+    }
+
+    override val serverLog = object : BlazeStrings.ServerLog {
+        override val title = "الخادم"
+        override val empty = "لا مخرجات سجل بعد."
+        override val running = "قيد التشغيل"
+        override val stopped = "متوقف"
+        override val startAction = "تشغيل"
+        override val stopAction = "إيقاف"
+        override val restartAction = "إعادة تشغيل"
+        override val clearAction = "مسح"
+        override val hide = "إخفاء نافذة الأدوات"
+        override val findPlaceholder = "بحث في السجل…"
+        override val clearSearch = "مسح البحث"
+        override val findTooltip = "بحث"
+        override val nextMatch = "التطابق التالي"
+        override val previousMatch = "التطابق السابق"
+        override val closeFind = "إغلاق البحث"
+        override fun matchCount(current: Int, total: Int) = "$current من $total"
+        override val noMatches = "لا تطابقات"
+        override val endpoint = "نقطة النهاية"
+        override val tokenFile = "ملف رمز الوصول"
     }
 
     override val search = object : BlazeStrings.Search {

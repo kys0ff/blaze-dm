@@ -72,6 +72,7 @@ internal fun entriesForCategory(
     category: TitleBarMenuCategory,
     strings: BlazeStrings,
     commandBus: AppCommandBus,
+    serverRunning: Boolean,
     onExecuted: () -> Unit,
 ): List<MenuEntry> {
     fun AppActions.AppAction.toMenuEntry(): MenuEntry.Action =
@@ -110,6 +111,61 @@ internal fun entriesForCategory(
             findAction(AppCommand.ResumeAll),
             MenuEntry.Separator,
             findAction(AppCommand.SearchEverywhere),
+            MenuEntry.Separator,
+            // The Server Logs window and the local API server's lifecycle. The submenu's Start / Stop /
+            // Restart rows mirror the running state so an impossible transition is disabled, not hidden -
+            // the same rule the tray's transport items follow.
+            MenuEntry.Action(
+                label = strings.menu.serverLogs,
+                icon = AllIconsKeys.Nodes.Console,
+                onClick = {
+                    commandBus.send(AppCommand.ShowServerLog)
+                    onExecuted()
+                },
+            ),
+            MenuEntry.Submenu(
+                label = strings.menu.server,
+                icon = AllIconsKeys.Actions.Execute,
+                children = listOf(
+                    MenuEntry.Action(
+                        label = strings.menu.startServer,
+                        icon = AllIconsKeys.Actions.Execute,
+                        enabled = !serverRunning,
+                        onClick = {
+                            commandBus.send(AppCommand.StartServer)
+                            onExecuted()
+                        },
+                    ),
+                    MenuEntry.Action(
+                        label = strings.menu.stopServer,
+                        icon = AllIconsKeys.Run.Stop,
+                        enabled = serverRunning,
+                        onClick = {
+                            commandBus.send(AppCommand.StopServer)
+                            onExecuted()
+                        },
+                    ),
+                    MenuEntry.Action(
+                        label = strings.menu.restartServer,
+                        icon = AllIconsKeys.Actions.Restart,
+                        enabled = serverRunning,
+                        onClick = {
+                            commandBus.send(AppCommand.RestartServer)
+                            onExecuted()
+                        },
+                    ),
+                    MenuEntry.Separator,
+                    MenuEntry.Action(
+                        label = strings.menu.copyEndpoint,
+                        icon = AllIconsKeys.Actions.Copy,
+                        enabled = serverRunning,
+                        onClick = {
+                            commandBus.send(AppCommand.CopyServerEndpoint)
+                            onExecuted()
+                        },
+                    ),
+                ),
+            ),
         )
 
         TitleBarMenuCategory.Help -> listOf(
@@ -137,6 +193,11 @@ fun HamburgerMenuButton(
 ) {
     if (CurrentUiPlatform == UiPlatform.MacOS) return
     val strings = blazeStrings
+    // Whether the local API server is up drives the Tools submenu's enabled rows. Labels are static, so
+    // the value only affects the (state-reflecting) enabled flags - the measured menu width is unchanged.
+    val serverController = koinInject<org.blaze.server.DownloadServiceController>()
+    val serverStatus by serverController.status.collectAsState()
+    val serverRunning = serverStatus.running
     var isExpanded by remember { mutableStateOf(false) }
     var activeCategory by remember { mutableStateOf<TitleBarMenuCategory?>(null) }
 
@@ -145,8 +206,8 @@ fun HamburgerMenuButton(
     // the app-wide group here is what lets every title-bar popup open at the settled width on its
     // very first frame, before any menu has been hovered.
     val menuWidthGroup = LocalMenuWidthGroup.current
-    val categoryMenus = remember(strings, commandBus) {
-        TitleBarMenuCategory.entries.map { entriesForCategory(it, strings, commandBus) {} }
+    val categoryMenus = remember(strings, commandBus, serverRunning) {
+        TitleBarMenuCategory.entries.map { entriesForCategory(it, strings, commandBus, serverRunning) {} }
     }
     MenuWidthPreloader(menus = categoryMenus, group = menuWidthGroup)
 
@@ -220,7 +281,7 @@ fun HamburgerMenuButton(
 
                     if (isActive) {
                         BlazeMenu(
-                            entries = entriesForCategory(category, strings, commandBus) {
+                            entries = entriesForCategory(category, strings, commandBus, serverRunning) {
                                 isExpanded = false
                                 activeCategory = null
                                 onExpandChange(isExpanded)

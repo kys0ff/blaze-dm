@@ -86,6 +86,19 @@ data class AppSettings(
     /** Whether the pane's tabs are grouped into one continuous view instead of a tab strip. */
     val groupDetailsTabs: Boolean = false,
 
+    // ── Server Logs tool-window layout ────────────────────────────────────────
+    // Mirrors the Details pane's fields above; the log window reuses the same view-mode / move-to
+    // enums, so its persisted layout is the same shape (primitives only, rehydrated by the view).
+
+    /** Whether the dockable Server Logs tool window is shown. Off by default: it is a tool window. */
+    val serverLogVisible: Boolean = false,
+    /** Fraction of the content|log split given to the content, persisted across launches. */
+    val serverLogSplitFraction: Float = 0.65f,
+    /** Name of the [org.blaze.presentation.screens.downloads.DetailsViewMode] the log window presents in. */
+    val serverLogViewMode: String = "DOCK_PINNED",
+    /** Name of the [org.blaze.presentation.screens.downloads.DetailsMoveTo] the log window docks to. */
+    val serverLogMoveTo: String = "BOTTOM_RIGHT",
+
     // ── Chrome ─────────────────────────────────────────────────────────────────
     /**
      * The IDE's soft accent-colored glow at the top-left of the window frame (behind the title bar,

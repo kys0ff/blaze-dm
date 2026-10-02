@@ -465,6 +465,35 @@ object EnStrings : BlazeStrings {
         override val snailMode = "Snail mode"
         override val aboutTitle = "About Blaze"
         override val aboutBody = "A fast, modern download manager."
+        override val serverLogs = "Server Logs…"
+        override val server = "Local Server"
+        override val startServer = "Start Server"
+        override val stopServer = "Stop Server"
+        override val restartServer = "Restart Server"
+        override val copyEndpoint = "Copy Endpoint"
+        override val endpointCopied = "Server endpoint copied to the clipboard."
+    }
+
+    override val serverLog = object : BlazeStrings.ServerLog {
+        override val title = "Server"
+        override val empty = "No log output yet."
+        override val running = "Running"
+        override val stopped = "Stopped"
+        override val startAction = "Start"
+        override val stopAction = "Stop"
+        override val restartAction = "Restart"
+        override val clearAction = "Clear"
+        override val hide = "Hide Tool Window"
+        override val findPlaceholder = "Find in log…"
+        override val clearSearch = "Clear search"
+        override val findTooltip = "Find"
+        override val nextMatch = "Next Match"
+        override val previousMatch = "Previous Match"
+        override val closeFind = "Close Find"
+        override fun matchCount(current: Int, total: Int) = "$current of $total"
+        override val noMatches = "No matches"
+        override val endpoint = "Endpoint"
+        override val tokenFile = "Access token file"
     }
     
     override val search = object : BlazeStrings.Search {

@@ -24,14 +24,10 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.BlazeMenu
-import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.components.ToolWindowHeader
+import org.blaze.presentation.components.ToolWindowOptionsButton
 import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.components.rememberMenuAnchor
-import org.blaze.presentation.components.trackingModifier
 import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsResize
 import org.blaze.presentation.screens.downloads.DetailsViewMode
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.ResumeSupport
@@ -85,12 +81,15 @@ fun DownloadDetailsPanel(
         ToolWindowHeader(
             title = strings.downloads.dialogs.details.title,
             actions = {
-                DetailsOptionsButton(
+                ToolWindowOptionsButton(
                     options = pane.options,
                     viewMode = viewMode,
                     moveTo = moveTo,
                     groupTabs = groupTabs,
-                    onEvent = onEvent,
+                    onToggleGroupTabs = { onEvent(DownloadsEvent.ToggleGroupDetailsTabs(it)) },
+                    onViewMode = { onEvent(DownloadsEvent.SetDetailsViewMode(it)) },
+                    onMoveTo = { onEvent(DownloadsEvent.SetDetailsMoveTo(it)) },
+                    onResize = { onEvent(DownloadsEvent.ResizeDetails(it)) },
                 )
                 // A tool window is *hidden*, not closed: the IDE draws the horizontal-line glyph for that
                 // and keeps the X for closing an editor. `General.Close` here read as "destroy the pane".
@@ -125,113 +124,10 @@ fun DownloadDetailsPanel(
 }
 
 /**
- * The Details pane's tool-window "more" button — the New UI draws a vertical ellipsis here, not a gear,
- * because the menu configures *this window* (tabs, dock position, size) rather than app settings. It
- * opens the pane's option menu, whose choices are routed back as [DownloadsEvent]s so the screen model
- * owns persistence while this stays purely presentational.
+ * The Details pane's tool-window "more" button lives in the shared
+ * [org.blaze.presentation.components.ToolWindowOptionsButton]; the Server Logs window mounts the same
+ * menu, so it is no longer duplicated here.
  */
-@Composable
-private fun DetailsOptionsButton(
-    options: BlazeStrings.Downloads.DetailsPane.ToolWindowOptions,
-    viewMode: DetailsViewMode,
-    moveTo: DetailsMoveTo,
-    groupTabs: Boolean,
-    onEvent: (DownloadsEvent) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val anchor = rememberMenuAnchor()
-    Box(modifier = anchor.trackingModifier) {
-        ToolbarIconButton(
-            key = AllIconsKeys.Actions.More,
-            tooltip = options.menuTooltip,
-            onClick = { expanded = true },
-        )
-        if (expanded) {
-            BlazeMenu(
-                entries = buildList {
-                    add(
-                        MenuEntry.Action(
-                            label = options.groupTabs,
-                            checked = groupTabs,
-                            onClick = { onEvent(DownloadsEvent.ToggleGroupDetailsTabs(!groupTabs)) },
-                        ),
-                    )
-                    add(MenuEntry.Separator)
-                    add(
-                        MenuEntry.Submenu(
-                            label = options.viewMode,
-                            children = listOf(
-                                marked(options.dockPinned, viewMode == DetailsViewMode.DOCK_PINNED) {
-                                    onEvent(DownloadsEvent.SetDetailsViewMode(DetailsViewMode.DOCK_PINNED))
-                                },
-                                marked(options.dockUnpinned, viewMode == DetailsViewMode.DOCK_UNPINNED) {
-                                    onEvent(DownloadsEvent.SetDetailsViewMode(DetailsViewMode.DOCK_UNPINNED))
-                                },
-                                marked(options.undock, viewMode == DetailsViewMode.UNDOCK) {
-                                    onEvent(DownloadsEvent.SetDetailsViewMode(DetailsViewMode.UNDOCK))
-                                },
-                                marked(options.float, viewMode == DetailsViewMode.FLOAT) {
-                                    onEvent(DownloadsEvent.SetDetailsViewMode(DetailsViewMode.FLOAT))
-                                },
-                                marked(options.window, viewMode == DetailsViewMode.WINDOW) {
-                                    onEvent(DownloadsEvent.SetDetailsViewMode(DetailsViewMode.WINDOW))
-                                },
-                            ),
-                        ),
-                    )
-                    add(
-                        MenuEntry.Submenu(
-                            label = options.moveTo,
-                            children = listOf(
-                                marked(options.leftTop, moveTo == DetailsMoveTo.LEFT_TOP) {
-                                    onEvent(DownloadsEvent.SetDetailsMoveTo(DetailsMoveTo.LEFT_TOP))
-                                },
-                                marked(options.leftBottom, moveTo == DetailsMoveTo.LEFT_BOTTOM) {
-                                    onEvent(DownloadsEvent.SetDetailsMoveTo(DetailsMoveTo.LEFT_BOTTOM))
-                                },
-                                marked(options.bottomRight, moveTo == DetailsMoveTo.BOTTOM_RIGHT) {
-                                    onEvent(DownloadsEvent.SetDetailsMoveTo(DetailsMoveTo.BOTTOM_RIGHT))
-                                },
-                                marked(options.bottomLeft, moveTo == DetailsMoveTo.BOTTOM_LEFT) {
-                                    onEvent(DownloadsEvent.SetDetailsMoveTo(DetailsMoveTo.BOTTOM_LEFT))
-                                },
-                                marked(options.rightBottom, moveTo == DetailsMoveTo.RIGHT_BOTTOM) {
-                                    onEvent(DownloadsEvent.SetDetailsMoveTo(DetailsMoveTo.RIGHT_BOTTOM))
-                                },
-                                marked(options.rightTop, moveTo == DetailsMoveTo.RIGHT_TOP) {
-                                    onEvent(DownloadsEvent.SetDetailsMoveTo(DetailsMoveTo.RIGHT_TOP))
-                                },
-                            ),
-                        ),
-                    )
-                    add(
-                        MenuEntry.Submenu(
-                            label = options.resize,
-                            children = listOf(
-                                marked(options.stretchLeft) { onEvent(DownloadsEvent.ResizeDetails(DetailsResize.STRETCH_LEFT)) },
-                                marked(options.stretchRight) { onEvent(DownloadsEvent.ResizeDetails(DetailsResize.STRETCH_RIGHT)) },
-                                marked(options.stretchTop) { onEvent(DownloadsEvent.ResizeDetails(DetailsResize.STRETCH_TOP)) },
-                                marked(options.stretchBottom) { onEvent(DownloadsEvent.ResizeDetails(DetailsResize.STRETCH_BOTTOM)) },
-                                marked(options.maximize) { onEvent(DownloadsEvent.ResizeDetails(DetailsResize.MAXIMIZE)) },
-                            ),
-                        ),
-                    )
-                },
-                anchor = anchor,
-                onDismissRequest = { expanded = false },
-                alignRootToEnd = true,
-            )
-        }
-    }
-}
-
-/**
- * One row of the pane's option menu. The current choice of a group is *marked* in the icon column and
- * stays clickable — an IDE greys nothing out here, it shows where you are.
- */
-private fun marked(label: String, selected: Boolean = false, onClick: () -> Unit): MenuEntry.Action =
-    MenuEntry.Action(label = label, checked = selected.takeIf { selected }, onClick = onClick)
-
 @Composable
 private fun DetailsBody(
     download: Download,

@@ -13,6 +13,7 @@ interface BlazeStrings {
     val extensions: Extensions
     val consent: Consent
     val options: Options
+    val serverLog: ServerLog
 
     interface Common {
         val ok: String
@@ -589,6 +590,52 @@ interface BlazeStrings {
         /** About dialog copy. */
         val aboutTitle: String
         val aboutBody: String
+        /** Tools-category server entries: opening the log window and the lifecycle submenu. */
+        val serverLogs: String
+        val server: String
+        val startServer: String
+        val stopServer: String
+        val restartServer: String
+        val copyEndpoint: String
+        /** Toast after copying the running server's endpoint to the clipboard. */
+        val endpointCopied: String
+    }
+
+    /**
+     * Copy for the dockable "Server Logs" tool window — the in-process log stream (which carries the
+     * local API server's own lines) shown like an IDE Log window, with an IntelliJ-style in-panel find
+     * bar. The shared View Mode / Move To / Resize labels are reused from
+     * [Downloads.DetailsPane.ToolWindowOptions], so they are not duplicated here.
+     */
+    interface ServerLog {
+        val title: String
+        /** Shown in the body when the buffer holds no lines yet. */
+        val empty: String
+        /** Live server status words shown beside the header controls. */
+        val running: String
+        val stopped: String
+        /** Header quick lifecycle actions and the buffer-clear button. */
+        val startAction: String
+        val stopAction: String
+        val restartAction: String
+        val clearAction: String
+        /** Tooltip for the hide (tool-window close) affordance. */
+        val hide: String
+        /** Placeholder + accessible name of the in-panel find field. */
+        val findPlaceholder: String
+        val clearSearch: String
+        /** Tooltip of the find toggle, which spells out its accelerator in the caller. */
+        val findTooltip: String
+        val nextMatch: String
+        val previousMatch: String
+        val closeFind: String
+        /** Find-bar match counter, e.g. "3 of 12". */
+        fun matchCount(current: Int, total: Int): String
+        /** Find-bar label when the query matches nothing. */
+        val noMatches: String
+        /** Header/tooltip label for the endpoint line and its token file. */
+        val endpoint: String
+        val tokenFile: String
     }
     
     /**

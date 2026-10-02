@@ -12,12 +12,13 @@ import org.blaze.di.repositoryModule
 import org.blaze.di.resolverModule
 import org.blaze.di.screenModelModule
 import org.blaze.di.securityModule
+import org.blaze.di.serviceModule
 import org.blaze.di.themeModule
 import org.blaze.di.useCaseModule
-import org.blaze.download.api.DownloadsApi
 import org.blaze.download.api.ServicePaths
 import org.blaze.i18n.i18nModule
 import org.blaze.logging.LogConfigurator
+import org.blaze.logging.ServerLogRepository
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
 import org.blaze.osintegration.platform.MacOpenEventsBridge
@@ -37,9 +38,7 @@ import org.blaze.platform.di.desktopPlatformModule
 import org.blaze.platform.taskbar.LauncherEntryInstaller
 import org.blaze.presentation.application.BlazeApplication
 import org.blaze.presentation.screens.filepicker.di.filePickerModule
-import org.blaze.service.LocalApiLauncher
-import org.blaze.service.config.LocalApiSettingsRepository
-import org.blaze.service.security.ClientConsentGate
+import org.blaze.server.DownloadServiceController
 import org.blaze.tray.di.trayModule
 import org.koin.core.context.startKoin
 import org.slf4j.Logger
@@ -87,6 +86,7 @@ fun main(rawArgs: Array<String>) {
             repositoryModule,
             resolverModule,
             securityModule,
+            serviceModule,
             themeModule,
             useCaseModule,
             screenModelModule,
@@ -98,6 +98,9 @@ fun main(rawArgs: Array<String>) {
 
     // Apply persisted logging settings before anything else logs, then keep them in sync.
     koin.get<LogConfigurator>().start(koin.get<CoroutineScope>())
+    // Materialize the in-memory log stream before the first line logs, so the Server Logs tool window
+    // shows startup output too (its appender attaches to the logback root on construction).
+    koin.get<ServerLogRepository>()
     val log = LoggerFactory.getLogger("org.blaze.Main")
     log.info("Blaze is starting up.")
 
@@ -169,22 +172,16 @@ fun main(rawArgs: Array<String>) {
     // over the loopback API. Ownership of the data directory's endpoint is locked, so a second instance
     // simply declines to publish a duplicate. Any failure here must never stop the window from opening.
     // The consent gate is the GUI's: a new third-party client's first request pauses until the user
-    // acknowledges and answers it (or refuses) in the app-wide consent dialog.
-    val launcher = LocalApiLauncher(storageDir, koin.get<CoroutineScope>())
-    runCatching {
-        launcher.tryStart(
-            koin.get<DownloadsApi>(),
-            LocalApiSettingsRepository(storageDir).load(),
-            consentGate = koin.get<ClientConsentGate>(),
-        )
-    }.onFailure {
-        log.warn("Local download API did not start; the GUI is unaffected.", it)
-    }
+    // acknowledges and answers it (or refuses) in the app-wide consent dialog. The controller is the
+    // single owner the Server Logs tool window and the shutdown hook below share.
+    val controller = koin.get<DownloadServiceController>()
+    runCatching { controller.start() }
+        .onFailure { log.warn("Local download API did not start; the GUI is unaffected.", it) }
 
     // Closing the window returns from `application { }`; a terminated process (IDE Stop, `kill`, login
     // session end) does not - it only runs shutdown hooks. One idempotent sweep for both paths keeps
     // this process's own socket, port and endpoint files from outliving it.
-    val session = SessionCleanup(log, storageDir, launcher, coordinator, cleanup)
+    val session = SessionCleanup(log, storageDir, controller, coordinator, cleanup)
     Runtime.getRuntime().addShutdownHook(Thread(session, "blaze-session-cleanup"))
 
     application {
@@ -243,7 +240,7 @@ private fun runCleanup(args: List<String>): Int {
 private class SessionCleanup(
     private val log: Logger,
     private val storageDir: Path,
-    private val api: LocalApiLauncher,
+    private val api: DownloadServiceController,
     private val coordinator: SingleInstanceCoordinator?,
     private val cleanup: OsIntegrationCleanup,
 ) : Runnable {

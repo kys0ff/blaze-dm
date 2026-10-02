@@ -45,6 +45,7 @@ fun ApplicationScope.BlazeApplication() {
     // screens. This keeps every menu item working no matter which screen is currently visible.
     val commandBus = koinInject<AppCommandBus>()
     val downloadRepository = koinInject<DownloadRepository>()
+    val serverController = koinInject<org.blaze.server.DownloadServiceController>()
     LaunchedEffect(commandBus, shell) {
         commandBus.commands.collect { command ->
             when (command) {
@@ -54,6 +55,11 @@ fun ApplicationScope.BlazeApplication() {
                 AppCommand.OpenSettings -> shell.openSettings()
                 AppCommand.PauseAll -> downloadRepository.pauseAll()
                 AppCommand.ResumeAll -> downloadRepository.resumeAll()
+                // The local API server's lifecycle is a process-wide concern the shell owns, exactly
+                // like exit; the log window itself is a view, so ShowServerLog falls to MainScreen.
+                AppCommand.StartServer -> serverController.start()
+                AppCommand.StopServer -> serverController.stop()
+                AppCommand.RestartServer -> serverController.restart()
                 else -> Unit
             }
         }

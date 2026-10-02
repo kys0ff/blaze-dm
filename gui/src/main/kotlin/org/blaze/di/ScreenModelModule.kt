@@ -4,6 +4,7 @@ import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.getStrings
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.extensions.ExtensionsScreenModel
+import org.blaze.presentation.screens.serverlog.ServerLogWindowModel
 import org.blaze.presentation.screens.settings.SettingsScreenModel
 import org.blaze.presentation.screens.settings.SettingsUseCases
 import org.koin.dsl.module
@@ -66,5 +67,9 @@ val screenModelModule = module {
             settingsRepository = get(),
             consentService = get(),
         )
+    }
+
+    factory {
+        ServerLogWindowModel(appSettingsRepository = get())
     }
 }

@@ -16,8 +16,10 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import org.blaze.data.AppSettingsRepository
 import org.blaze.data.KeymapPersistence
+import org.blaze.i18n.blazeStrings
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenParser
+import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.platform.tray.AppTrayIcon
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
@@ -34,6 +36,7 @@ import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.components.platformShortcutLabels
 import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.search.SearchEverywherePopup
+import org.blaze.server.DownloadServiceController
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.security.ConsentService
 import org.jetbrains.jewel.window.DecoratedWindow
@@ -182,9 +185,32 @@ fun BlazeWindow(shell: AppShell) {
             KeymapPersistence.applyTo(appSettings.keyBindings, appSettings.unboundShortcuts)
         }
         val commandBus = koinInject<AppCommandBus>()
+        val strings = blazeStrings
+        val serverController = koinInject<DownloadServiceController>()
+        val clipboard = koinInject<SystemClipboard>()
         LaunchedEffect(commandBus, searchController) {
             commandBus.commands.collect { command ->
-                if (command == AppCommand.SearchEverywhere) searchController.toggle()
+                when (command) {
+                    AppCommand.SearchEverywhere -> searchController.toggle()
+
+                    // Copy the running server's endpoint and token path to the clipboard, and confirm it
+                    // with a balloon - the one command that is answered here because it needs both the
+                    // window's notification stack and the system clipboard.
+                    AppCommand.CopyServerEndpoint -> {
+                        val status = serverController.status.value
+                        val endpoint = status.endpoint
+                        if (endpoint == null) {
+                            notifications.warning(strings.serverLog.stopped)
+                        } else {
+                            val payload = "$endpoint\n${strings.serverLog.tokenFile}: ${status.tokenFile}"
+                            clipboard.copy(payload)
+                                .onSuccess { notifications.info(strings.menu.endpointCopied) }
+                                .onFailure { notifications.error(it.message ?: strings.menu.copyEndpoint) }
+                        }
+                    }
+
+                    else -> Unit
+                }
             }
         }
         CompositionLocalProvider(

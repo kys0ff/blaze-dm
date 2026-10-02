@@ -25,6 +25,18 @@ enum class AppCommand {
     SearchEverywhere,
     ShowAbout,
     Exit,
+
+    // ── Local download API server (raised from the Tools menu; owned by the shell / MainScreen) ──
+    /** Opens (or focuses) the dockable Server Logs tool window. Folded into MainScreen's own state. */
+    ShowServerLog,
+    /** Publishes the loopback API (no-op when a second instance already owns the endpoint). */
+    StartServer,
+    /** Takes the loopback API down and clears its published descriptor. */
+    StopServer,
+    /** Stops and re-publishes the loopback API, re-reading its on-disk settings. */
+    RestartServer,
+    /** Copies the running server's `host:port` and token path to the clipboard. */
+    CopyServerEndpoint,
 }
 
 /**
