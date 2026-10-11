@@ -29,6 +29,11 @@ data class ServerLogWindowState(
     val moveTo: DetailsMoveTo,
     /** Fraction of the split given to the *content* (everything but the log window). */
     val splitFraction: Float,
+    val innerSplitFraction: Float = 0.50f,
+    val floatingOffsetX: Float = 80f,
+    val floatingOffsetY: Float = 80f,
+    val floatingWidthDp: Float = 450f,
+    val floatingHeightDp: Float = 320f,
     val findBarOpen: Boolean,
     val findQuery: String,
     /** Total matches the panel counted for the current [findQuery]; 0 hides the counter's position. */
@@ -48,6 +53,11 @@ class ServerLogWindowModel(
                 viewMode = detailsViewModeFromName(saved.serverLogViewMode),
                 moveTo = detailsMoveToFromName(saved.serverLogMoveTo),
                 splitFraction = saved.serverLogSplitFraction,
+                innerSplitFraction = saved.serverLogInnerSplitFraction,
+                floatingOffsetX = saved.serverLogFloatingOffsetX,
+                floatingOffsetY = saved.serverLogFloatingOffsetY,
+                floatingWidthDp = saved.serverLogFloatingWidthDp,
+                floatingHeightDp = saved.serverLogFloatingHeightDp,
                 findBarOpen = false,
                 findQuery = "",
                 matchCount = 0,
@@ -80,6 +90,23 @@ class ServerLogWindowModel(
 
     fun setSplitFraction(fraction: Float) {
         _state.update { it.copy(splitFraction = fraction.coerceIn(MIN_FRACTION, MAX_FRACTION)) }
+        persist()
+    }
+
+    fun setInnerSplitFraction(fraction: Float) {
+        _state.update { it.copy(innerSplitFraction = fraction.coerceIn(MIN_FRACTION, MAX_FRACTION)) }
+        persist()
+    }
+
+    fun setFloatingBounds(x: Float, y: Float, widthDp: Float, heightDp: Float) {
+        _state.update {
+            it.copy(
+                floatingOffsetX = x,
+                floatingOffsetY = y,
+                floatingWidthDp = widthDp,
+                floatingHeightDp = heightDp,
+            )
+        }
         persist()
     }
 
@@ -140,6 +167,11 @@ class ServerLogWindowModel(
                 it.copy(
                     serverLogVisible = s.visible,
                     serverLogSplitFraction = s.splitFraction,
+                    serverLogInnerSplitFraction = s.innerSplitFraction,
+                    serverLogFloatingOffsetX = s.floatingOffsetX,
+                    serverLogFloatingOffsetY = s.floatingOffsetY,
+                    serverLogFloatingWidthDp = s.floatingWidthDp,
+                    serverLogFloatingHeightDp = s.floatingHeightDp,
                     serverLogViewMode = s.viewMode.name,
                     serverLogMoveTo = s.moveTo.name,
                 )

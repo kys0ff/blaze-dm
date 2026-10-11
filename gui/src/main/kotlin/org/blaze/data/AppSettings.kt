@@ -85,6 +85,11 @@ data class AppSettings(
     val detailsMoveTo: String = "RIGHT_TOP",
     /** Whether the pane's tabs are grouped into one continuous view instead of a tab strip. */
     val groupDetailsTabs: Boolean = false,
+    val detailsInnerSplitFraction: Float = 0.50f,
+    val detailsFloatingOffsetX: Float = 40f,
+    val detailsFloatingOffsetY: Float = 40f,
+    val detailsFloatingWidthDp: Float = 380f,
+    val detailsFloatingHeightDp: Float = 480f,
 
     // ── Server Logs tool-window layout ────────────────────────────────────────
     // Mirrors the Details pane's fields above; the log window reuses the same view-mode / move-to
@@ -98,6 +103,11 @@ data class AppSettings(
     val serverLogViewMode: String = "DOCK_PINNED",
     /** Name of the [org.blaze.presentation.screens.downloads.DetailsMoveTo] the log window docks to. */
     val serverLogMoveTo: String = "BOTTOM_RIGHT",
+    val serverLogInnerSplitFraction: Float = 0.50f,
+    val serverLogFloatingOffsetX: Float = 80f,
+    val serverLogFloatingOffsetY: Float = 80f,
+    val serverLogFloatingWidthDp: Float = 450f,
+    val serverLogFloatingHeightDp: Float = 320f,
 
     // ── Chrome ─────────────────────────────────────────────────────────────────
     /**

@@ -27,6 +27,12 @@ sealed interface DownloadsEvent {
     /** Records the list|details split fraction after a divider drag; persisted. */
     data class SetSplitFraction(val fraction: Float) : DownloadsEvent
 
+    /** Records the inner split fraction between stacked panels; persisted. */
+    data class SetInnerSplitFraction(val fraction: Float) : DownloadsEvent
+
+    /** Records floating window offset & size in dp; persisted. */
+    data class SetFloatingBounds(val x: Float, val y: Float, val widthDp: Float, val heightDp: Float) : DownloadsEvent
+
     /** Shows or hides the Details tool window; persisted. */
     data class ToggleDetails(val visible: Boolean) : DownloadsEvent
 

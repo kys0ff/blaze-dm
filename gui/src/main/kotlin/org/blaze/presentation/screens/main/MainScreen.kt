@@ -41,6 +41,11 @@ import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
 import org.blaze.presentation.components.ToolWindowStripe
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.DpSize
+import org.blaze.presentation.components.panel.ToolWindowLayoutHost
+import org.blaze.presentation.components.panel.ToolWindowSpec
+import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
 import org.blaze.presentation.screens.downloads.DetailsMoveTo
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsScreen
@@ -48,6 +53,7 @@ import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.screens.downloads.attention
 import org.blaze.presentation.screens.extensions.ExtensionsPanel
+import org.blaze.presentation.screens.serverlog.ServerLogPanel
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSpeed
@@ -146,96 +152,96 @@ class MainScreen : Screen {
                         }
                     )
 
-                    // The content floats on the frame with a gap on every side; the Server Logs tool window
-                    // docks beside or under it exactly like the Details pane (its View Mode / Move To /
-                    // Resize drive the split), or floats over it when undocked.
-                    val contentSlot: @Composable () -> Unit = {
-                        Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) { navigator.lastItem.Content() }
-                    }
-                    val logSlot: @Composable () -> Unit = {
-                        Island(modifier = Modifier.fillMaxSize()) {
-                            org.blaze.presentation.screens.serverlog.ServerLogPanel(
-                                model = logModel,
-                                repository = logRepository,
-                                controller = serverController,
-                                commandBus = commandBus,
-                                onHide = { logModel.setVisible(false) },
+                    val selectedIds = state.selectedIds
+                    val detailsDownload: Download? = if (selectedIds.size == 1) downloads.find { it.id == selectedIds.first() } else null
+                    val detailsShown = state.detailsVisible && (detailsDownload != null || (!state.viewMode.autoHidesWhenEmpty))
+
+                    val panels = buildList {
+                        if (logState.visible) {
+                            add(
+                                ToolWindowSpec(
+                                    id = "server_log",
+                                    title = strings.serverLog.title,
+                                    visible = logState.visible,
+                                    viewMode = logState.viewMode,
+                                    moveTo = logState.moveTo,
+                                    splitFraction = logState.splitFraction,
+                                    innerSplitFraction = logState.innerSplitFraction,
+                                    floatingOffset = Offset(logState.floatingOffsetX, logState.floatingOffsetY),
+                                    floatingSize = DpSize(logState.floatingWidthDp.dp, logState.floatingHeightDp.dp),
+                                    onMoveTo = { logModel.setMoveTo(it) },
+                                    onViewMode = { logModel.setViewMode(it) },
+                                    onSplitFractionChange = { logModel.setSplitFraction(it) },
+                                    onInnerSplitFractionChange = { logModel.setInnerSplitFraction(it) },
+                                    onFloatingBoundsChange = { offset, size ->
+                                        logModel.setFloatingBounds(offset.x, offset.y, size.width.value, size.height.value)
+                                    },
+                                    onResize = { logModel.resize(it) },
+                                    onClose = { logModel.setVisible(false) },
+                                    content = {
+                                        ServerLogPanel(
+                                            model = logModel,
+                                            repository = logRepository,
+                                            controller = serverController,
+                                            commandBus = commandBus,
+                                            onHide = { logModel.setVisible(false) },
+                                        )
+                                    }
+                                )
+                            )
+                        }
+
+                        if (currentScreen is DownloadsScreen && detailsShown) {
+                            add(
+                                ToolWindowSpec(
+                                    id = "download_details",
+                                    title = detailsDownload?.name ?: strings.downloads.dialogs.details.title,
+                                    visible = detailsShown,
+                                    viewMode = state.viewMode,
+                                    moveTo = state.moveTo,
+                                    splitFraction = state.detailsSplitFraction,
+                                    innerSplitFraction = state.detailsInnerSplitFraction,
+                                    floatingOffset = Offset(state.detailsFloatingOffsetX, state.detailsFloatingOffsetY),
+                                    floatingSize = DpSize(state.detailsFloatingWidthDp.dp, state.detailsFloatingHeightDp.dp),
+                                    onMoveTo = { screenModel.onEvent(DownloadsEvent.SetDetailsMoveTo(it)) },
+                                    onViewMode = { screenModel.onEvent(DownloadsEvent.SetDetailsViewMode(it)) },
+                                    onSplitFractionChange = { screenModel.onEvent(DownloadsEvent.SetSplitFraction(it)) },
+                                    onInnerSplitFractionChange = { screenModel.onEvent(DownloadsEvent.SetInnerSplitFraction(it)) },
+                                    onFloatingBoundsChange = { offset, size ->
+                                        screenModel.onEvent(DownloadsEvent.SetFloatingBounds(offset.x, offset.y, size.width.value, size.height.value))
+                                    },
+                                    onResize = { screenModel.onEvent(DownloadsEvent.ResizeDetails(it)) },
+                                    onClose = { screenModel.onEvent(DownloadsEvent.ToggleDetails(false)) },
+                                    content = {
+                                        DownloadDetailsPanel(
+                                            download = detailsDownload,
+                                            onHide = { screenModel.onEvent(DownloadsEvent.ToggleDetails(false)) },
+                                            modifier = Modifier.fillMaxSize(),
+                                            viewMode = state.viewMode,
+                                            moveTo = state.moveTo,
+                                            groupTabs = state.groupTabs,
+                                            onEvent = screenModel::onEvent,
+                                        )
+                                    }
+                                )
                             )
                         }
                     }
+
                     val areaModifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
                         .padding(BlazeLayout.IslandGap)
-                    val logMoveTo = logState.moveTo
-                    when {
-                        !logState.visible -> Box(areaModifier) { contentSlot() }
 
-                        logState.viewMode.isDocked -> {
-                            // splitFraction is the content's share; a left-docked log window is first, so
-                            // the split's first-pane fraction is the content's complement.
-                            val logFirst = logMoveTo == DetailsMoveTo.LEFT_TOP || logMoveTo == DetailsMoveTo.LEFT_BOTTOM
-                            val firstFraction = if (logFirst) 1f - logState.splitFraction else logState.splitFraction
-                            val splitState = remember(logMoveTo) { SplitLayoutState(firstFraction) }
-                            LaunchedEffect(firstFraction, splitState) { splitState.dividerPosition = firstFraction }
-                            LaunchedEffect(splitState, logMoveTo) {
-                                snapshotFlow { splitState.dividerPosition }
-                                    .drop(1)
-                                    .collect { d -> logModel.setSplitFraction(if (logFirst) 1f - d else d) }
+                    ToolWindowLayoutHost(
+                        mainContent = {
+                            Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+                                navigator.lastItem.Content()
                             }
-                            val first: @Composable () -> Unit = if (logFirst) logSlot else contentSlot
-                            val second: @Composable () -> Unit = if (logFirst) contentSlot else logSlot
-                            val gapDivider = DividerStyle(
-                                color = Color.Transparent,
-                                metrics = DividerMetrics(thickness = BlazeLayout.IslandGap, startIndent = 0.dp),
-                            )
-                            if (logMoveTo.isHorizontal) {
-                                HorizontalSplitLayout(
-                                    first = first,
-                                    second = second,
-                                    modifier = areaModifier,
-                                    dividerStyle = gapDivider,
-                                    firstPaneMinWidth = 240.dp,
-                                    secondPaneMinWidth = 240.dp,
-                                    draggableWidth = BlazeLayout.SplitDragWidth,
-                                    state = splitState,
-                                )
-                            } else {
-                                VerticalSplitLayout(
-                                    first = first,
-                                    second = second,
-                                    modifier = areaModifier,
-                                    dividerStyle = gapDivider,
-                                    firstPaneMinWidth = 160.dp,
-                                    secondPaneMinWidth = 120.dp,
-                                    draggableWidth = BlazeLayout.SplitDragWidth,
-                                    state = splitState,
-                                )
-                            }
-                        }
-
-                        else -> {
-                            // Floating: the content fills the area and the log window hovers its chosen edge.
-                            val overlayAlignment = when (logMoveTo) {
-                                DetailsMoveTo.LEFT_TOP -> Alignment.TopStart
-                                DetailsMoveTo.LEFT_BOTTOM -> Alignment.BottomStart
-                                DetailsMoveTo.RIGHT_TOP -> Alignment.TopEnd
-                                DetailsMoveTo.RIGHT_BOTTOM -> Alignment.BottomEnd
-                                DetailsMoveTo.BOTTOM_LEFT -> Alignment.BottomStart
-                                DetailsMoveTo.BOTTOM_RIGHT -> Alignment.BottomEnd
-                            }
-                            Box(modifier = areaModifier) {
-                                contentSlot()
-                                Box(
-                                    modifier = Modifier
-                                        .align(overlayAlignment)
-                                        .padding(12.dp)
-                                        .fillMaxWidth(0.5f)
-                                        .fillMaxHeight(if (logMoveTo.isBottom) 0.42f else 0.62f),
-                                ) { logSlot() }
-                            }
-                        }
-                    }
+                        },
+                        panels = panels,
+                        modifier = areaModifier,
+                    )
                 }
 
                 StatusBar(

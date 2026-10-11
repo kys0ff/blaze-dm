@@ -80,6 +80,11 @@ data class DownloadsState(
     val detailsVisible: Boolean = false,
     /** Fraction of the list|details split given to the list. */
     val detailsSplitFraction: Float = BlazeLayout.DETAILS_DEFAULT_LIST_FRACTION,
+    val detailsInnerSplitFraction: Float = 0.50f,
+    val detailsFloatingOffsetX: Float = 40f,
+    val detailsFloatingOffsetY: Float = 40f,
+    val detailsFloatingWidthDp: Float = 380f,
+    val detailsFloatingHeightDp: Float = 480f,
     /** Whether pausing a progress-losing download asks first (persisted "do not ask again"). */
     val warnBeforeDiscardingProgress: Boolean = true,
     /** How the Details tool window presents itself (docked beside the list, or floated over it). */

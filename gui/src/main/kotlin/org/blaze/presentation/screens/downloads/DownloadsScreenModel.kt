@@ -94,6 +94,11 @@ class DownloadsScreenModel(
         val hiddenColumns: Set<String>,
         val detailsVisible: Boolean,
         val splitFraction: Float,
+        val innerSplitFraction: Float,
+        val floatingOffsetX: Float,
+        val floatingOffsetY: Float,
+        val floatingWidthDp: Float,
+        val floatingHeightDp: Float,
         val warnBeforeDiscarding: Boolean,
         val viewMode: DetailsViewMode,
         val moveTo: DetailsMoveTo,
@@ -119,6 +124,11 @@ class DownloadsScreenModel(
                 hiddenColumns = saved.downloadsHiddenColumns.toSet(),
                 detailsVisible = saved.detailsPaneVisible,
                 splitFraction = saved.detailsSplitFraction,
+                innerSplitFraction = saved.detailsInnerSplitFraction,
+                floatingOffsetX = saved.detailsFloatingOffsetX,
+                floatingOffsetY = saved.detailsFloatingOffsetY,
+                floatingWidthDp = saved.detailsFloatingWidthDp,
+                floatingHeightDp = saved.detailsFloatingHeightDp,
                 warnBeforeDiscarding = saved.warnBeforeDiscardingProgress,
                 viewMode = detailsViewModeFromName(saved.detailsViewMode),
                 moveTo = detailsMoveToFromName(saved.detailsMoveTo),
@@ -144,6 +154,11 @@ class DownloadsScreenModel(
                     downloadsSortAscending = ascending,
                     detailsPaneVisible = layout.detailsVisible,
                     detailsSplitFraction = layout.splitFraction,
+                    detailsInnerSplitFraction = layout.innerSplitFraction,
+                    detailsFloatingOffsetX = layout.floatingOffsetX,
+                    detailsFloatingOffsetY = layout.floatingOffsetY,
+                    detailsFloatingWidthDp = layout.floatingWidthDp,
+                    detailsFloatingHeightDp = layout.floatingHeightDp,
                     warnBeforeDiscardingProgress = layout.warnBeforeDiscarding,
                     detailsViewMode = layout.viewMode.name,
                     detailsMoveTo = layout.moveTo.name,
@@ -209,6 +224,11 @@ class DownloadsScreenModel(
             hiddenColumns = layout.hiddenColumns,
             detailsVisible = layout.detailsVisible,
             detailsSplitFraction = layout.splitFraction,
+            detailsInnerSplitFraction = layout.innerSplitFraction,
+            detailsFloatingOffsetX = layout.floatingOffsetX,
+            detailsFloatingOffsetY = layout.floatingOffsetY,
+            detailsFloatingWidthDp = layout.floatingWidthDp,
+            detailsFloatingHeightDp = layout.floatingHeightDp,
             warnBeforeDiscardingProgress = layout.warnBeforeDiscarding,
             viewMode = layout.viewMode,
             moveTo = layout.moveTo,
@@ -334,6 +354,23 @@ class DownloadsScreenModel(
 
             is DownloadsEvent.SetSplitFraction -> {
                 _layout.update { it.copy(splitFraction = event.fraction.coerceIn(0.15f, 0.85f)) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.SetInnerSplitFraction -> {
+                _layout.update { it.copy(innerSplitFraction = event.fraction.coerceIn(0.15f, 0.85f)) }
+                persistLayout()
+            }
+
+            is DownloadsEvent.SetFloatingBounds -> {
+                _layout.update {
+                    it.copy(
+                        floatingOffsetX = event.x,
+                        floatingOffsetY = event.y,
+                        floatingWidthDp = event.widthDp,
+                        floatingHeightDp = event.heightDp,
+                    )
+                }
                 persistLayout()
             }
 

@@ -10,7 +10,7 @@ import org.blaze.presentation.screens.settings.SettingsUseCases
 import org.koin.dsl.module
 
 val screenModelModule = module {
-    factory {
+    single {
         DownloadsScreenModel(
             getDownloads = get(),
             fetchMetadataUseCase = get(),
@@ -69,7 +69,7 @@ val screenModelModule = module {
         )
     }
 
-    factory {
+    single {
         ServerLogWindowModel(appSettingsRepository = get())
     }
 }

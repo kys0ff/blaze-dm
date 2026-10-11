@@ -1,13 +1,11 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -18,20 +16,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
@@ -44,10 +37,8 @@ import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.osintegration.displaySource
 import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.presentation.components.BlazeKeymap
-import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.notifications.NotificationType
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsState
 import org.blaze.presentation.screens.downloads.SelectionActions
@@ -61,11 +52,6 @@ import org.blaze.presentation.screens.downloads.percentDone
 import org.blaze.presentation.screens.downloads.resumeStartsOver
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
-import org.jetbrains.jewel.ui.component.HorizontalSplitLayout
-import org.jetbrains.jewel.ui.component.SplitLayoutState
-import org.jetbrains.jewel.ui.component.VerticalSplitLayout
-import org.jetbrains.jewel.ui.component.styling.DividerMetrics
-import org.jetbrains.jewel.ui.component.styling.DividerStyle
 import org.koin.compose.koinInject
 import java.io.File
 import java.nio.file.Files
@@ -648,108 +634,6 @@ fun DownloadsScreenContent(
             Island(modifier = Modifier.fillMaxSize()) { listContent() }
         }
 
-        if (state.downloads.isEmpty()) {
-            Box(modifier = Modifier.fillMaxWidth().weight(1f)) { listPane() }
-        } else {
-            // The Details tool window: docked beside the list (with the split's orientation, order
-            // and size driven by the pane's View Mode / Move To / Resize), or floated over the list.
-            // An unpinned pane folds away on its own when nothing is selected to show.
-            val viewMode = state.viewMode
-            val moveTo = state.moveTo
-            val detailsContent: @Composable () -> Unit = {
-                DownloadDetailsPanel(
-                    download = detailsDownload,
-                    onHide = { toggleDetails(false) },
-                    modifier = Modifier.fillMaxSize(),
-                    viewMode = viewMode,
-                    moveTo = moveTo,
-                    groupTabs = state.groupTabs,
-                    onEvent = onEvent,
-                )
-            }
-            val detailsPane: @Composable () -> Unit = {
-                Island(modifier = Modifier.fillMaxSize()) { detailsContent() }
-            }
-
-            // The split's divider is a transparent gap the frame shows through, with the drag
-            // handle riding in it — the Islands way of separating two islands.
-            val islandGap = BlazeLayout.IslandGap
-
-            when {
-                !detailsShown -> Box(modifier = Modifier.fillMaxWidth().weight(1f)) { listPane() }
-
-                viewMode.isDocked -> {
-                    // The persisted fraction is always the list's share; a left-docked pane is first,
-                    // so the split's first-pane fraction is the list's complement.
-                    val firstFraction = if (moveTo.detailsFirst) 1f - state.detailsSplitFraction else state.detailsSplitFraction
-                    val splitState = remember(moveTo) { SplitLayoutState(firstFraction) }
-                    // Push an external Move To / Resize change into the divider.
-                    LaunchedEffect(firstFraction, splitState) { splitState.dividerPosition = firstFraction }
-                    // Persist a divider drag, converted back to the list's share; drop(1) skips the seed.
-                    LaunchedEffect(splitState, moveTo) {
-                        snapshotFlow { splitState.dividerPosition }
-                            .drop(1)
-                            .collect { d ->
-                                onEvent(DownloadsEvent.SetSplitFraction(if (moveTo.detailsFirst) 1f - d else d))
-                            }
-                    }
-                    val first: @Composable () -> Unit = if (moveTo.detailsFirst) detailsPane else listPane
-                    val second: @Composable () -> Unit = if (moveTo.detailsFirst) listPane else detailsPane
-                    val gapDivider = DividerStyle(
-                        color = Color.Transparent,
-                        metrics = DividerMetrics(thickness = islandGap, startIndent = 0.dp),
-                    )
-                    if (moveTo.isHorizontal) {
-                        HorizontalSplitLayout(
-                            first = first,
-                            second = second,
-                            modifier = Modifier.fillMaxWidth().weight(1f),
-                            dividerStyle = gapDivider,
-                            firstPaneMinWidth = if (moveTo.detailsFirst) BlazeLayout.ListPaneMinWidth else BlazeLayout.DetailsPaneMinWidth,
-                            secondPaneMinWidth = if (moveTo.detailsFirst) BlazeLayout.DetailsPaneMinWidth else BlazeLayout.ListPaneMinWidth,
-                            draggableWidth = BlazeLayout.SplitDragWidth,
-                            state = splitState,
-                        )
-                    } else {
-                        VerticalSplitLayout(
-                            first = first,
-                            second = second,
-                            modifier = Modifier.fillMaxWidth().weight(1f),
-                            dividerStyle = gapDivider,
-                            firstPaneMinWidth = 260.dp,
-                            secondPaneMinWidth = 160.dp,
-                            draggableWidth = BlazeLayout.SplitDragWidth,
-                            state = splitState,
-                        )
-                    }
-                }
-
-                else -> {
-                    // Floating: the list fills the area and the pane hovers over its chosen edge.
-                    val overlayAlignment = when (moveTo) {
-                        DetailsMoveTo.LEFT_TOP -> Alignment.TopStart
-                        DetailsMoveTo.LEFT_BOTTOM -> Alignment.BottomStart
-                        DetailsMoveTo.RIGHT_TOP -> Alignment.TopEnd
-                        DetailsMoveTo.RIGHT_BOTTOM -> Alignment.BottomEnd
-                        DetailsMoveTo.BOTTOM_LEFT -> Alignment.BottomStart
-                        DetailsMoveTo.BOTTOM_RIGHT -> Alignment.BottomEnd
-                    }
-                    // A floating pane is an overlay, so it stays narrower than the docked split's third
-                    // (BlazeLayout.DETAILS_DEFAULT_LIST_FRACTION) rather than covering half the list.
-                    val widthFraction = if (moveTo.isBottom) 0.5f else 0.34f
-                    val heightFraction = if (moveTo.isBottom) 0.42f else 0.62f
-                    Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                        listPane()
-                        Box(
-                            modifier = Modifier
-                                .align(overlayAlignment)
-                                .padding(12.dp)
-                                .fillMaxWidth(widthFraction)
-                                .fillMaxHeight(heightFraction),
-                        ) { detailsPane() }
-                    }
-                }
-            }
-        }
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) { listPane() }
     }
 }
