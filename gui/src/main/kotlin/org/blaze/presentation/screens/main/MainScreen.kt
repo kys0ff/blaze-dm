@@ -15,17 +15,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.Navigator
-import kotlinx.coroutines.flow.drop
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.BlazeStrings
@@ -37,21 +36,17 @@ import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BackgroundTasksStatusItem
 import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
 import org.blaze.presentation.components.ToolWindowStripe
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.unit.DpSize
 import org.blaze.presentation.components.panel.ToolWindowLayoutHost
 import org.blaze.presentation.components.panel.ToolWindowSpec
-import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.screens.downloads.attention
+import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
 import org.blaze.presentation.screens.extensions.ExtensionsPanel
 import org.blaze.presentation.screens.serverlog.ServerLogPanel
 import org.blaze.presentation.theme.BlazeColors
@@ -157,7 +152,7 @@ class MainScreen : Screen {
                                 ToolWindowSpec(
                                     id = "server_log",
                                     title = strings.serverLog.title,
-                                    visible = logState.visible,
+                                    visible = true,
                                     viewMode = logState.viewMode,
                                     moveTo = logState.moveTo,
                                     splitFraction = logState.splitFraction,
@@ -191,7 +186,7 @@ class MainScreen : Screen {
                                 ToolWindowSpec(
                                     id = "download_details",
                                     title = detailsDownload?.name ?: strings.downloads.dialogs.details.title,
-                                    visible = detailsShown,
+                                    visible = true,
                                     viewMode = state.viewMode,
                                     moveTo = state.moveTo,
                                     splitFraction = state.detailsSplitFraction,
