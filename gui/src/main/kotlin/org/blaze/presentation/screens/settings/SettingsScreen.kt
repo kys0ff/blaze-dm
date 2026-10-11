@@ -36,6 +36,7 @@ import org.blaze.logging.LogConfigurator
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.notifications.LocalNotifications
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
+import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.settings.components.NothingFoundPanel
 import org.blaze.presentation.screens.settings.components.SettingsButtonBar
@@ -317,6 +318,7 @@ private fun SettingsPickerDialogs(
         FilePickerDialog(
             title = strings.settings.defaultDownloadDirLabel,
             mode = FilePickerMode.Directory,
+            context = FilePickerContext.DefaultDownloadDir,
             initialPath = remember(state.settings.defaultDownloadDir) {
                 runCatching { Path.of(state.settings.defaultDownloadDir) }.getOrNull()
             },
@@ -331,6 +333,8 @@ private fun SettingsPickerDialogs(
         FilePickerDialog(
             title = strings.settings.handlers.installAction,
             mode = FilePickerMode.File,
+            // The same jar the Extensions panel installs, so the same remembered folder.
+            context = FilePickerContext.ExtensionJar,
             onDismiss = onJarPickerDismiss,
             onPick = { path ->
                 onJarPickerDismiss()
@@ -344,6 +348,8 @@ private fun SettingsPickerDialogs(
         FilePickerDialog(
             title = strings.settings.themes.installAction,
             mode = FilePickerMode.File,
+            // Themes live apart from handlers, so their picker keeps its own history too.
+            context = FilePickerContext.ThemeJar,
             onDismiss = onThemeJarPickerDismiss,
             onPick = { path ->
                 onThemeJarPickerDismiss()

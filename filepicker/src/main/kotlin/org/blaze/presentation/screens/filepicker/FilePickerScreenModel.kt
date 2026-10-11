@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.screens.filepicker.filesystem.FileSystemRepository
+import org.blaze.presentation.screens.filepicker.memory.FilePickerLastDirectoryStore
+import org.blaze.presentation.screens.filepicker.memory.directoryForPick
 import org.blaze.presentation.screens.filepicker.model.FilePickerInputState
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.filepicker.model.FileSystemNode
@@ -21,7 +23,8 @@ import java.nio.file.Path
 import kotlin.time.Duration.Companion.milliseconds
 
 class FilePickerScreenModel(
-    private val fileSystemRepository: FileSystemRepository
+    private val fileSystemRepository: FileSystemRepository,
+    private val lastDirectoryStore: FilePickerLastDirectoryStore,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(FilePickerState())
@@ -60,7 +63,11 @@ class FilePickerScreenModel(
 
     private fun handleInit(event: FilePickerEvent.Init) {
         val home = Path.of(System.getProperty("user.home"))
-        val startPath = (event.initialPath ?: home).let {
+        // Where the picker opens: what the caller explicitly asked for, else the directory *this*
+        // context accepted a pick in last time, else home. A remembered folder that has since been
+        // deleted or unmounted walks up to its nearest surviving ancestor instead of opening a void.
+        val requested = event.initialPath ?: lastDirectoryStore.lastDirectory(event.context)
+        val startPath = (requested ?: home).let {
             fileSystemRepository.nearestExisting(it)
         }.let {
             if (event.mode == FilePickerMode.Directory && !fileSystemRepository.isDirectory(it)) it.parent ?: it else it
@@ -71,6 +78,7 @@ class FilePickerScreenModel(
 
         _state.value = _state.value.copy(
             mode = event.mode,
+            context = event.context,
             title = event.title,
             description = event.description,
             confirmText = event.confirmText,
@@ -264,6 +272,11 @@ class FilePickerScreenModel(
     }
 
     private fun handleConfirm(event: FilePickerEvent.Confirm) {
+        // An accepted pick is what this context reopens at next time; a dialog the user cancelled never
+        // gets here, so its previous memory stays untouched.
+        _state.value.context?.let { context ->
+            lastDirectoryStore.recordDirectory(context, directoryForPick(_state.value.mode, event.path))
+        }
         screenModelScope.launch {
             _effects.emit(FilePickerEffect.Picked(event.path))
         }

@@ -29,6 +29,7 @@ import org.blaze.presentation.components.StandardDialogButtons
 import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.ResolverOptionsDialog
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
+import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.resolver.core.LinkResolverRegistry
@@ -123,6 +124,9 @@ class ExtensionsPanel : Screen {
             FilePickerDialog(
                 title = eStrings.installAction,
                 mode = FilePickerMode.File,
+                // Remembers its own folder - and shares it with Settings' handler-install button, because
+                // both ask for the same jar. A download picker's history has nothing to do with this.
+                context = FilePickerContext.ExtensionJar,
                 onDismiss = { showJarPicker = false },
                 onPick = { path ->
                     showJarPicker = false

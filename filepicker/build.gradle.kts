@@ -32,6 +32,10 @@ dependencies {
     implementation(libs.koin.compose)
 
     testImplementation(kotlin("test"))
+    // The picker's screen model launches into Voyager's `screenModelScope`, which is pinned to the UI
+    // dispatcher; the Swing provider makes that resolvable so the real wiring (which directory a picker
+    // opens at, and what an accepted pick records) is testable here rather than only by hand.
+    testImplementation(libs.kotlinx.coroutines.swing)
 }
 
 kotlin {

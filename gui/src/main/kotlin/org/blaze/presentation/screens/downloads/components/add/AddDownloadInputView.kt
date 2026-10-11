@@ -41,6 +41,7 @@ import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
+import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatSize
@@ -274,7 +275,10 @@ fun AddDownloadInputView(
                 state.showFolderPicker = false
             },
             mode = FilePickerMode.Directory,
+            context = FilePickerContext.DownloadDestination,
             // Path.of() throws on malformed input (easy on Windows) → never let it crash the dialog.
+            // Whatever is already in the field wins; only a blank or untyped destination falls back to
+            // the folder this picker last chose.
             initialPath = runCatching { Path.of(state.destination.text.trim()) }
                 .getOrNull()
                 ?.takeIf { Files.isDirectory(it) }
@@ -289,6 +293,7 @@ fun AddDownloadInputView(
                 state.showFilePicker = false
             },
             mode = FilePickerMode.File,
+            context = FilePickerContext.DownloadSourceFile,
             title = dStrings.selectSourceFile,
             supportedExtensions = listOf("torrent", "txt"),
             fileFilter = { path ->

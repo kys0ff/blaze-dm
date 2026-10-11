@@ -60,7 +60,7 @@ import kotlin.math.abs
  *   ([FloatingToolWindow]) in the same layer.
  * - **Auto-hiding** ([DetailsViewMode.autoHidesWhenUnfocused]) panes fold away the moment attention
  *   leaves them: a press that lands outside the pane, or the frame losing focus. That is the one
- *   behaviour an unpinned tool window exists for, and it is what a pinned pane refuses to do.
+ *   behavior an unpinned tool window exists for, and it is what a pinned pane refuses to do.
  */
 @Composable
 fun ToolWindowLayoutHost(
@@ -121,7 +121,7 @@ fun ToolWindowLayoutHost(
 
 /**
  * The panes docked to one region, in the order they stack: the region's corner first. Internal (rather
- * than private) so the categorisation the layout relies on can be asserted directly.
+ * than private) so the categorization the layout relies on can be asserted directly.
  */
 internal fun List<ToolWindowSpec>.regionFor(
     start: DetailsMoveTo,
@@ -434,7 +434,7 @@ private fun OverlayLayer(
  * A tool window unpinned from its dock edge: it keeps the edge and the size the user dragged it to, but
  * it is drawn *over* the content instead of taking a share of it, and it carries the shadow that says
  * so. The corner half of [DetailsMoveTo] is meaningless for a pane that spans its edge, so only the
- * dominant side is honoured - which is exactly what the IDE does with an unpinned window.
+ * dominant side is honored - which is exactly what the IDE does with an unpinned window.
  */
 @Composable
 private fun BoxScope.EdgeDockedOverlay(

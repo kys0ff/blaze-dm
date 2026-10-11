@@ -51,6 +51,7 @@ import org.blaze.presentation.screens.downloads.pauseLosesProgress
 import org.blaze.presentation.screens.downloads.percentDone
 import org.blaze.presentation.screens.downloads.resumeStartsOver
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
+import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.koin.compose.koinInject
 import java.io.File
@@ -482,6 +483,9 @@ fun DownloadsScreenContent(
                 }
             },
             mode = FilePickerMode.File,
+            // Its own memory slot: hunting a stray artifact through the tree is a different errand from
+            // choosing where files should go, and one should not drag the other off its last location.
+            context = FilePickerContext.PortableArtifact,
             title = strings.downloads.portable.dialogTitle
         )
     }
@@ -519,6 +523,8 @@ fun DownloadsScreenContent(
                 showDestPicker = false
             },
             mode = FilePickerMode.Directory,
+            // Same errand as the New Download dialog's "save to" folder, so the two share one memory.
+            context = FilePickerContext.DownloadDestination,
             initialPath = runCatching { Path.of(importDestination) }.getOrNull()
                 ?.takeIf { Files.isDirectory(it) }
         )

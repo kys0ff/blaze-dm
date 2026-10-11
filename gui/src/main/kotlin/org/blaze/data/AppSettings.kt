@@ -131,6 +131,21 @@ data class AppSettings(
      */
     val unboundShortcuts: List<String> = emptyList(),
 
+    // ── File pickers ───────────────────────────────────────────────────────────
+    /**
+     * The directory each file picker reopens at, keyed by the name of its
+     * [org.blaze.presentation.screens.filepicker.model.FilePickerContext] and stored as a path string —
+     * kept as primitives, like the layout fields above, so this file stays self-contained.
+     *
+     * Keyed per context deliberately: the folder someone browsed to in order to install an extension jar
+     * says nothing about where downloads should land, and one shared slot would have the two dialogs
+     * fighting over it every time either is opened.
+     *
+     * Values are advisory: an unknown key or a directory that no longer exists is ignored, and the picker
+     * opens at home instead.
+     */
+    val filePickerLastDirectories: Map<String, String> = emptyMap(),
+
     // ── Security & consent ───────────────────────────────────────────────────
     /**
      * Ask the user to acknowledge every *new* third-party client before it may drive Blaze through

@@ -1,6 +1,7 @@
 package org.blaze.presentation.screens.filepicker
 
 import androidx.compose.ui.text.input.TextFieldValue
+import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerInputState
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.blaze.presentation.screens.filepicker.model.FileSystemNode
@@ -9,6 +10,12 @@ import java.nio.file.Path
 
 data class FilePickerState(
     val mode: FilePickerMode = FilePickerMode.Directory,
+    /**
+     * Which dialog this is, kept so an accepted pick can be remembered for *this* place only.
+     * Null until [FilePickerEvent.Init] lands, which is also the guard that a pick made before
+     * initialisation cannot write a memory under a guessed context.
+     */
+    val context: FilePickerContext? = null,
     val title: String? = null,
     val description: String? = null,
     val confirmText: String? = null,

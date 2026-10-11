@@ -2,11 +2,14 @@ package org.blaze.presentation.screens.filepicker
 
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.i18n.BlazeStrings
+import org.blaze.presentation.screens.filepicker.model.FilePickerContext
+import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import java.nio.file.Path
 
 sealed interface FilePickerEvent {
     data class Init(
-        val mode: org.blaze.presentation.screens.filepicker.model.FilePickerMode,
+        val mode: FilePickerMode,
+        val context: FilePickerContext,
         val initialPath: Path?,
         val title: String?,
         val description: String?,

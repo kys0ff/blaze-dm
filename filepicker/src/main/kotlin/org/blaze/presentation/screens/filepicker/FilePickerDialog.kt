@@ -18,6 +18,7 @@ import org.blaze.presentation.screens.filepicker.components.FilePickerPathField
 import org.blaze.presentation.screens.filepicker.components.FilePickerToolbar
 import org.blaze.presentation.screens.filepicker.components.FilePickerTree
 import org.blaze.presentation.screens.filepicker.components.NewFolderDialog
+import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -33,6 +34,12 @@ fun FilePickerDialog(
     title: String? = null,
     description: String? = null,
     mode: FilePickerMode = FilePickerMode.Directory,
+    /**
+     * Which dialog this is, and therefore which remembered directory it opens at and updates. Required:
+     * a picker with no identity would share everyone else's memory, and "the extension folder" would
+     * leak into "where do my downloads go".
+     */
+    context: FilePickerContext,
     initialPath: Path? = null,
     confirmText: String? = null,
     fileFilter: (Path) -> Boolean = { true },
@@ -60,6 +67,7 @@ fun FilePickerDialog(
         screenModel.onEvent(
             FilePickerEvent.Init(
                 mode = mode,
+                context = context,
                 initialPath = initialPath,
                 title = title,
                 description = description,
@@ -150,7 +158,9 @@ fun FilePickerDialog(
             dismissText = strings.common.cancel,
             onDismiss = onDismiss,
             confirmText = actualConfirmText,
-            onConfirm = { state.pickable?.let { onPick(it); onDismiss() } },
+            // One funnel for a pick: the button posts the same Confirm the tree and the path field post,
+            // so an accepted path always reaches the model - which is where the directory memory lives.
+            onConfirm = { state.pickable?.let { screenModel.onEvent(FilePickerEvent.Confirm(it)) } },
             confirmEnabled = state.pickable != null
         )
     }

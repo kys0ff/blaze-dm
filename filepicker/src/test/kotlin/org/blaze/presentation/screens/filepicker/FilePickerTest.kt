@@ -2,6 +2,7 @@ package org.blaze.presentation.screens.filepicker
 
 import org.blaze.i18n.EnStrings
 import org.blaze.presentation.screens.filepicker.filesystem.FileSystemRepository
+import org.blaze.presentation.screens.filepicker.memory.InMemoryFilePickerLastDirectoryStore
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,7 +12,7 @@ import kotlin.test.assertNull
 class FilePickerTest {
 
     private val repository = FileSystemRepository()
-    private val screenModel = FilePickerScreenModel(repository)
+    private val screenModel = FilePickerScreenModel(repository, InMemoryFilePickerLastDirectoryStore())
     private val strings = EnStrings
 
     @Test

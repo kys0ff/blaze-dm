@@ -54,6 +54,22 @@ class AppSettingsRepository(storageDir: Path) {
         _settings.update { transform(it) }
     }
 
+    /**
+     * Persists a value that is *not* part of the settings screen's draft-then-apply flow - a layout the
+     * user dragged, a directory a picker just accepted - while that screen may be holding un-applied
+     * edits. [transform] therefore runs on the snapshot as it exists on disk, and only that snapshot is
+     * written; the live value gets the same transform applied so in-memory consumers see it at once.
+     *
+     * Writing the live value instead would commit somebody else's unfinished edit as a side effect of an
+     * unrelated save, and "Cancel" in Settings would then silently keep whatever Apply had staged.
+     */
+    suspend fun updatePersisted(transform: (AppSettings) -> AppSettings) {
+        val toDisk = transform(persistedSettings)
+        persistedSettings = toDisk
+        _settings.update { transform(it) }
+        saveSettings(toDisk)
+    }
+
     /** Discard any in-memory (Apply) changes and restore the last persisted settings. */
     fun revertToPersisted() {
         _settings.update { persistedSettings }
