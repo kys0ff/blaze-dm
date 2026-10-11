@@ -108,6 +108,48 @@ object BlazeLayout {
     /** Largest the list pane may be squeezed to when the Details pane is widened. */
     val ListPaneMinWidth = 240.dp
 
+    /**
+     * Smallest a tool window docked along the bottom may be dragged to. The IDE keeps a bottom tool
+     * window tall enough to read a couple of console lines plus its own header.
+     */
+    val BottomPaneMinHeight = 120.dp
+
+    /** Smallest the content above a bottom-docked tool window may be squeezed to. */
+    val ContentPaneMinHeight = 200.dp
+
+    /**
+     * Smallest one of the two panes stacked inside a *side* dock region (two tool windows sharing an
+     * edge) may be dragged to. They split the region's height, so this is a height.
+     */
+    val StackedPaneMinHeight = 120.dp
+
+    /** Smallest one of the two panes sitting side by side inside the *bottom* dock region. */
+    val StackedPaneMinWidth = 160.dp
+
+    /**
+     * Smallest an unpinned pane may cover when it is drawn over the content flush against its edge.
+     * Below this the pane's own header stops fitting, so the fraction floors here instead.
+     */
+    val OverlayPaneMinWidth = 260.dp
+
+    /** Margin a freshly floated tool window keeps from the layer's corner (IDE popup inset). */
+    val FloatingPaneMargin = 16.dp
+
+    /** Smallest a floating tool window may be resized to — the IDE's minimum tool-window content. */
+    val FloatingPaneMinWidth = 240.dp
+
+    /** Smallest height a floating tool window may be resized to. */
+    val FloatingPaneMinHeight = 180.dp
+
+    /** Hit area of the drag-resize grip in the bottom-right corner of a floating tool window. */
+    val FloatingResizeHandleSize = 18.dp
+
+    /** Depth a tool window drawn over the content carries, so it reads as floating above the list. */
+    val FloatingPaneElevation = 12.dp
+
+    /** Elevation of an unpinned pane that is flush with its edge: less than a free window, more than a split. */
+    val OverlayPaneElevation = 6.dp
+
     /** Height of a row in the Settings category list (the IDE's compact list row). */
     val SettingsNavRowHeight = 24.dp
 

@@ -57,13 +57,8 @@ import org.blaze.presentation.screens.serverlog.ServerLogPanel
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSpeed
-import org.jetbrains.jewel.ui.component.HorizontalSplitLayout
 import org.jetbrains.jewel.ui.component.Icon
-import org.jetbrains.jewel.ui.component.SplitLayoutState
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.component.VerticalSplitLayout
-import org.jetbrains.jewel.ui.component.styling.DividerMetrics
-import org.jetbrains.jewel.ui.component.styling.DividerStyle
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.koin.compose.koinInject
 

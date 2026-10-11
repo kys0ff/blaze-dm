@@ -13,6 +13,7 @@ import org.blaze.data.AppSettingsRepository
 import org.blaze.presentation.screens.downloads.DetailsMoveTo
 import org.blaze.presentation.screens.downloads.DetailsResize
 import org.blaze.presentation.screens.downloads.DetailsViewMode
+import org.blaze.presentation.screens.downloads.contentFractionForViewMode
 import org.blaze.presentation.screens.downloads.detailsMoveToFromName
 import org.blaze.presentation.screens.downloads.detailsViewModeFromName
 import kotlin.time.Duration.Companion.milliseconds
@@ -79,12 +80,32 @@ class ServerLogWindowModel(
     }
 
     fun setViewMode(mode: DetailsViewMode) {
-        _state.update { it.copy(viewMode = mode) }
+        _state.update { s ->
+            // WINDOW is the one mode that re-negotiates the split, claiming the larger share the mode
+            // promises; the other modes leave the user's dragged size untouched. Detaching clears the
+            // placement, asking the layer for the corner of the edge the window leaves, while a hop
+            // between the two floating modes keeps the spot it already sits in.
+            val detaching = mode.isFloatingWindow && !s.viewMode.isFloatingWindow
+            s.copy(
+                viewMode = mode,
+                splitFraction = contentFractionForViewMode(mode, s.splitFraction),
+                floatingOffsetX = if (detaching) 0f else s.floatingOffsetX,
+                floatingOffsetY = if (detaching) 0f else s.floatingOffsetY,
+            )
+        }
         persist()
     }
 
     fun setMoveTo(position: DetailsMoveTo) {
-        _state.update { it.copy(moveTo = position) }
+        _state.update { s ->
+            // A docked window only changes which split it sits in. A free window *is* its edge, so the
+            // same choice moves it to that corner by clearing the placement for the layer to recompute.
+            if (s.viewMode.isFloatingWindow) {
+                s.copy(moveTo = position, floatingOffsetX = 0f, floatingOffsetY = 0f)
+            } else {
+                s.copy(moveTo = position)
+            }
+        }
         persist()
     }
 

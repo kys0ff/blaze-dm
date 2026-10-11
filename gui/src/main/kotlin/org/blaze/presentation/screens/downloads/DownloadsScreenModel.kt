@@ -385,12 +385,33 @@ class DownloadsScreenModel(
             }
 
             is DownloadsEvent.SetDetailsViewMode -> {
-                _layout.update { it.copy(viewMode = event.mode) }
+                _layout.update { l ->
+                    // Only WINDOW moves the split: the mode promises the pane the larger share, so the
+                    // list yields once on entry. Every other mode keeps the size the user dragged to.
+                    // Detaching clears the placement, asking the layer for the corner of the edge the
+                    // pane leaves; moving between the two floating modes keeps the spot it sits in.
+                    val detaching = event.mode.isFloatingWindow && !l.viewMode.isFloatingWindow
+                    l.copy(
+                        viewMode = event.mode,
+                        splitFraction = contentFractionForViewMode(event.mode, l.splitFraction),
+                        floatingOffsetX = if (detaching) 0f else l.floatingOffsetX,
+                        floatingOffsetY = if (detaching) 0f else l.floatingOffsetY,
+                    )
+                }
                 persistLayout()
             }
 
             is DownloadsEvent.SetDetailsMoveTo -> {
-                _layout.update { it.copy(moveTo = event.position) }
+                _layout.update { l ->
+                    // A docked pane only changes which split it sits in. A free window *is* its edge, so
+                    // the same choice moves it to that corner - an action nothing reacted to was a dead
+                    // menu row - by clearing the placement for the layer to recompute.
+                    if (l.viewMode.isFloatingWindow) {
+                        l.copy(moveTo = event.position, floatingOffsetX = 0f, floatingOffsetY = 0f)
+                    } else {
+                        l.copy(moveTo = event.position)
+                    }
+                }
                 persistLayout()
             }
 
@@ -501,14 +522,13 @@ class DownloadsScreenModel(
      */
     private fun reduceSelectionNow(action: SelectionAction) {
         val visible = state.value.filteredDownloads.map { it.id }
-        val before = _selection.value.ids
         _selection.update { reduceSelection(it, visible, action) }
 
         // Details is a collapsed tool window: selecting a row is what earns it a place on the frame,
         // so the first selection re-opens the pane (and the reopen is persisted like any other layout
         // change). Clearing the selection deliberately does NOT close it again - closing is the user's
         // call, made with the toolbar or title-bar toggle.
-        if (_selection.value.ids.isNotEmpty() && before.isEmpty() && !_layout.value.detailsVisible) {
+        if (_selection.value.ids.isNotEmpty() && !_layout.value.detailsVisible) {
             _layout.update { it.copy(detailsVisible = true) }
             persistLayout()
         }
