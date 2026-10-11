@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -21,7 +20,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
-import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.ToolWindowHeader
