@@ -13,9 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -29,7 +26,7 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.application.AppCommand
+import org.blaze.logging.ServerLogRepository
 import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.application.components.AboutDialog
 import org.blaze.presentation.components.BackgroundTasksPopup
@@ -50,9 +47,12 @@ import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
 import org.blaze.presentation.screens.extensions.ExtensionsPanel
 import org.blaze.presentation.screens.extensions.ExtensionsWindowModel
 import org.blaze.presentation.screens.serverlog.ServerLogPanel
+import org.blaze.presentation.screens.serverlog.ServerLogWindowModel
+import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSpeed
+import org.blaze.server.DownloadServiceController
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
@@ -61,20 +61,27 @@ import org.koin.compose.koinInject
 class MainScreen : Screen {
     @Composable
     override fun Content() {
+        // The shell model owns the window-level, ephemeral UI - the About dialog, the background-tasks
+        // popup, the stripe's selected tool window and the running transfers - and folds the shell's
+        // app-wide commands (About, Server Logs) into them. Everything else stays with the model that
+        // owns it: the downloads list and Details pane with [DownloadsScreenModel], each dockable
+        // window with its own model, so the shell never duplicates their state.
+        val shellModel = koinScreenModel<MainScreenModel>()
+        val shell by shellModel.state.collectAsState()
+
         val screenModel = koinScreenModel<DownloadsScreenModel>()
         val state by screenModel.state.collectAsState()
         val downloads = state.downloads
         val strings = blazeStrings
         val commandBus = koinInject<AppCommandBus>()
-        val searchController = koinInject<org.blaze.presentation.search.SearchController>()
-        var showAbout by remember { mutableStateOf(false) }
+        val searchController = koinInject<SearchController>()
         // The Server Logs tool window: its own screen model owns visibility and the docked layout, the
         // shared repository supplies the live log stream, and the controller is read only for the header's
         // status word (its lifecycle actions go through the command bus so the shell owns the launcher).
-        val logModel = koinScreenModel<org.blaze.presentation.screens.serverlog.ServerLogWindowModel>()
+        val logModel = koinScreenModel<ServerLogWindowModel>()
         val logState by logModel.state.collectAsState()
-        val logRepository = koinInject<org.blaze.logging.ServerLogRepository>()
-        val serverController = koinInject<org.blaze.server.DownloadServiceController>()
+        val logRepository = koinInject<ServerLogRepository>()
+        val serverController = koinInject<DownloadServiceController>()
 
         // The Extensions tool window: its own model owns the live handler rows and the docked layout
         // (the same view-mode / move-to model the Details and Server Logs panes use), so the stripe
@@ -83,23 +90,17 @@ class MainScreen : Screen {
         val extState by extModel.state.collectAsState()
 
         // Live transfers surfaced in the status bar; QUEUED counts too so the popup shows the whole
-        // pending set, while a row's own pause button is only offered while it is actually moving.
-        val running = downloads.filter {
-            it.state == DownloadState.DOWNLOADING || it.state == DownloadState.QUEUED
-        }
-        var showTasks by remember { mutableStateOf(false) }
+        // pending set. The shell projects them; a row's own pause is still a download lifecycle action.
+        val running = shell.running
 
         Navigator(DownloadsScreen()) { navigator ->
-            // The title-bar chrome raises dialog commands it cannot serve itself: About shows a dialog
-            // that lives on this screen, where the dialog state exists. Settings is not one of them - it
-            // is a modal window the application shell owns. The view-scoped commands (new download,
-            // focus search, toggle details) are handled lower down by the downloads screen itself.
-            LaunchedEffect(commandBus) {
-                commandBus.commands.collect { command ->
-                    when (command) {
-                        AppCommand.ShowAbout -> showAbout = true
-                        AppCommand.ShowServerLog -> logModel.toggleVisible()
-                        else -> Unit
+            // One-shot shell effects: a background-task click routes through the very activator the
+            // downloads screen registers for Search Everywhere, so "jump to this download" behaves
+            // identically from both places. The command bus is collected by the shell model itself.
+            LaunchedEffect(shellModel, searchController) {
+                shellModel.effects.collect { effect ->
+                    when (effect) {
+                        is MainEffect.JumpToDownload -> searchController.activateDownload(effect.id)
                     }
                 }
             }
@@ -116,33 +117,33 @@ class MainScreen : Screen {
                         SidebarItem(
                             label = strings.downloads.title,
                             icon = AllIconsKeys.Actions.Download,
-                            id = "downloads",
+                            id = MainToolWindowId.DOWNLOADS.stripeId,
                             count = downloads.size.takeIf { it > 0 }
                         ),
                         SidebarItem(
                             label = strings.extensions.title,
                             icon = AllIconsKeys.Nodes.Plugin,
-                            id = "extensions",
+                            id = MainToolWindowId.EXTENSIONS.stripeId,
                         ),
                     )
 
                     val currentScreen = navigator.lastItem
                     // Downloads is the central content; Extensions is a dockable tool window the stripe
-                    // raises over the side, not a screen that replaces the list. The stripe marks
-                    // Extensions while its panel is up, and the Downloads entry simply lowers it again.
-                    // Settings is not a stripe item any more - it is a modal window reached from the
+                    // raises over the side, not a screen that replaces the list. The shell projects which
+                    // entry to mark (Extensions while its panel is up); clicking an entry folds back into
+                    // the shell model, which raises or lowers the window through the model that owns it.
+                    // Settings is not a stripe item anymore - it is a modal window reached from the
                     // File menu and Search Everywhere - so opening it never changes the selection.
-                    val selectedItem =
-                        if (extState.visible) sidebarItems[1] else sidebarItems[0]
-
                     ToolWindowStripe(
                         items = sidebarItems,
-                        selectedId = selectedItem.id,
+                        selectedId = shell.activeToolWindow.stripeId,
                         onItemSelected = { item ->
                             when (item.id) {
-                                "downloads" -> extModel.setVisible(false)
+                                MainToolWindowId.DOWNLOADS.stripeId ->
+                                    shellModel.onEvent(MainEvent.SelectToolWindow(MainToolWindowId.DOWNLOADS))
 
-                                "extensions" -> extModel.toggleVisible()
+                                MainToolWindowId.EXTENSIONS.stripeId ->
+                                    shellModel.onEvent(MainEvent.SelectToolWindow(MainToolWindowId.EXTENSIONS))
                             }
                         }
                     )
@@ -284,8 +285,8 @@ class MainScreen : Screen {
                     trailing = {
                         BackgroundTasksStatusItem(
                             runningCount = running.size,
-                            expanded = showTasks,
-                            onClick = { showTasks = !showTasks },
+                            expanded = shell.tasksPopupExpanded,
+                            onClick = { shellModel.onEvent(MainEvent.ToggleTasksPopup) },
                         )
                         if (state.snailModeEnabled) {
                             // Small, regular, secondary-adjacent: the status bar never carries weight.
@@ -313,19 +314,19 @@ class MainScreen : Screen {
                 )
             }
 
-            if (showTasks) {
+            if (shell.tasksPopupExpanded) {
                 BackgroundTasksPopup(
                     running = running,
                     onPause = { id -> screenModel.onEvent(DownloadsEvent.Pause(id)) },
                     onCancel = { id -> screenModel.onEvent(DownloadsEvent.Cancel(id)) },
-                    // A row click routes through the very activator the downloads screen registers for
-                    // Search Everywhere, so "jump to this download" behaves identically from both places.
-                    onOpenDetails = { id -> searchController.activateDownload(id) },
-                    onDismiss = { showTasks = false },
+                    // A row click folds into the shell model, which emits the jump as a one-shot effect
+                    // served by the very activator the downloads screen registers for Search Everywhere.
+                    onOpenDetails = { id -> shellModel.onEvent(MainEvent.FocusDownload(id)) },
+                    onDismiss = { shellModel.onEvent(MainEvent.DismissTasksPopup) },
                 )
             }
-            if (showAbout) {
-                AboutDialog(onDismiss = { showAbout = false })
+            if (shell.aboutVisible) {
+                AboutDialog(onDismiss = { shellModel.onEvent(MainEvent.DismissAbout) })
             }
             }
         }

@@ -4,12 +4,26 @@ import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.getStrings
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.extensions.ExtensionsWindowModel
+import org.blaze.presentation.screens.main.MainScreenModel
 import org.blaze.presentation.screens.serverlog.ServerLogWindowModel
 import org.blaze.presentation.screens.settings.SettingsScreenModel
 import org.blaze.presentation.screens.settings.SettingsUseCases
 import org.koin.dsl.module
 
 val screenModelModule = module {
+    single {
+        // The application shell owns only the window-level, ephemeral UI (About dialog, background-tasks
+        // popup, stripe selection, running projection) and folds the shell's app-wide commands into it.
+        // It reads the dockable windows it toggles (Server Logs, Extensions) - both singletons so the
+        // shell and the view drive the very same instances - and projects the live downloads stream.
+        MainScreenModel(
+            commandBus = get(),
+            getDownloads = get(),
+            serverLogWindowModel = get(),
+            extensionsWindowModel = get(),
+        )
+    }
+
     single {
         DownloadsScreenModel(
             getDownloads = get(),
