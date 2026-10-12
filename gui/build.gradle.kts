@@ -43,6 +43,10 @@ dependencies {
     implementation(libs.jewel.int.ui.decorated.window)
     implementation(libs.intellij.platform.icons)
 
+    // Pure-JVM SVG rasterizer: extension icons declared as SVG in plugin jar resources are
+    // rendered through this (Skia's makeFromEncoded decodes rasters only).
+    implementation(libs.jsvg)
+
     // Voyager Navigation
     implementation(libs.voyager.navigator)
     implementation(libs.voyager.screenmodel)

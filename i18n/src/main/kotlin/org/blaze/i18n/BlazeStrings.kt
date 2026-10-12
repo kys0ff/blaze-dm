@@ -995,5 +995,12 @@ interface BlazeStrings {
         val deny: String
         /** Label of the row showing the client id / jar hash of the subject. */
         val subjectLabel: String
+        /**
+         * Attribution read off an extension jar's manifest. Either part may be absent, and the
+         * whole line is null when the manifest said nothing worth showing.
+         */
+        fun extensionByline(author: String?, version: String?): String?
+        /** Label of the row listing the URL patterns an extension declares it handles. */
+        val claimsLabel: String
     }
 }

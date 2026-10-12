@@ -44,8 +44,8 @@ fun HandlerChoiceDialog(
     val dStrings = strings.downloads.dialogs
     val registry = koinInject<LinkResolverRegistry>()
 
-    var selected by remember { mutableStateOf(handlers.firstOrNull()?.resolver?.id) }
-    val selectedHandler = handlers.firstOrNull { it.resolver.id == selected }
+    var selected by remember { mutableStateOf(handlers.firstOrNull()?.id) }
+    val selectedHandler = handlers.firstOrNull { it.id == selected }
 
     BaseDialog(onDismiss = onDismiss, title = dStrings.handlerChoiceTitle) {
         Text(
@@ -63,14 +63,14 @@ fun HandlerChoiceDialog(
                     ) {
                         ExtensionIcon(handler, registry, size = 16.dp)
                         RadioButtonRow(
-                            text = handler.resolver.displayName,
-                            selected = handler.resolver.id == selected,
-                            onClick = { selected = handler.resolver.id },
+                            text = handler.manifest.displayName,
+                            selected = handler.id == selected,
+                            onClick = { selected = handler.id },
                             modifier = Modifier.weight(1f)
                         )
                     }
                     Text(
-                        text = handler.resolver.description,
+                        text = handler.manifest.description,
                         style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
                         color = JewelTheme.globalColors.text.info,
                         maxLines = 1,

@@ -14,6 +14,7 @@ import org.blaze.presentation.components.panel.ToolWindowMoveTo
 import org.blaze.presentation.components.panel.ToolWindowResize
 import org.blaze.presentation.components.panel.ToolWindowScreenModel
 import org.blaze.presentation.components.panel.ToolWindowViewMode
+import org.blaze.resolver.api.ResolverIcon
 import org.blaze.resolver.api.ResolverOption
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
@@ -26,79 +27,58 @@ import org.blaze.service.security.ConsentDecision
 import java.nio.file.Path
 
 /**
- * One handler as the Extensions panel renders it: identity for the row, the live enable/priority
- * state pulled from the repository, the option descriptors the config gear edits, and the icon bytes
- * preloaded by the model so the row draws its icon without a registry lookup of its own.
+ * One handler as the Extensions panel renders it: everything comes off the handler's
+ * [org.blaze.resolver.api.ResolverManifest] (name, description, author/version byline,
+ * homepage), folded with the live enable/priority state pulled from the repository, the
+ * option descriptors the config gear edits, and the light/dark icons preloaded by the
+ * model so the row draws without a registry lookup of its own.
  *
- * [resolver] is still carried for callers that need the underlying handler; the panel itself only
- * reads [iconBytes].
+ * [resolver] is still carried for callers that need the underlying handler.
  */
 data class ExtensionUiRow(
     val id: String,
     val displayName: String,
     val description: String,
+    val author: String,
+    val version: String,
+    val homepage: String?,
     val enabled: Boolean,
     val isPlugin: Boolean,
     val priority: Int,
     val options: List<ResolverOption>,
     val resolver: LoadedResolver,
-    val iconBytes: ByteArray? = null,
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as ExtensionUiRow
-
-        if (enabled != other.enabled) return false
-        if (isPlugin != other.isPlugin) return false
-        if (priority != other.priority) return false
-        if (id != other.id) return false
-        if (displayName != other.displayName) return false
-        if (description != other.description) return false
-        if (options != other.options) return false
-        if (resolver != other.resolver) return false
-        if (!iconBytes.contentEquals(other.iconBytes)) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = enabled.hashCode()
-        result = 31 * result + isPlugin.hashCode()
-        result = 31 * result + priority
-        result = 31 * result + id.hashCode()
-        result = 31 * result + displayName.hashCode()
-        result = 31 * result + description.hashCode()
-        result = 31 * result + options.hashCode()
-        result = 31 * result + resolver.hashCode()
-        result = 31 * result + (iconBytes?.contentHashCode() ?: 0)
-        return result
-    }
-}
+    val icon: ResolverIcon? = null,
+    val darkIcon: ResolverIcon? = null,
+)
 
 /**
  * Folds the handler list and the persisted settings into the rows the panel renders. Kept as a
- * pure function (the option descriptors arrive through [descriptorsOf] and the icon bytes through
- * [iconBytesOf], so the caller supplies both from the registry) so the state mapping is
+ * pure function (the option descriptors arrive through [descriptorsOf] and the light/dark icons
+ * through [iconsOf], so the caller supplies both from the registry) so the state mapping is
  * unit-testable without a coroutine scope.
  */
 internal fun buildExtensionRows(
     handlers: List<LoadedResolver>,
     settings: ResolverSettings,
-    iconBytesOf: (LoadedResolver) -> ByteArray? = { null },
+    iconsOf: (LoadedResolver) -> Pair<ResolverIcon?, ResolverIcon?> = { null to null },
     descriptorsOf: (LoadedResolver) -> List<ResolverOption>,
 ): List<ExtensionUiRow> = handlers.map { loaded ->
+    val manifest = loaded.manifest
+    val (light, dark) = iconsOf(loaded)
     ExtensionUiRow(
-        id = loaded.resolver.id,
-        displayName = loaded.resolver.displayName,
-        description = loaded.resolver.description,
-        enabled = settings.isEnabled(loaded.resolver.id),
+        id = loaded.id,
+        displayName = manifest.displayName,
+        description = manifest.description,
+        author = manifest.author,
+        version = manifest.version,
+        homepage = manifest.homepage,
+        enabled = settings.isEnabled(loaded.id),
         isPlugin = loaded.source == ResolverSource.PLUGIN,
-        priority = settings.slice(loaded.resolver.id).priority,
+        priority = settings.slice(loaded.id).priority ?: manifest.defaultPriority ?: 0,
         options = descriptorsOf(loaded),
         resolver = loaded,
-        iconBytes = iconBytesOf(loaded),
+        icon = light,
+        darkIcon = dark,
     )
 }
 
@@ -143,7 +123,13 @@ class ExtensionsWindowModel(
     /** The live rows: registry handlers folded with the persisted resolver settings. */
     private val rows: StateFlow<List<ExtensionUiRow>> =
         combine(registry.handlers, settingsRepository.settings) { handlers, settings ->
-            buildExtensionRows(handlers, settings, iconBytesOf = { registry.loadIconBytes(it) }) {
+            buildExtensionRows(
+                handlers,
+                settings,
+                iconsOf = { loaded ->
+                    registry.loadIcon(loaded, darkMode = false) to registry.loadIcon(loaded, darkMode = true)
+                },
+            ) {
                 registry.optionDescriptors(it)
             }
         }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

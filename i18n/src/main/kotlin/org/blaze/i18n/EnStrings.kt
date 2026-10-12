@@ -764,6 +764,13 @@ object EnStrings : BlazeStrings {
         override val allowAlways = "Allow always"
         override val deny = "Reject"
         override val subjectLabel = "Identifier:"
+        override fun extensionByline(author: String?, version: String?): String? = when {
+            author != null && version != null -> "By $author · version $version"
+            author != null -> "By $author"
+            version != null -> "Version $version"
+            else -> null
+        }
+        override val claimsLabel = "Claims to handle:"
     }
 
     override val options = object : BlazeStrings.Options {

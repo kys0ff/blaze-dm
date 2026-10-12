@@ -105,10 +105,10 @@ class SettingsUseCases(
             HandlersSnapshot(
                 handlers = handlers.map { loaded ->
                     HandlerUiState(
-                        id = loaded.resolver.id,
-                        displayName = loaded.resolver.displayName,
-                        description = loaded.resolver.description,
-                        enabled = settings.isEnabled(loaded.resolver.id),
+                        id = loaded.id,
+                        displayName = loaded.manifest.displayName,
+                        description = loaded.manifest.description,
+                        enabled = settings.isEnabled(loaded.id),
                         isPlugin = loaded.source == ResolverSource.PLUGIN,
                         resolver = loaded
                     )

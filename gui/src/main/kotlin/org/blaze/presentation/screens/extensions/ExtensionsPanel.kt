@@ -216,7 +216,10 @@ private fun ExtensionRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ExtensionIcon(iconBytes = row.iconBytes, size = 16.dp)
+            // The manifest may declare a dedicated dark variant; fall across modes so a
+            // single-asset handler still renders everywhere.
+            val icon = if (JewelTheme.isDark) row.darkIcon ?: row.icon else row.icon ?: row.darkIcon
+            ExtensionIcon(icon = icon, size = 16.dp)
             CheckboxRow(
                 text = row.displayName,
                 checked = row.enabled,
@@ -243,6 +246,23 @@ private fun ExtensionRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 24.dp)
         )
+        // Author/version/homepage byline — pure manifest data (the plugin owns the wording),
+        // so no app-side string is needed and nothing renders when the author declared none.
+        val byline = listOf(
+            row.author.takeIf { it.isNotBlank() },
+            row.version.takeIf { it.isNotBlank() },
+            row.homepage,
+        ).filterNotNull().joinToString(" · ")
+        if (byline.isNotBlank()) {
+            Text(
+                text = byline,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.disabled,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 24.dp)
+            )
+        }
     }
 }
 

@@ -40,6 +40,9 @@ jewel-int-ui-standalone = { group = "org.jetbrains.jewel", name = "jewel-int-ui-
 jewel-int-ui-decorated-window = { group = "org.jetbrains.jewel", name = "jewel-int-ui-decorated-window", version.ref = "jewel" }
 intellij-platform-icons = { group = "com.jetbrains.intellij.platform", name = "icons", version.ref = "intellij-platform" }
 
+# Pure-JVM SVG rasterizer (link-handler extension icons shipped as SVG inside plugin jars).
+jsvg = { group = "com.github.weisj", name = "jsvg", version = "2.2.0" }
+
 voyager-navigator = { group = "cafe.adriel.voyager", name = "voyager-navigator", version.ref = "voyager" }
 voyager-screenmodel = { group = "cafe.adriel.voyager", name = "voyager-screenmodel", version.ref = "voyager" }
 voyager-transitions = { group = "cafe.adriel.voyager", name = "voyager-transitions", version.ref = "voyager" }

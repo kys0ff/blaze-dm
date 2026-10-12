@@ -72,6 +72,8 @@ fun ConsentDialogWindow(
     }
     val meaning = if (isClient) strings.clientMeaning else strings.extensionMeaning
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+    // Manifest attribution / claims read off the jar without running its code; absent for clients.
+    val byline = if (isClient) null else strings.extensionByline(request.author, request.version)
 
     val density = LocalDensity.current
     var height by remember { mutableStateOf(260.dp) }
@@ -128,6 +130,23 @@ fun ConsentDialogWindow(
                 style = JewelTheme.defaultTextStyle,
                 color = JewelTheme.globalColors.text.normal,
             )
+            if (byline != null) {
+                Text(text = byline, style = infoStyle, color = JewelTheme.globalColors.text.info)
+            }
+            if (request.urlPatterns.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = strings.claimsLabel,
+                        style = infoStyle,
+                        color = JewelTheme.globalColors.text.info,
+                    )
+                    Text(
+                        text = request.urlPatterns.joinToString(", "),
+                        style = infoStyle,
+                        color = JewelTheme.globalColors.text.info,
+                    )
+                }
+            }
             Text(text = strings.choiceHelp, style = infoStyle)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(

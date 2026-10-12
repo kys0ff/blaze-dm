@@ -24,8 +24,10 @@ import java.nio.file.StandardCopyOption
 data class ResolverOptionsSlice(
     /** Option values keyed by `ResolverOption.key`; absent means "descriptor default". */
     val optionValues: Map<String, String> = emptyMap(),
-    /** Higher runs first when several handlers match; ties fall back to display name. */
-    val priority: Int = 0,
+    /** Higher runs first when several handlers match; ties fall back to display name.
+     * Null means "the user never reordered this handler", so the registry may honor the
+     * manifest's `defaultPriority` instead. */
+    val priority: Int? = null,
     /** The enable switch. The legacy top-level [ResolverSettings.disabledHandlers] list
      * migrates into `enabled = false` slices on first load. */
     val enabled: Boolean = true,

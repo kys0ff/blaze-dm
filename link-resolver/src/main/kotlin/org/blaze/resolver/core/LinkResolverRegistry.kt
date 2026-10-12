@@ -7,10 +7,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import org.blaze.resolver.api.ConfigurableLinkResolver
+import org.blaze.resolver.api.IconFormat
 import org.blaze.resolver.api.LinkResolver
 import org.blaze.resolver.api.ResolvedLink
 import org.blaze.resolver.api.ResolverConfig
 import org.blaze.resolver.api.ResolverContext
+import org.blaze.resolver.api.ResolverIcon
+import org.blaze.resolver.api.ResolverManifest
 import org.blaze.resolver.api.ResolverOption
 import org.blaze.resolver.api.mergedWith
 import org.slf4j.LoggerFactory
@@ -18,19 +21,23 @@ import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.util.Base64
 
 /**
- * Central registry of link handlers: the built-ins bundled with the app plus any plugin
- * jars found in the extensions directory. Handles enable/disable state, plugin install /
- * uninstall and the actual (blocking) resolve call, dispatched onto an IO thread.
+ * Central registry of link handlers: the built-ins bundled with the app (each paired with a
+ * code-defined [ResolverManifest]) plus any plugin jars found in the extensions directory.
+ * Handles enable/disable state, plugin install / uninstall and the actual (blocking)
+ * resolve call, dispatched onto an IO thread.
  *
- * Plugin jars are gated by [jarTrust] before any of their code runs: an untrusted jar is skipped
- * by [reload] and surfaced through [onUntrustedJars] so the host can ask the user to consent first.
- * Both default to "trust everything", keeping hosts without a consent UI on the legacy behavior.
+ * Everything the UI shows — name, description, author, icon — comes from the handler's
+ * manifest, never from executing its code. Plugin jars are gated by [jarTrust] before any
+ * of their code runs: an untrusted jar is skipped by [reload] and surfaced through
+ * [onUntrustedJars] so the host can ask the user to consent first; jars that fail the
+ * manifest or compatibility gates are reported through [rejectedJars] with a readable
+ * reason. Both trust hooks default to "trust everything", keeping hosts without a consent
+ * UI on simple behavior.
  */
 class LinkResolverRegistry(
-    private val builtIns: List<LinkResolver>,
+    private val builtIns: List<BuiltInResolver>,
     private val pluginLoader: PluginLoader,
     private val settingsRepository: LinkResolverSettingsRepository,
     private val jarTrust: (Path) -> Boolean = { true },
@@ -41,6 +48,10 @@ class LinkResolverRegistry(
     private val _handlers = MutableStateFlow<List<LoadedResolver>>(emptyList())
     /** All discovered handlers (built-in + plugin), regardless of enabled state. */
     val handlers: StateFlow<List<LoadedResolver>> = _handlers.asStateFlow()
+
+    private val _rejectedJars = MutableStateFlow<List<PluginLoader.RejectedJar>>(emptyList())
+    /** Jars sitting in the extensions directory that failed the manifest gates, with reasons. */
+    val rejectedJars: StateFlow<List<PluginLoader.RejectedJar>> = _rejectedJars.asStateFlow()
 
     // Kept as a field so the plugin class loaders (and their loaded classes) are not
     // garbage-collected while their resolvers are still registered.
@@ -56,9 +67,19 @@ class LinkResolverRegistry(
         val dir = extensionDir()
         val result = pluginLoader.load(dir, jarTrust)
         pluginLoaders = result.classLoaders
+        _rejectedJars.update { result.rejectedJars }
 
         val merged = buildList {
-            addAll(builtIns.map { LoadedResolver(it, ResolverSource.BUILTIN) })
+            addAll(
+                builtIns.map {
+                    LoadedResolver(
+                        id = it.manifest.id,
+                        manifest = it.manifest,
+                        resolver = it.resolver,
+                        source = ResolverSource.BUILTIN,
+                    )
+                },
+            )
             addAll(result.resolvers)
         }
         _handlers.update { merged }
@@ -74,20 +95,28 @@ class LinkResolverRegistry(
         settingsRepository.settings.value.isEnabled(id)
 
     /**
-     * Enabled handlers that claim they can resolve [url], best-first: a user-set priority
-     * orders them, display name breaks ties stably. The "use the first one silently" path
-     * of always-ask-off therefore honors the handler the user prefers.
+     * Enabled handlers that claim [url], best-first: a user-set priority (or the manifest's
+     * default when the user never touched it) orders them, display name breaks ties. The
+     * "use the first one silently" path of always-ask-off therefore honors the handler the
+     * user prefers.
+     *
+     * A manifest with `urlPatterns` is a hard pre-gate: the plugin's own [canResolve] is
+     * never called for a URL none of the declared patterns match.
      */
     fun enabledHandlers(url: String): List<LoadedResolver> =
         _handlers.value
-            .filter { isEnabled(it.resolver.id) && runCatching { it.resolver.canResolve(url) }.getOrDefault(false) }
+            .filter { isEnabled(it.id) && it.manifest.matches(url) }
+            .filter { runCatching { it.resolver.canResolve(url) }.getOrDefault(false) }
             .sortedWith(
-                compareByDescending<LoadedResolver> { priority(it.resolver.id) }
-                    .thenBy { it.resolver.displayName }
+                compareByDescending<LoadedResolver> { priority(it) }
+                    .thenBy { it.manifest.displayName }
             )
 
-    /** The user's ordering weight for a handler; higher runs first. */
-    fun priority(id: String): Int = settingsRepository.settings.value.slice(id).priority
+    /** The handler's effective ordering weight: stored value, else manifest default, else 0. */
+    fun priority(handler: LoadedResolver): Int =
+        settingsRepository.settings.value.slice(handler.id).priority
+            ?: handler.manifest.defaultPriority
+            ?: 0
 
     /**
      * The option descriptors a handler publishes, read defensively: a plugin that is not
@@ -102,7 +131,7 @@ class LinkResolverRegistry(
     /** The handler's effective config: every descriptor default, overlaid with stored values. */
     fun handlerSettings(id: String): ResolverConfig {
         val descriptors = _handlers.value
-            .firstOrNull { it.resolver.id == id }
+            .firstOrNull { it.id == id }
             ?.let(::optionDescriptors)
             ?: emptyList()
         return ResolverConfig(settingsRepository.settings.value.slice(id).optionValues).mergedWith(descriptors)
@@ -120,7 +149,7 @@ class LinkResolverRegistry(
             runCatching {
                 val configurable = handler.resolver as? ConfigurableLinkResolver
                 if (configurable != null) {
-                    configurable.applySettings(handlerSettings(configurable.id))
+                    configurable.applySettings(handlerSettings(handler.id))
                     configurable.resolveAll(url, ResolverContext(requestTimeout()))
                 } else {
                     listOf(handler.resolver.resolve(url))
@@ -132,37 +161,44 @@ class LinkResolverRegistry(
         settingsRepository.settings.value.requestTimeoutSeconds.coerceIn(1, 300)
 
     /**
-     * Load the bytes of the handler's icon, preferring the inline [LinkResolver.iconBase64]
-     * and falling back to [LinkResolver.iconResourcePath] when the string is missing or
-     * can't be decoded. Uses the resolver's own class loader for the resource lookup, so
-     * a plugin jar can ship its icon alongside its classes. Returns null when the resolver
-     * opts out or every source fails; the UI is expected to render a placeholder in that
-     * case — a broken icon never brings down the resolver.
+     * Load the icon the handler's manifest declares, preferring vector over raster and —
+     * in dark mode — the declared dark variant over the light one (falling back to the
+     * other mode's assets when a variant is missing). Bytes are read through the
+     * resolver's own class loader, so plugin jars ship icons inside their jar and built-ins
+     * inside the module. Returns null when nothing is declared or every declared path is
+     * missing; the UI renders its placeholder in that case — a broken icon never takes a
+     * resolver down.
      */
-    fun loadIconBytes(handler: LoadedResolver): ByteArray? {
-        decodeBase64Icon(handler.resolver.iconBase64)?.let { return it }
+    fun loadIcon(handler: LoadedResolver, darkMode: Boolean = false): ResolverIcon? {
+        val icons = handler.manifest.icons
+        val candidates = buildList {
+            if (darkMode) {
+                add(icons.svgDark to IconFormat.SVG)
+                add(icons.pngDark to IconFormat.PNG)
+            }
+            add(icons.svg to IconFormat.SVG)
+            add(icons.png to IconFormat.PNG)
+            if (!darkMode) {
+                // An author that only shipped dark variants should still render something.
+                add(icons.svgDark to IconFormat.SVG)
+                add(icons.pngDark to IconFormat.PNG)
+            }
+        }.filter { (path, _) -> path != null }
+            .map { (path, format) -> icons.normalized(path!!) to format }
+            .distinctBy { it.first }
 
-        val path = handler.resolver.iconResourcePath ?: return null
-        return runCatching {
-            handler.resolver.javaClass.getResourceAsStream(path)?.use { it.readBytes() }
-        }.onFailure { logger.warn("Failed to load icon for {}", handler.resolver.id, it) }
-            .getOrNull()
+        for ((path, format) in candidates) {
+            val bytes = readResource(handler, path) ?: continue
+            return ResolverIcon(bytes, format)
+        }
+        return null
     }
 
-    /**
-     * Tolerant Base64 icon decoder: strips an optional `data:...;base64,` URL prefix and
-     * uses the MIME decoder, which accepts embedded line breaks and other whitespace from
-     * a copy/pasted constant. Returns null (with a warn) on any failure so the caller can
-     * fall back to the resource path without a nested try/catch.
-     */
-    private fun decodeBase64Icon(raw: String?): ByteArray? {
-        if (raw.isNullOrBlank()) return null
-        val body = raw.substringAfter(',', raw) // no-op when there's no `data:` prefix
-        return runCatching { Base64.getMimeDecoder().decode(body) }
-            .onFailure { logger.warn("Ignoring malformed iconBase64 for resolver", it) }
-            .getOrNull()
-            ?.takeIf { it.isNotEmpty() }
-    }
+    private fun readResource(handler: LoadedResolver, path: String): ByteArray? = runCatching {
+        handler.resolver.javaClass.getResourceAsStream("/$path")?.use { it.readBytes() }
+    }.onFailure { logger.warn("Failed to load icon {} for {}", path, handler.id, it) }
+        .getOrNull()
+        ?.takeIf { it.isNotEmpty() }
 
     suspend fun setEnabled(id: String, enabled: Boolean) {
         settingsRepository.setEnabled(id, enabled)
@@ -190,9 +226,16 @@ class LinkResolverRegistry(
         settingsRepository.updateSettings { it.copy(requestTimeoutSeconds = seconds.coerceIn(1, 300)) }
     }
 
-    /** Copy [jar] into the extensions directory and reload. */
+    /**
+     * Copy [jar] into the extensions directory and reload. The jar is validated first: a
+     * file without a readable manifest never reaches the user's extensions folder, so an
+     * install click on garbage fails with a message instead of leaving a dead jar behind.
+     */
     suspend fun install(jar: Path): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            requireNotNull(ResolverManifest.load(jar)) {
+                "This jar has no valid ${ResolverManifest.PATH}; it cannot be installed as a link handler"
+            }
             val dir = extensionDir()
             Files.createDirectories(dir)
             val target = dir.resolve(jar.fileName.toString())
@@ -203,7 +246,7 @@ class LinkResolverRegistry(
 
     /** Delete a plugin jar and reload. Built-ins cannot be removed. */
     suspend fun uninstall(id: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val handler = _handlers.value.firstOrNull { it.resolver.id == id }
+        val handler = _handlers.value.firstOrNull { it.id == id }
         when {
             handler == null -> Result.failure(IllegalStateException("Unknown handler"))
             handler.pluginPath == null -> Result.failure(IllegalStateException("Built-in handlers cannot be removed"))

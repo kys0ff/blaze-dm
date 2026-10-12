@@ -770,6 +770,13 @@ object ArStrings : BlazeStrings {
         override val allowAlways = "السماح دائمًا"
         override val deny = "الرفض"
         override val subjectLabel = "المُعرِّف:"
+        override fun extensionByline(author: String?, version: String?): String? = when {
+            author != null && version != null -> "بقلم $author · الإصدار $version"
+            author != null -> "بقلم $author"
+            version != null -> "الإصدار $version"
+            else -> null
+        }
+        override val claimsLabel = "يدّعي التعامل مع:"
     }
 
     override val options = object : BlazeStrings.Options {

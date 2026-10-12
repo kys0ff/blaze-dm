@@ -375,7 +375,7 @@ private fun HandlerNotice(
 ) {
     when {
         state.detectedHandlers.size == 1 -> {
-            val handler = state.detectedHandlers.first().resolver
+            val handler = state.detectedHandlers.first().manifest
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically

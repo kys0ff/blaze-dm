@@ -4,6 +4,8 @@ import org.blaze.resolver.api.ConfigurableLinkResolver
 import org.blaze.resolver.api.ResolvedLink
 import org.blaze.resolver.api.ResolverConfig
 import org.blaze.resolver.api.ResolverContext
+import org.blaze.resolver.api.ResolverIconSpec
+import org.blaze.resolver.api.ResolverManifest
 import org.blaze.resolver.api.ResolverOption
 import org.blaze.resolver.api.integerOption
 import org.blaze.resolver.api.textOption
@@ -29,13 +31,6 @@ import java.time.Duration
  * backs the timeout when the handler's own option is left at its default.
  */
 class MediafireResolver : ConfigurableLinkResolver {
-
-    override val id: String = "mediafire"
-    override val iconBase64: String
-        get() = MediaFireIcon.get()
-    override val displayName: String = "MediaFire"
-    override val description: String =
-        "Resolves MediaFire share pages into a direct download link"
 
     override val optionDescriptors: List<ResolverOption> = listOf(
         textOption(
@@ -260,7 +255,27 @@ class MediafireResolver : ConfigurableLinkResolver {
         (host == "mediafire.com" || host.endsWith(".mediafire.com")) &&
                 !host.startsWith("download")
 
-    private companion object {
+    companion object {
+        /**
+         * The built-in's manifest, declared in code exactly like a plugin jar's on-disk
+         * `META-INF/blaze/resolver.json` — one metadata source for the whole UI. The icon
+         * ships in this module's resources (`link-resolver/src/main/resources`).
+         */
+        val Manifest: ResolverManifest = ResolverManifest(
+            id = "mediafire",
+            displayName = "MediaFire",
+            description = "Resolves MediaFire share pages into a direct download link",
+            version = "1.0.0",
+            author = "Blaze",
+            icons = ResolverIconSpec(png = "icons/mediafire.png"),
+            urlPatterns = listOf(
+                "https://mediafire.com", "https://mediafire.com/*",
+                "https://*.mediafire.com", "https://*.mediafire.com/*",
+                "http://mediafire.com", "http://mediafire.com/*",
+                "http://*.mediafire.com", "http://*.mediafire.com/*",
+            ),
+        )
+
         const val OPTION_USER_AGENT = "userAgent"
         const val OPTION_TIMEOUT = "timeoutSeconds"
         const val DEFAULT_TIMEOUT_SECONDS = 15L

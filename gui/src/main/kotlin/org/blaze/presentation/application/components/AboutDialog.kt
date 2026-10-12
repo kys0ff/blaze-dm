@@ -9,6 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import org.blaze.APP_VERSION
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.icons.BlazeFlame
@@ -22,11 +23,9 @@ import org.jetbrains.jewel.ui.typography
  * The app's About dialog, opened from the title-bar hamburger menu. It states the identity, the
  * version and the one-line description — nothing more, and no action that duplicates the menu.
  *
- * [APP_VERSION] is kept in sync with `gui/build.gradle.kts`'s `version`; there is no generated
- * BuildConfig in this module, so the literal is the single source the UI reads.
+ * The version comes from the shared [APP_VERSION] constant, also used by the plugin loader's
+ * `minAppVersion` gate.
  */
-private const val APP_VERSION = "1.0.0"
-
 @Composable
 fun AboutDialog(onDismiss: () -> Unit) {
     val menu = blazeStrings.menu

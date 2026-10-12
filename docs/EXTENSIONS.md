@@ -11,8 +11,11 @@ Blaze has exactly two user-facing extension points, each a plain Java `interface
 | **Colour theme** | `:theming`       | `org.blaze.theming.api.BlazeThemeProvider` | `~/.blaze/themes/*.jar`     | Settings → **Themes**        |
 | **Link handler** | `:link-resolver` | `org.blaze.resolver.api.LinkResolver`      | `~/.blaze/extensions/*.jar` | Extensions stripe · Settings → **Link Handlers** |
 
-Both are **in-process, untrusted-but-plain-JVM code**: no manifest metadata, no sandbox process, no
-activation API. You build a jar, the user installs it, Blaze loads it.
+Both are **in-process, untrusted-but-plain-JVM code** with no sandbox process and no activation API.
+You build a jar, the user installs it, Blaze loads it — with one asymmetry: a link-handler jar must
+ship a **manifest** (`META-INF/blaze/resolver.json`) declaring its identity, icons and URL claims,
+because Blaze reads it *before* any of the jar's code runs (§4.2). A handler jar without a valid
+manifest is skipped and reported, never loaded. Theme jars remain pure ServiceLoader affairs.
 
 ---
 
@@ -25,12 +28,13 @@ activation API. You build a jar, the user installs it, Blaze loads it.
 2. **No coroutines in your API surface.** Handler `resolve()` and theme `provide()` are ordinary
    blocking functions. The app moves `resolve()` onto an IO dispatcher for you.
 3. **Target JVM 21**, matching the app toolchain.
-4. **Ids are permanent.** `id` is the persistence key — a disabled handler and the selected theme are
-   stored by id. Use lower-case, ASCII, stable, namespaced-ish (`acme-share`, `acme-night`). Changing
-   it silently orphans the user's saved preference and turns "remove" into a stale jar.
+4. **Ids are permanent.** The id is the persistence key — a disabled handler (its manifest `id`) and
+   the selected theme (`BlazeThemeProvider.id`) are stored by it. Use lower-case, ASCII, stable,
+   namespaced-ish names (`acme-share`, `acme-night`); a handler id must match `[a-z0-9][a-z0-9_-]*`.
+   Changing it silently orphans the user's saved preference and turns "remove" into a stale jar.
 5. **Never assume you're the only provider.** Multiple handlers can claim the same URL; the user picks.
 6. **A crash inside your jar cannot crash the app — but it will disable your feature.** Every call into
-   plugin code is guarded (§4). Design for "return nothing useful" rather than "throw at init".
+   plugin code is guarded (§5). Design for "return nothing useful" rather than "throw at init".
 
 ### Directory layout on disk
 
@@ -70,7 +74,7 @@ kotlin { jvmToolchain(21) }
 
 tasks.jar {
     // Do NOT embed the contract module or Kotlin UI deps — see §1.1.
-    manifest { /* nothing special required */ }
+    manifest { /* nothing special required (Blaze's resolver manifest is a *resource*, §4.2) */ }
 }
 ```
 
@@ -87,8 +91,13 @@ src/main/resources/META-INF/services/org.blaze.theming.api.BlazeThemeProvider
 com.example.blaze.MidnightSlateTheme
 ```
 
-(or `META-INF/services/org.blaze.resolver.api.LinkResolver` for a handler). One class name per line;
-multiple providers in one jar are supported and each is discovered independently.
+(or `META-INF/services/org.blaze.resolver.api.LinkResolver` for a handler). One class name per line.
+
+A **link-handler jar additionally requires** a JSON manifest at
+`src/main/resources/META-INF/blaze/resolver.json` — the full schema is §4.2. Without it the jar is
+refused before its code ever runs. The service file itself is optional for handlers: listing a
+`mainClass` in the manifest instantiates that class directly instead. One manifest describes one
+handler; with several service providers listed, only the first is loaded.
 
 ---
 
@@ -304,13 +313,11 @@ file URL plus its metadata.
 
 ### 4.1 The contract
 
+The interface is **pure behavior** — names, icons and URL claims are declared declaratively in the
+manifest (§4.2), never in code:
+
 ```kotlin
 interface LinkResolver {
-    val id: String
-    val displayName: String
-    val description: String
-    val iconResourcePath: String? get() = null   // "/icons/acme.png", read from YOUR jar
-    val iconBase64: String?        get() = null   // raw Base64 PNG body (or a data: URL)
     fun canResolve(url: String): Boolean
     fun resolve(url: String): ResolvedLink
 }
@@ -325,10 +332,81 @@ data class ResolvedLink(
 )
 ```
 
-### 4.2 Rules that make a handler behave well
+### 4.2 The manifest — required
 
-* **`canResolve` is a router, not a parser.** It runs on the UI thread for every candidate URL, so
-  check host/path shape only — no network, no HTML. Return `false` fast for anything that isn't yours.
+Every handler jar ships `META-INF/blaze/resolver.json` (put it in
+`src/main/resources/META-INF/blaze/resolver.json`). Blaze reads it **straight from the zip, without
+opening a class loader or executing a line of your code** — that is what lets the picker, the
+Extensions panel and the install-consent prompt describe a jar before it is ever trusted. A jar whose
+manifest is missing, malformed or on a schema newer than Blaze understands is **skipped and
+reported**, never loaded.
+
+```json
+{
+  "manifestVersion": 1,
+  "id": "acme-share",
+  "displayName": "Acme Share",
+  "description": "Resolves acme.example share pages into a direct link",
+  "version": "1.0.0",
+  "author": "Ada Example",
+  "homepage": "https://acme.example/handler",
+  "license": "MIT",
+  "mainClass": "com.example.blaze.AcmeShareResolver",
+  "icons": { "svg": "icons/acme.svg", "png": "icons/acme.png" },
+  "urlPatterns": [
+    "https://acme.example/*",
+    "https://*.acme.example/*"
+  ],
+  "defaultPriority": 0,
+  "minAppVersion": "1.0.0"
+}
+```
+
+| Field | Required | Default | Meaning |
+|-------|----------|---------|---------|
+| `manifestVersion` | no | `1` | Schema version; newer than this build understands → the jar is rejected. |
+| `id` | **yes** | — | Persistence key, `[a-z0-9][a-z0-9_-]{0,63}`. Settings, enable state and priority are stored under it — choose once, never change. |
+| `displayName` | **yes** | — | Shown in the picker, the Extensions panel and the consent prompt. |
+| `description` | no | `""` | One line under the name. |
+| `version` / `author` | no | `0.0.0` / `""` | Byline ("By … · version …") wherever the handler is listed. |
+| `homepage` / `license` / `issuesUrl` | no | — | Reference details offered with the handler. |
+| `mainClass` | no | — | FQCN of your `LinkResolver` with a public no-arg constructor. When absent, providers are discovered through `META-INF/services` instead. |
+| `icons` | no | `{}` | Icon resource paths inside the jar (§4.3). |
+| `urlPatterns` | no | `[]` | Case-insensitive `*` globs over the full URL. Non-empty → **hard pre-gate**: your `canResolve` is never called for a URL none of the patterns claims. Empty → unrestricted. |
+| `defaultPriority` | no | `0` | Ordering weight until the user reorders the handler in the Extensions panel. |
+| `minAppVersion` | no | — | Lowest Blaze version you support; jars requiring a newer app are skipped with a readable reason. |
+
+Unknown keys are ignored, so adding fields later stays forward compatible. Anything *structurally*
+invalid — bad `id`, blank `displayName`, a `..` in an icon path, unparseable JSON, a
+`manifestVersion` in the future — rejects the whole jar; there is no partial load. **One manifest
+describes one handler:** a jar whose service file lists several providers loads the first and skips
+the rest.
+
+### 4.3 Icons & jar layout
+
+`icons` entries are resource paths **relative to the jar root** (a leading `/` is accepted and
+normalized away; traversal is rejected). Both **PNG and SVG** are supported — SVG is preferred
+whenever it is declared and is rasterized by Blaze at display size — and each format may carry a
+dark-theme variant (`pngDark`, `svgDark`) that Blaze selects when the app runs in dark mode. A
+declared-but-missing file falls back through the remaining variants and finally to the generic
+placeholder; an icon can never crash a row.
+
+```
+acme-share-1.0.0.jar
+├── META-INF/
+│   ├── blaze/resolver.json                          ← required (§4.2)
+│   └── services/org.blaze.resolver.api.LinkResolver ← instead of mainClass
+├── icons/
+│   ├── acme.svg                                     ← declared in "icons"
+│   └── acme.png
+└── com/example/blaze/AcmeShareResolver.class
+```
+
+### 4.4 Rules that make a handler behave well
+
+* **`canResolve` is a router, not a parser.** It runs on the UI thread for every URL that survives
+  your manifest's pattern pre-gate (§4.2), so check host/path shape only — no network, no HTML.
+  Return `false` fast for anything that isn't yours.
 * **`resolve` blocks, and that's fine.** The registry calls it inside `runCatching` on an IO
   dispatcher. Do the HTTP fetch, parse, return. Give your `HttpClient` a real `connectTimeout` — a
   hanging handler holds a user's dialog open.
@@ -340,14 +418,14 @@ data class ResolvedLink(
   `User-Agent`, put it in `ResolvedLink.headers`; Blaze uses it for the actual download.
 * **Never invent a `fileName`.** `null` is better than a wrong name — the engine derives one from the
   URL/response when absent. Same for `sizeBytes`.
-* **Icons:** `iconResourcePath` is resolved through **your own class loader** (`javaClass.getResourceAsStream`),
-  so the PNG can live inside your jar with no extra wiring. If you provide both, **`iconBase64` wins**.
-  A malformed Base64 or a missing resource falls back to the placeholder — never a crash — and SVG is
-  not supported. Omit both to get the built-in placeholder.
+* **Icons are declared in the manifest (§4.3), not in code.** PNG and SVG both work, dark variants
+  are optional, and a missing or unreadable asset falls back to the placeholder — never a crash.
 * **Thread-safety:** one instance is created per jar at scan time and reused for every resolve. Keep
   it stateless, or guard your state.
 
-### 4.3 Complete example
+### 4.5 Complete example
+
+The behavior class holds no metadata — the §4.2 manifest is the only place identity lives:
 
 ```kotlin
 package com.example.blaze
@@ -361,11 +439,6 @@ import java.net.http.HttpResponse
 import java.time.Duration
 
 class AcmeShareResolver : LinkResolver {
-    override val id: String = "acme-share"
-    override val displayName: String = "Acme Share"
-    override val description: String = "Resolves acme.example share pages into a direct link"
-    override val iconResourcePath: String? = "/icons/acme.png"
-
     private val client: HttpClient by lazy {
         HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -410,13 +483,17 @@ class AcmeShareResolver : LinkResolver {
 }
 ```
 
-Registered via `META-INF/services/org.blaze.resolver.api.LinkResolver`.
+Ship it together with the §4.2 `resolver.json` (`mainClass` pointing at
+`com.example.blaze.AcmeShareResolver`, or a
+`META-INF/services/org.blaze.resolver.api.LinkResolver` file listing that class instead).
 
-### 4.4 How it's used at runtime
+### 4.6 How it's used at runtime
 
-When the user pastes a link, Blaze lists the **enabled** handlers whose `canResolve` returns true,
-ordered best-first (a user-set **priority** wins, display name breaks ties). The top of that list is
-the one used silently when "always ask" is off:
+When the user pastes a link, Blaze lists the **enabled** handlers whose manifest `urlPatterns` claim
+it (if any are declared — an unclaimed URL never reaches the plugin's `canResolve`) and whose
+`canResolve` then returns true, ordered best-first (a user-set **priority** wins, the manifest's
+`defaultPriority` applies until the user touches it, display name breaks ties). The top of that list
+is the one used silently when "always ask" is off:
 
 * one match → resolved automatically;
 * several matches → the user is asked which to use (and "always ask" in Settings → **Link Handlers**
@@ -435,7 +512,7 @@ every edit takes effect **immediately**) and Settings → **Link Handlers** (the
 Apply/OK, plus the global always-ask and extensions-folder preferences). Both write the same
 `resolvers.json`.
 
-### 4.5 Testing without the app
+### 4.7 Testing without the app
 
 Both contracts are pure interfaces over `String`/`Long` values — instantiate them directly in a unit
 test, no Blaze on the classpath:
@@ -451,15 +528,18 @@ class AcmeShareResolverTest {
 ```
 
 Keep the HTML fixtures as strings so you can assert on the *error* paths too — the messages you throw
-are the messages your users read.
+are the messages your users read. Also run your `resolver.json` text through
+`org.blaze.resolver.api.ResolverManifest.parse` in a test: a manifest that fails validation costs you
+every install silently — the jar is simply skipped, with a log line and no stack trace.
 
-### 4.6 Configurable handlers: options, multiple links & priority
+### 4.8 Configurable handlers: options, multiple links & priority
 
 A plain `LinkResolver` is single-link and option-free. To publish user-editable settings, return
 several links from one page, or honour the subsystem's HTTP timeout, implement the
 `ConfigurableLinkResolver` sub-interface instead. It **extends** `LinkResolver`, so it is discovered
-through the same `META-INF/services/org.blaze.resolver.api.LinkResolver` file — you do **not** add a
-second service entry — and existing single-link jars keep working untouched.
+exactly the same way — through the manifest's `mainClass` or the very same
+`META-INF/services/org.blaze.resolver.api.LinkResolver` file (no second service entry) — and its
+options persist under the manifest's `id`.
 
 ```kotlin
 interface ConfigurableLinkResolver : LinkResolver {
@@ -527,8 +607,9 @@ Plugin code is untrusted, so Blaze wraps every entry point (`SafeThemeProvider`,
 | What fails                              | What the user sees                                                           |
 |-----------------------------------------|------------------------------------------------------------------------------|
 | Jar unreadable / not a zip              | Skipped at scan; logged. Nothing in the list.                                |
-| Constructor throws, missing class       | That provider is skipped; other providers **in the same jar** still load.    |
-| `id`/`displayName`/`description` throws | Listed under a synthetic `invalid:<jar-name>` id so it can still be removed. |
+| Handler manifest missing / malformed / schema too new | Jar **never loads** — skipped with a readable reason, logged and reported as a rejected jar. |
+| `minAppVersion` above the running Blaze | Same: skipped with "requires Blaze >= X"; no plugin code ran.                |
+| `mainClass` missing / not an SPI / its constructor throws | The jar contributes nothing (logged); other jars keep loading.         |
 | `canResolve` throws                     | Treated as `false` — the handler simply never matches.                       |
 | `optionDescriptors`/`settings()` throws | Falls back to an empty form / default config — the config gear just shows nothing to edit. |
 | `applySettings` throws                  | Swallowed; the handler resolves with whatever config it last held.           |
@@ -538,10 +619,15 @@ Plugin code is untrusted, so Blaze wraps every entry point (`SafeThemeProvider`,
 
 Consequences worth internalizing:
 
+* **Metadata never executes code.** Names, bylines, icons and the consent prompt's "what does this
+  jar claim?" all come from the manifest, read off the zip — an approved prompt already showed the
+  handler's `displayName`, author/version byline and claimed `urlPatterns` before a single class
+  loaded.
 * **`NoClassDefFoundError` is a normal outcome**, not a fatal one — typically you bundled (or failed
   to bundle) a dependency. Version mismatches degrade to a disabled extension, never a crash.
 * Because a broken extension is *silent-ish*, always check Settings → Themes / Link Handlers after
-  installing: if it isn't listed, the jar wasn't discovered.
+  installing: if it isn't listed, the jar wasn't discovered (or its manifest was refused — the reason
+  is in the log).
 * Uninstalling from Settings deletes the jar. Doing it by hand works too — press **Reload**.
 * This is defense-in-depth, **not** a security boundary. Installing a jar runs its code with the
   user's permissions; ship only jars users trust, and never put secrets in a handler's source.
@@ -559,11 +645,16 @@ Consequences worth internalizing:
 - [ ] Verified: appears in Settings → Themes, previews on Apply, survives a restart.
 
 **Link handler**
+- [ ] `META-INF/blaze/resolver.json` ships inside the jar and parses — verify it through
+      `ResolverManifest.parse` or a `peekManifest`-style read before publishing.
+- [ ] Manifest `id` chosen once, never reused, never changed (`[a-z0-9][a-z0-9_-]*`).
+- [ ] `urlPatterns` claims every URL shape the handler supports (or is left empty to stay unrestricted).
+- [ ] Icons declared as jar-root-relative PNG/SVG paths; dark variants optional, missing assets degrade to the placeholder.
+- [ ] `minAppVersion` only set when the handler genuinely needs a future Blaze build.
 - [ ] `canResolve` is host/path-only, allocation-light, no network.
 - [ ] HTTP client has connect/read timeouts.
 - [ ] Every failure path throws a message a user can act on.
 - [ ] Required `Referer`/`User-Agent` returned in `ResolvedLink.headers`.
 - [ ] `fileName`/`sizeBytes` omitted rather than guessed.
-- [ ] Icon is PNG (or left out), read from your own jar.
 - [ ] Configurable handlers: descriptors are cheap/stable data, values read via `ResolverConfig`, no I/O in `applySettings`.
 - [ ] Verified against a real page *and* a page that no longer exists.

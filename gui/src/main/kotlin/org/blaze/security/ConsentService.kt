@@ -33,18 +33,35 @@ enum class ConsentSubjectKind {
 }
 
 /**
+ * What a jar's manifest says about itself, read *without running any of its code* (the plugin
+ * loader peeks the zip entry directly). The consent prompt uses it to tell the user which handler
+ * is asking, who wrote it and which URLs it claims to intercept - before a single class loads.
+ */
+data class ExtensionDescriptor(
+    val name: String,
+    val author: String,
+    val version: String,
+    val urlPatterns: List<String>,
+)
+
+/**
  * One unanswered approval sitting in front of the user.
  *
  * The data layer only ever describes the subject - [subjectName] is the client's self-declared
- * display name or the jar's file name, [subjectDetail] the stable id / content hash - and the dialog
- * composes the "here is what accepting means" copy around it. A request is answered through
- * [ConsentService.respond]; closing the dialog unanswered counts as a rejection.
+ * display name or the extension's manifest name (falling back to the jar's file name),
+ * [subjectDetail] the stable id / content hash, and the optional [author] / [version] /
+ * [urlPatterns] the manifest projection the dialog turns into app-owned localized wording. A
+ * request is answered through [ConsentService.respond]; closing the dialog unanswered counts as
+ * a rejection.
  */
 data class ConsentRequest(
     val id: Long,
     val kind: ConsentSubjectKind,
     val subjectName: String,
     val subjectDetail: String,
+    val author: String? = null,
+    val version: String? = null,
+    val urlPatterns: List<String> = emptyList(),
 )
 
 /**
@@ -66,6 +83,12 @@ data class ConsentRequest(
 class ConsentService(
     private val appSettingsRepository: AppSettingsRepository,
     private val scope: CoroutineScope,
+    /**
+     * Code-free view into an extension jar's manifest, consulted when prompting so the dialog can
+     * name the handler and its author instead of a bare file name. Absent metadata is not fatal:
+     * the prompt degrades to the file-name form.
+     */
+    private val extensionDescriptor: (ConsentSubjectKind, Path) -> ExtensionDescriptor? = { _, _ -> null },
 ) : ClientConsentGate {
     private val logger = LoggerFactory.getLogger(ConsentService::class.java)
     private val nextId = AtomicLong()
@@ -140,12 +163,17 @@ class ConsentService(
         if (settings.trustedExtensions.any { it.sha256 == hash && it.kind == kind.name }) return ConsentDecision.ALLOW_ALWAYS
         if (runScopedExtensions.containsKey(hashKey(kind, hash))) return ConsentDecision.ALLOW_ONCE
 
+        val descriptor = runCatching { extensionDescriptor(kind, jar) }.getOrNull()
+        val byName = descriptor?.name?.takeIf { it.isNotBlank() }
         val decision = prompt(
             ConsentRequest(
                 nextId.getAndIncrement(),
                 kind,
-                jar.fileName?.toString() ?: jar.toString(),
+                byName ?: (jar.fileName?.toString() ?: jar.toString()),
                 hash,
+                author = descriptor?.author?.takeIf { it.isNotBlank() },
+                version = descriptor?.version?.takeIf { it.isNotBlank() },
+                urlPatterns = descriptor?.urlPatterns.orEmpty(),
             )
         )
         when (decision) {
