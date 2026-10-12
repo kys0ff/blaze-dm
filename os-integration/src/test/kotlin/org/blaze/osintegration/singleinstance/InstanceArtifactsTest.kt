@@ -103,6 +103,27 @@ class InstanceArtifactsTest {
     }
 
     @Test
+    fun `a lock this very JVM holds is owned, not free - and never swept`() {
+        val dir = populatedDir()
+        val holder = InstanceLock(ServicePaths.instanceLockFileFor(dir))
+        assertTrue(holder.acquire(), "this process plays the running instance")
+        try {
+            // The JDK reports a same-JVM re-lock as an *overlapping* lock, never as a silent win. A
+            // probe that cannot see that reads "our own coordinator owns this" as failure: every real
+            // Blaze startup logged a phantom single-instance error (and nearly deleted its own live
+            // socket) through exactly this path. Ownership must come back as owned, quietly.
+            assertTrue(InstanceArtifacts.isOwned(dir), "held by us is still held")
+            assertEquals(emptyList(), InstanceArtifacts.clear(dir, includeToken = true), "our own channel is not debris")
+            assertTrue(Files.exists(ServicePaths.instanceSocketFileFor(dir)), "the live owner's socket survives the sweep")
+        } finally {
+            holder.close()
+        }
+
+        assertFalse(InstanceArtifacts.isOwned(dir), "the sweep may work once the owner is gone")
+        assertTrue(ServicePaths.instanceSocketFileFor(dir) in InstanceArtifacts.clear(dir, includeToken = true))
+    }
+
+    @Test
     fun `the channel of a running instance is never deleted`() {
         val dir = populatedDir()
         val java = Path.of(System.getProperty("java.home"), "bin", "java")

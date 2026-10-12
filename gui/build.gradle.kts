@@ -124,8 +124,17 @@ compose.desktop {
             vendor = "kys0ff"
             copyright = "© 2026 kys0ff. All rights reserved."
 
+            // An explicit module list switches jpackage off its automatic jdeps sweep: *every* JDK module
+            // the app needs at runtime must be named here or it is simply absent from the jlink image
+            // (dev runs on a full JDK and never notice).
+            // - jdk.httpserver: com.sun.net.httpserver backs the local download API (LocalApiServer);
+            //   without it the packaged service dies with NoClassDefFoundError and reports "Stopped".
+            // - jdk.security.auth: dbus-java's SASL handshake needs com.sun.security.auth.UnixSystem;
+            //   without it the SNI tray silently disappears.
+            // - java.net.http: the Ktor/Java client the engine and CLI use.
             modules(
                 "java.net.http",
+                "jdk.httpserver",
                 "jdk.security.auth",
             )
 

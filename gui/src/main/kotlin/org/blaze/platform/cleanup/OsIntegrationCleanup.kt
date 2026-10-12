@@ -133,13 +133,12 @@ class OsIntegrationCleanup(
         val lockFile = ServicePaths.lockFileFor(storageDir)
         // An absent lock file cannot be held, and ServiceLock creates the file it locks: asking whether
         // a service is running must not leave a file behind in a directory we were only asked to sweep.
-        if (Files.exists(lockFile)) {
-            val probe = ServiceLock(lockFile)
-            if (!probe.acquire()) {
-                logger.info("Leaving the local-API files in {} alone: a running service owns them.", storageDir)
-                return emptyList()
-            }
-            probe.close()
+        // Held by *anyone* - another process or this JVM's own launcher - means the endpoint is live and
+        // off-limits; a probe never releases or claims anything (a same-JVM re-lock is reported as an
+        // overlap, not as a win we are free to hand back).
+        if (Files.exists(lockFile) && !ServiceLock.isFree(lockFile)) {
+            logger.info("Leaving the local-API files in {} alone: a running service owns them.", storageDir)
+            return emptyList()
         }
         val candidates = buildList {
             add(ServicePaths.endpointFileFor(storageDir))

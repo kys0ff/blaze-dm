@@ -38,21 +38,20 @@ object InstanceArtifacts {
         add(ServicePaths.instanceTokenFileFor(storageDir))
     }
 
-    /** True when a live process currently holds the data directory's ownership lock. */
+    /**
+     * True while the ownership lock is live *somewhere*: held by this process (the JDK reports a
+     * same-JVM re-lock as an overlapping lock, not as a refusal) or by another instance. Either way
+     * the channel is in use and none of it may be deleted.
+     */
     fun isOwned(storageDir: Path): Boolean {
         val lockFile = ServicePaths.instanceLockFileFor(storageDir)
         // A lock file that was never created cannot be held. Probing it anyway would be wrong twice
-        // over: [InstanceLock.acquire] creates the file it locks, so a read-only question would leave
+        // over: a lock-taking probe creates the file it locks, so a read-only question would leave
         // a zero-byte file behind, and the sweep that then follows would report deleting a file it had
         // just invented - making an already-clean install look like it needed cleaning on every run.
+        // ([InstanceLock.probe] answers without creating or claiming anything.)
         if (!Files.exists(lockFile)) return false
-        val probe = InstanceLock(lockFile)
-        return if (probe.acquire()) {
-            probe.close()
-            false
-        } else {
-            true
-        }
+        return InstanceLock.probe(lockFile) != InstanceLock.LockProbe.FREE
     }
 
     /**

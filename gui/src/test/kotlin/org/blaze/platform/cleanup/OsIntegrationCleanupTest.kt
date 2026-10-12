@@ -152,6 +152,10 @@ class OsIntegrationCleanupTest {
             assertFalse(ServicePaths.instanceSocketFileFor(storageDir) in report.removed)
             assertTrue(Files.exists(ServicePaths.endpointFileFor(storageDir)), "a live API's descriptor stays")
             assertTrue(Files.exists(ServicePaths.instanceSocketFileFor(storageDir)), "a live owner's socket stays")
+            // A same-JVM re-lock surfaces as an OverlappingFileLockException, not as a refusal the
+            // probe could formerly misread as "free" - which used to hand this process's own
+            // endpoint file to the sweep and release the live service's lock out from under it.
+            assertEquals(emptyList(), report.removed, "nothing this JVM owns is debris")
         } finally {
             instanceLock.close()
             apiLock.close()
