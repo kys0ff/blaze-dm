@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.runBlocking
@@ -38,6 +39,9 @@ class AppShell internal constructor(
 ) {
     /** Whether the app is in its real shutdown path (as opposed to hidden to the tray). */
     private var exiting = false
+
+    /** The floating size captured the last time [maximizeWindow] ran, which [restoreWindow] writes back. */
+    private var normalSize: DpSize? = null
 
     /**
      * Surface the window for an external open / Dock reopen: un-hide when minimized to tray and
@@ -80,6 +84,35 @@ class AppShell internal constructor(
 
     /** Fold a title-bar minimize into the single hide-to-tray model. */
     fun onMinimize() = hideToTray()
+
+    /**
+     * Whether the frame currently fills the screen. Read through [WindowState.placement], which
+     * Compose keeps in sync with the OS — so a maximize done by the window manager (or the title-bar
+     * button) is visible to the window menu too, not just one done through this shell.
+     */
+    fun isMaximized(): Boolean = windowState.placement == WindowPlacement.Maximized
+
+    /**
+     * Maximize the frame, remembering the floating size [restoreWindow] goes back to. Compose
+     * mirrors the maximized bounds into `windowState.size`, so the normal size has to be captured
+     * while the window is still floating — exactly like the OS remembering its own restore bounds.
+     */
+    fun maximizeWindow() {
+        if (isMaximized()) return
+        normalSize = windowState.size
+        windowState.placement = WindowPlacement.Maximized
+    }
+
+    /**
+     * Drop the frame back to floating at the size it had before it was maximized. When the maximize
+     * happened outside this shell nothing was captured, and writing no size lets the window manager
+     * restore its own pre-maximize bounds.
+     */
+    fun restoreWindow() {
+        if (!isMaximized()) return
+        normalSize?.let { windowState.size = it }
+        windowState.placement = WindowPlacement.Floating
+    }
 
     /** Shut the download service down cleanly and exit the Compose application. */
     fun quit() {

@@ -38,6 +38,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -52,6 +53,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -87,6 +92,8 @@ sealed class MenuEntry {
     /**
      * A leaf item. [checked] drives the icon column: `null` is an ordinary row, `true`/`false` is a
      * check or radio row, which the IDE marks in the icon column rather than with a box.
+     * [mnemonic] is the index inside [label] of the character drawn underlined, like the classic
+     * system menus' access keys; `null` (the default) prints the label plain.
      */
     data class Action(
         override val label: String,
@@ -94,6 +101,7 @@ sealed class MenuEntry {
         val accelerator: String? = null,
         override val enabled: Boolean = true,
         val checked: Boolean? = null,
+        val mnemonic: Int? = null,
         val onClick: () -> Unit = {},
     ) : MenuEntry()
 
@@ -483,7 +491,7 @@ internal class BlazeMenuModel(entries: List<MenuEntry>) {
     private fun rowAt(level: Int, position: Offset): Int? {
         val entries = entriesAt(level)
         // Exact containment first. Every row's bounds are inflated for the *level* scan (crossing a
-        // submenu diagonally must not read as leaving), but neighbouring rows' inflated bounds overlap
+        // submenu diagonally must not read as leaving), but neighboring rows' inflated bounds overlap
         // each other, so a tolerance-first scan hands the highlight to the row above or below the one
         // the pointer is actually on — the reported "highlight jumps before the cursor arrives". The
         // inflated pass only remains as the bridge over real gaps no exact row owns: separator margins
@@ -609,6 +617,9 @@ private fun Rect.withTolerance(px: Float): Rect = if (this == Rect.Zero) this el
  *   width and reports its own drawn width back, so every menu in the app comes out one width like the
  *   IDE's, whoever opened it. The screenshot harness opts out to keep its reference shots at each
  *   menu's own natural width.
+ * @param squareCorners draws the levels with right-angle corners instead of the theme's radius — the
+ *   classic OS/IDE system-menu look the title-bar window menu uses. Row highlights keep the theme's
+ *   own selection shape; only the popup frame (background, border and shadow) goes square.
  */
 @Composable
 fun BlazeMenu(
@@ -623,6 +634,7 @@ fun BlazeMenu(
     onHeaderHovered: ((Any) -> Unit)? = null,
     onHeaderClicked: ((Any) -> Unit)? = null,
     unifyWidth: Boolean = true,
+    squareCorners: Boolean = false,
 ) {
     val model = remember { BlazeMenuModel(entries) }
     val style = JewelTheme.menuStyle
@@ -666,6 +678,7 @@ fun BlazeMenu(
             onHeaderHovered = onHeaderHovered,
             onHeaderClicked = onHeaderClicked,
             rootWidthGroup = widthGroup,
+            squareCorners = squareCorners,
         )
     }
 
@@ -713,6 +726,7 @@ private fun MenuSurface(
     onHeaderHovered: ((Any) -> Unit)? = null,
     onHeaderClicked: ((Any) -> Unit)? = null,
     rootWidthGroup: MenuWidthGroup? = null,
+    squareCorners: Boolean = false,
 ) {
     val density = LocalDensity.current
     var containerSize by remember { mutableStateOf(Size.Zero) }
@@ -784,6 +798,7 @@ private fun MenuSurface(
                 alignRootToEnd = alignRootToEnd,
                 rootMinWidthPx = if (level == 0) rootWidthPx else 0f,
                 widthGroup = if (level == 0) rootWidthGroup else null,
+                squareCorners = squareCorners,
             )
         }
     }
@@ -818,6 +833,7 @@ private fun MenuLevel(
     alignRootToEnd: Boolean,
     rootMinWidthPx: Float = 0f,
     widthGroup: MenuWidthGroup? = null,
+    squareCorners: Boolean = false,
 ) {
     val entries = model.entriesAt(level)
     if (entries.isEmpty()) return
@@ -833,7 +849,9 @@ private fun MenuLevel(
         rootGapPx = rootGapPx,
     )
 
-    val shape = RoundedCornerShape(style.metrics.cornerSize)
+    // The system-menu look trades the theme's popup radius for right angles; the shadow, background
+    // and border all read one shape, so switching it here squares the whole frame at once.
+    val shape = if (squareCorners) RectangleShape else RoundedCornerShape(style.metrics.cornerSize)
     Box(
         modifier = Modifier
             .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }
@@ -1065,7 +1083,7 @@ private fun MenuRow(
 
         Box(modifier = Modifier.weight(1f)) {
             Text(
-                text = entry.label,
+                text = labelWithMnemonic(entry.label, action?.mnemonic),
                 style = JewelTheme.typography.regular,
                 color = contentColor,
                 maxLines = 1,
@@ -1091,3 +1109,18 @@ private fun MenuRow(
         }
     }
 }
+
+/**
+ * The row label with the character at [index] underlined, the way classic system menus mark their
+ * access keys. A `null` or out-of-range index draws the label plain: the mnemonic is presentation
+ * only, and a bad index must never keep a menu from drawing.
+ */
+internal fun labelWithMnemonic(label: String, index: Int?): AnnotatedString =
+    if (index == null || index !in label.indices) {
+        AnnotatedString(label)
+    } else {
+        buildAnnotatedString {
+            append(label)
+            addStyle(SpanStyle(textDecoration = TextDecoration.Underline), index, index + 1)
+        }
+    }

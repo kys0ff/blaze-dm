@@ -36,9 +36,9 @@ import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.components.platformShortcutLabels
 import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.search.SearchEverywherePopup
-import org.blaze.server.DownloadServiceController
 import org.blaze.presentation.theme.BlazeIslandColors
 import org.blaze.security.ConsentService
+import org.blaze.server.DownloadServiceController
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.koin.compose.koinInject
 import java.awt.Dimension
@@ -75,7 +75,7 @@ fun BlazeWindow(shell: AppShell) {
         // when a focusable node inside that modifier's subtree owns keyboard focus, so at cold start —
         // with focus nowhere in the scene — every app-wide chord was silently dropped. The window's own
         // preview runs for every key event while the frame is focused, independent of the Compose focus
-        // state, and recognises the very [BlazeKeymap.Binding] the menus print, so a shortcut can no
+        // state, and recognizes the very [BlazeKeymap.Binding] the menus print, so a shortcut can no
         // longer be displayed without being handled. The frame owns the two chords that belong to the
         // window itself; everything the downloads screen owns is left to fall through to it.
         onPreviewKeyEvent = { event ->
@@ -221,7 +221,7 @@ fun BlazeWindow(shell: AppShell) {
         ) {
             // The title bar lives inside the providers so its menu tooltips and the hamburger's own
             // shortcut labels read the same OS-formatted accelerators as the rest of the chrome.
-            BlazeTitleBar()
+            BlazeTitleBar(shell)
 
             Box(
                 modifier = Modifier
@@ -260,8 +260,7 @@ fun BlazeWindow(shell: AppShell) {
 
             // The security consent queue, rendered one dialog at a time (oldest first) above every
             // screen. It lives here — composed inside the frame and around the same providers as the
-            // rest of the content — so the DialogWindow takes Blaze's frame as its owner (document-
-            // modal, no taskbar entry) and the copy follows the app strings, theme and RTL like
+            // rest of the content — so the DialogWindow takes Blaze's frame as its owner (document-modal, no taskbar entry) and the copy follows the app strings, theme and RTL like
             // everything else. The shell has already raised the frame when the request arrived;
             // answering (or the request being withdrawn) removes the dialog from the composition and
             // the suspended caller resumes on the service side.

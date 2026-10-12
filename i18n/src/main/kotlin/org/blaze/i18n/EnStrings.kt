@@ -472,6 +472,10 @@ object EnStrings : BlazeStrings {
         override val restartServer = "Restart Server"
         override val copyEndpoint = "Copy Endpoint"
         override val endpointCopied = "Server endpoint copied to the clipboard."
+        override val windowRestore = "Restore"
+        override val windowMinimize = "Minimize"
+        override val windowMaximize = "Maximize"
+        override val windowClose = "Close"
     }
 
     override val serverLog = object : BlazeStrings.ServerLog {

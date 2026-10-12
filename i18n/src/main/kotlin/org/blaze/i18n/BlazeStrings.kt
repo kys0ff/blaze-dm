@@ -599,6 +599,11 @@ interface BlazeStrings {
         val copyEndpoint: String
         /** Toast after copying the running server's endpoint to the clipboard. */
         val endpointCopied: String
+        /** Rows of the window menu the title-bar app icon opens, like the classic system menu. */
+        val windowRestore: String
+        val windowMinimize: String
+        val windowMaximize: String
+        val windowClose: String
     }
 
     /**

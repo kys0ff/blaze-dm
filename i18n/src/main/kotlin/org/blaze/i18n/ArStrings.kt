@@ -478,6 +478,10 @@ object ArStrings : BlazeStrings {
         override val restartServer = "إعادة تشغيل الخادم"
         override val copyEndpoint = "نسخ نقطة النهاية"
         override val endpointCopied = "نُسخَت نقطة نهاية الخادم إلى الحافظة."
+        override val windowRestore = "استعادة"
+        override val windowMinimize = "تصغير"
+        override val windowMaximize = "تكبير"
+        override val windowClose = "إغلاق"
     }
 
     override val serverLog = object : BlazeStrings.ServerLog {
