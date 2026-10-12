@@ -154,6 +154,8 @@ compose.desktop {
 
             windows {
                 iconFile = file("src/main/resources/app-icon.ico")
+                perUserInstall = true
+                dirChooser = true
                 upgradeUuid = "7dc9b2e1-34f5-4c6a-9b3d-0a2e7b1c8f55"
 
                 fileAssociation(
