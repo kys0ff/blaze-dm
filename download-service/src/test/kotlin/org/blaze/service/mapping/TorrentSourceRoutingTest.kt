@@ -138,5 +138,27 @@ class TorrentSourceRoutingTest {
                 it.source.kind to it.source.locator
             },
         )
+        // A magnet whose metainfo the engine cached on disk must still report the magnet, not the
+        // internal cache path - this is the source the user sees and copies.
+        assertEquals(
+            SourceKind.MAGNET to "magnet:?xt=urn:btih:abc",
+            dtoOf(
+                DownloadRequest.Torrent(
+                    "a",
+                    TorrentSource.File(Path.of("/cache/abc.torrent"), TorrentSource.Magnet("magnet:?xt=urn:btih:abc")),
+                    dir.resolve("a"),
+                ),
+            ).let { it.source.kind to it.source.locator },
+        )
+        assertEquals(
+            SourceKind.TORRENT_URL to "https://x.dev/a.torrent",
+            dtoOf(
+                DownloadRequest.Torrent(
+                    "a",
+                    TorrentSource.File(Path.of("/cache/abc.torrent"), TorrentSource.Url("https://x.dev/a.torrent")),
+                    dir.resolve("a"),
+                ),
+            ).let { it.source.kind to it.source.locator },
+        )
     }
 }

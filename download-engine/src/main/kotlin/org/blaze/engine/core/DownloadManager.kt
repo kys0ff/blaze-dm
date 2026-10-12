@@ -231,10 +231,22 @@ class DownloadManager(
                 Path.of(record.destination)
             )
             "TORRENT" -> {
-                val source = when {
-                    record.torrentPath != null -> TorrentSource.File(Path.of(record.torrentPath))
+                // The magnet/URL a record was originally queued with rides in `magnetUri`/`torrentUrl`
+                // even once its metainfo is cached to a `.torrent`, so the restored source keeps the
+                // user-facing locator rather than the cache path.
+                val origin = when {
                     record.magnetUri != null -> TorrentSource.Magnet(record.magnetUri)
                     record.torrentUrl != null -> TorrentSource.Url(record.torrentUrl)
+                    else -> null
+                }
+                val cachedFile = record.torrentPath?.let { Path.of(it) }
+                val source: TorrentSource = when {
+                    // A cache file still on disk lets the transfer skip re-resolving the swarm; the
+                    // origin stays attached so display/copy report what the user actually queued.
+                    cachedFile != null && Files.isRegularFile(cachedFile) -> TorrentSource.File(cachedFile, origin)
+                    // Cache gone (or never built): fall back to the original live source.
+                    origin != null -> origin
+                    cachedFile != null -> TorrentSource.File(cachedFile)
                     else -> error("Torrent record ${record.id} missing every torrent source field")
                 }
                 DownloadRequest.Torrent(record.name, source, Path.of(record.destination), record.fileIndices)
@@ -271,6 +283,10 @@ class DownloadManager(
     private suspend fun writeSnapshot() {
         val currentTasks = tasks.value.values.toList()
         val records = currentTasks.map { task ->
+            val torrentSource = (task.request as? DownloadRequest.Torrent)?.torrentSource
+            // A cached `.torrent` also records the magnet/URL it was resolved from (its origin), so a
+            // restart rebuilds the same user-facing source rather than surfacing the cache path.
+            val effectiveOrigin = (torrentSource as? TorrentSource.File)?.origin ?: torrentSource
             DownloadRecord(
                 id = task.id.value,
                 name = task.name,
@@ -279,9 +295,9 @@ class DownloadManager(
                     is DownloadRequest.Torrent -> "TORRENT"
                 },
                 url = (task.request as? DownloadRequest.Http)?.url,
-                torrentPath = ((task.request as? DownloadRequest.Torrent)?.torrentSource as? TorrentSource.File)?.path?.toString(),
-                magnetUri = ((task.request as? DownloadRequest.Torrent)?.torrentSource as? TorrentSource.Magnet)?.uri,
-                torrentUrl = ((task.request as? DownloadRequest.Torrent)?.torrentSource as? TorrentSource.Url)?.url,
+                torrentPath = (torrentSource as? TorrentSource.File)?.path?.toString(),
+                magnetUri = (effectiveOrigin as? TorrentSource.Magnet)?.uri,
+                torrentUrl = (effectiveOrigin as? TorrentSource.Url)?.url,
                 destination = task.request.destination.toString(),
                 state = serializeState(task.state),
                 totalBytes = task.totalBytes,
@@ -316,7 +332,13 @@ class DownloadManager(
                 val torrentFile = cacheDir.resolve("${id.value}.torrent")
                 Files.write(torrentFile, bytes)
 
-                val newRequest = request.copy(torrentSource = TorrentSource.File(torrentFile))
+                // Swap the live source for its cached metainfo so a restart skips re-resolving the
+                // swarm, but remember the magnet/URL it came from: the displayed/copied source stays
+                // what the user queued, not the internal cache path.
+                val origin = request.torrentSource.takeIf {
+                    it is TorrentSource.Magnet || it is TorrentSource.Url
+                }
+                val newRequest = request.copy(torrentSource = TorrentSource.File(torrentFile, origin))
                 val updatedTask = task.copy(request = newRequest)
                 tasks.update { it + (id to updatedTask) }
                 persist()
@@ -562,7 +584,9 @@ class DownloadManager(
             val key = getCacheKey(request)
             val cachedTorrentFile = repository.storageDir.resolve("cache").resolve("$key.torrent")
             if (Files.isRegularFile(cachedTorrentFile)) {
-                request.copy(torrentSource = TorrentSource.File(cachedTorrentFile))
+                // Keep the magnet/URL as the file's origin so the user still sees (and copies) the
+                // source they actually queued rather than the cached metainfo path.
+                request.copy(torrentSource = TorrentSource.File(cachedTorrentFile, request.torrentSource))
             } else {
                 request
             }

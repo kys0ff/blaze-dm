@@ -195,7 +195,13 @@ class ApplicationDownloadService(
         is org.blaze.engine.api.DownloadRequest.Torrent -> {
             val src = when (val s = request.torrentSource) {
                 is org.blaze.engine.api.TorrentSource.Magnet -> s.uri
-                is org.blaze.engine.api.TorrentSource.File -> s.path.toString()
+                // Sign off the magnet/URL the file was cached from, not the cache path: a magnet
+                // whose metainfo the engine has already cached must still match a re-added magnet.
+                is org.blaze.engine.api.TorrentSource.File -> when (val origin = s.origin) {
+                    is org.blaze.engine.api.TorrentSource.Magnet -> origin.uri
+                    is org.blaze.engine.api.TorrentSource.Url -> origin.url
+                    else -> s.path.toString()
+                }
                 is org.blaze.engine.api.TorrentSource.Url -> s.url
             }
             "torrent|$src|${request.destination}"

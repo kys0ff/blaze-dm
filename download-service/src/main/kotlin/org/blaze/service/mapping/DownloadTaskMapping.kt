@@ -83,7 +83,13 @@ private fun DownloadRequest.toSourceInfo(): SourceInfo = when (this) {
     )
     is DownloadRequest.Torrent -> when (val s = torrentSource) {
         is TorrentSource.Magnet -> SourceInfo(SourceKind.MAGNET, s.uri)
-        is TorrentSource.File -> SourceInfo(SourceKind.TORRENT_FILE, s.path.fileName?.toString() ?: s.path.toString())
+        // A cached metainfo file keeps pointing at whatever the user queued: the internal cache
+        // path is an implementation detail and must never be the copied/shown source.
+        is TorrentSource.File -> when (val origin = s.origin) {
+            is TorrentSource.Magnet -> SourceInfo(SourceKind.MAGNET, origin.uri)
+            is TorrentSource.Url -> SourceInfo(SourceKind.TORRENT_URL, origin.url)
+            else -> SourceInfo(SourceKind.TORRENT_FILE, s.path.fileName?.toString() ?: s.path.toString())
+        }
         is TorrentSource.Url -> SourceInfo(SourceKind.TORRENT_URL, s.url)
     }
 }
