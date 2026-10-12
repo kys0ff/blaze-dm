@@ -109,8 +109,8 @@ fun FilePickerDialog(
 
     BaseDialog(
         onDismiss = onDismiss,
-        width = 620.dp,
         height = 520.dp,
+        width = 620.dp,
         requestFocus = false,
         title = actualTitle
     ) {

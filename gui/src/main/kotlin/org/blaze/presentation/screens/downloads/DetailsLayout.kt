@@ -81,7 +81,7 @@ const val WINDOW_MODE_CONTENT_FRACTION = 0.35f
 
 /**
  * The split fraction to keep when the pane takes a new [mode]. Entering [DetailsViewMode.WINDOW] moves
- * the split once, to honour the larger share the mode promises; every other mode leaves the split
+ * the split once, to honor the larger share the mode promises; every other mode leaves the split
  * exactly where the user dragged it, so switching away and back never loses a size.
  */
 fun contentFractionForViewMode(mode: DetailsViewMode, currentFraction: Float): Float =
