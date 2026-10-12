@@ -15,12 +15,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import org.blaze.data.AppSettingsRepository
+import org.blaze.download.api.ApiCapabilities
+import org.blaze.download.api.AuthMode
+import org.blaze.download.api.BandwidthControlSupport
+import org.blaze.download.api.DownloadPriority
+import org.blaze.download.api.DownloadsApi
+import org.blaze.download.api.NewDownloadRequest
+import org.blaze.download.api.PrioritySupport
 import org.blaze.i18n.EnStrings
 import org.blaze.presentation.application.AppShell
 import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.components.rememberMenuAnchorAt
 import org.blaze.presentation.theme.BlazeTheme
+import org.blaze.tray.api.TrayConfig
+import org.blaze.tray.api.TrayService
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -227,15 +236,15 @@ class WindowSystemMenuTest {
         )
 
         /** The tray-less environment: [AppShell.onCloseRequest] then takes the quit path. */
-        private object NoTray : org.blaze.tray.api.TrayService {
+        private object NoTray : TrayService {
             override val isSupported = false
-            override fun install(config: org.blaze.tray.api.TrayConfig) = Unit
+            override fun install(config: TrayConfig) = Unit
             override fun setWindowVisible(visible: Boolean) = Unit
             override fun dispose() = Unit
         }
 
-        private inner class FakeApi : org.blaze.download.api.DownloadsApi {
-            override val capabilities = org.blaze.download.api.ApiCapabilities(
+        private inner class FakeApi : DownloadsApi {
+            override val capabilities = ApiCapabilities(
                 apiVersion = 1,
                 supportsHttp = true,
                 supportsHttps = true,
@@ -247,9 +256,9 @@ class WindowSystemMenuTest {
                 supportsRetry = true,
                 supportsScheduling = false,
                 supportsEventStream = true,
-                bandwidthControl = org.blaze.download.api.BandwidthControlSupport.GLOBAL_ONLY,
-                prioritySupport = org.blaze.download.api.PrioritySupport.EXPLICIT,
-                authentication = org.blaze.download.api.AuthMode.BEARER_TOKEN,
+                bandwidthControl = BandwidthControlSupport.GLOBAL_ONLY,
+                prioritySupport = PrioritySupport.EXPLICIT,
+                authentication = AuthMode.BEARER_TOKEN,
                 requiresLocalhost = true,
             )
 
@@ -257,15 +266,15 @@ class WindowSystemMenuTest {
             override fun observe() = TODO()
             override fun events() = TODO()
             override suspend fun get(id: String) = TODO()
-            override suspend fun create(request: org.blaze.download.api.NewDownloadRequest) = TODO()
+            override suspend fun create(request: NewDownloadRequest) = TODO()
             override suspend fun start(id: String) = TODO()
             override suspend fun pause(id: String) = TODO()
             override suspend fun resume(id: String) = TODO()
             override suspend fun cancel(id: String) = TODO()
             override suspend fun retry(id: String) = TODO()
             override suspend fun remove(id: String, deleteFiles: Boolean) = TODO()
-            override suspend fun setPriority(id: String, priority: org.blaze.download.api.DownloadPriority) = TODO()
-            override suspend fun probe(request: org.blaze.download.api.NewDownloadRequest) = TODO()
+            override suspend fun setPriority(id: String, priority: DownloadPriority) = TODO()
+            override suspend fun probe(request: NewDownloadRequest) = TODO()
             override suspend fun prepareTorrent(url: String, credentials: Map<String, String>) = TODO()
             override suspend fun detectPortable(path: String) = TODO()
             override suspend fun importPortable(artifactPath: String, destinationDir: String) = TODO()

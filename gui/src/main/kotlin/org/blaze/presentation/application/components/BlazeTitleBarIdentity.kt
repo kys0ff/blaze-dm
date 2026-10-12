@@ -81,99 +81,106 @@ private fun WindowIconButton(shell: AppShell) {
     var hovered by remember { mutableStateOf(false) }
     var pressed by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = anchor.trackingModifier
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
+    // The menu's Popup is emitted as a layout child of whatever container surrounds it, and the
+    // title-bar Row's `spacedBy` adds a gap in front of every child — including that zero-width node.
+    // Without this own Box, opening the menu would inject an extra gap and shove the widgets to the
+    // right. Wrapping keeps the Popup a child of this Box (which stacks, no inter-child spacing), so
+    // the Row always sees exactly one child here, menu open or not.
+    Box {
+        Box(
+            modifier = anchor.trackingModifier
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
 
-                        when (event.type) {
-                            PointerEventType.Enter -> {
-                                hovered = true
+                            when (event.type) {
+                                PointerEventType.Enter -> {
+                                    hovered = true
+                                }
+
+                                PointerEventType.Exit -> {
+                                    hovered = false
+                                    pressed = false
+                                }
+
+                                else -> Unit
                             }
-
-                            PointerEventType.Exit -> {
-                                hovered = false
-                                pressed = false
-                            }
-
-                            else -> Unit
                         }
                     }
                 }
-            }
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    var pressedButton: PointerButton? = null
-                    var validClick = true
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        var pressedButton: PointerButton? = null
+                        var validClick = true
 
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
 
-                        when (event.type) {
-                            PointerEventType.Press -> {
-                                pressedButton = event.button
+                            when (event.type) {
+                                PointerEventType.Press -> {
+                                    pressedButton = event.button
 
-                                if (
-                                    event.button == PointerButton.Primary ||
-                                    event.button == PointerButton.Secondary
-                                ) {
-                                    pressed = true
+                                    if (
+                                        event.button == PointerButton.Primary ||
+                                        event.button == PointerButton.Secondary
+                                    ) {
+                                        pressed = true
+                                        event.changes.forEach { it.consume() }
+                                    } else {
+                                        validClick = false
+                                    }
+                                }
+
+                                PointerEventType.Release -> {
+                                    val button = pressedButton ?: event.button
+
                                     event.changes.forEach { it.consume() }
-                                } else {
+                                    pressed = false
+
+                                    if (
+                                        validClick &&
+                                        (
+                                                button == PointerButton.Primary ||
+                                                        button == PointerButton.Secondary
+                                                )
+                                    ) {
+                                        menuOpen = true
+                                    }
+
+                                    break
+                                }
+
+                                PointerEventType.Exit -> {
                                     validClick = false
-                                }
-                            }
-
-                            PointerEventType.Release -> {
-                                val button = pressedButton ?: event.button
-
-                                event.changes.forEach { it.consume() }
-                                pressed = false
-
-                                if (
-                                    validClick &&
-                                    (
-                                            button == PointerButton.Primary ||
-                                                    button == PointerButton.Secondary
-                                            )
-                                ) {
-                                    menuOpen = true
+                                    pressed = false
+                                    break
                                 }
 
-                                break
+                                else -> Unit
                             }
-
-                            PointerEventType.Exit -> {
-                                validClick = false
-                                pressed = false
-                                break
-                            }
-
-                            else -> Unit
                         }
                     }
                 }
-            }
-            .padding(2.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = BlazeFlame,
-            contentDescription = null,
-            tint = Color.Unspecified,
-            modifier = Modifier.size(20.dp),
-        )
-    }
+                .padding(2.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = BlazeFlame,
+                contentDescription = null,
+                tint = Color.Unspecified,
+                modifier = Modifier.size(20.dp),
+            )
+        }
 
-    if (menuOpen) {
-        WindowSystemMenu(
-            shell = shell,
-            anchor = anchor,
-            onDismissRequest = {
-                menuOpen = false
-            },
-        )
+        if (menuOpen) {
+            WindowSystemMenu(
+                shell = shell,
+                anchor = anchor,
+                onDismissRequest = {
+                    menuOpen = false
+                },
+            )
+        }
     }
 }
