@@ -1,17 +1,14 @@
 package org.blaze.presentation.screens.extensions
 
 import cafe.adriel.voyager.core.model.screenModelScope
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.blaze.data.AppSettingsRepository
 import org.blaze.presentation.components.panel.ExtensionsLayoutStore
 import org.blaze.presentation.components.panel.MIN_SPLIT_FRACTION
-import org.blaze.presentation.components.panel.ToolWindowLayout
 import org.blaze.presentation.components.panel.ToolWindowLayoutAction
 import org.blaze.presentation.components.panel.ToolWindowMoveTo
 import org.blaze.presentation.components.panel.ToolWindowResize
@@ -30,10 +27,11 @@ import java.nio.file.Path
 
 /**
  * One handler as the Extensions panel renders it: identity for the row, the live enable/priority
- * state pulled from the repository, and the option descriptors the config gear edits.
+ * state pulled from the repository, the option descriptors the config gear edits, and the icon bytes
+ * preloaded by the model so the row draws its icon without a registry lookup of its own.
  *
- * [resolver] is carried so the row can draw its icon through
- * [org.blaze.presentation.components.ExtensionIcon] without a second registry lookup.
+ * [resolver] is still carried for callers that need the underlying handler; the panel itself only
+ * reads [iconBytes].
  */
 data class ExtensionUiRow(
     val id: String,
@@ -44,16 +42,19 @@ data class ExtensionUiRow(
     val priority: Int,
     val options: List<ResolverOption>,
     val resolver: LoadedResolver,
+    val iconBytes: ByteArray? = null,
 )
 
 /**
  * Folds the handler list and the persisted settings into the rows the panel renders. Kept as a
- * pure function (the option descriptors arrive through [descriptorsOf], so the caller can supply
- * them from the registry) so the state mapping is unit-testable without a coroutine scope.
+ * pure function (the option descriptors arrive through [descriptorsOf] and the icon bytes through
+ * [iconBytesOf], so the caller supplies both from the registry) so the state mapping is
+ * unit-testable without a coroutine scope.
  */
 internal fun buildExtensionRows(
     handlers: List<LoadedResolver>,
     settings: ResolverSettings,
+    iconBytesOf: (LoadedResolver) -> ByteArray? = { null },
     descriptorsOf: (LoadedResolver) -> List<ResolverOption>,
 ): List<ExtensionUiRow> = handlers.map { loaded ->
     ExtensionUiRow(
@@ -65,6 +66,7 @@ internal fun buildExtensionRows(
         priority = settings.slice(loaded.resolver.id).priority,
         options = descriptorsOf(loaded),
         resolver = loaded,
+        iconBytes = iconBytesOf(loaded),
     )
 }
 
@@ -109,7 +111,9 @@ class ExtensionsWindowModel(
     /** The live rows: registry handlers folded with the persisted resolver settings. */
     private val rows: StateFlow<List<ExtensionUiRow>> =
         combine(registry.handlers, settingsRepository.settings) { handlers, settings ->
-            buildExtensionRows(handlers, settings) { registry.optionDescriptors(it) }
+            buildExtensionRows(handlers, settings, iconBytesOf = { registry.loadIconBytes(it) }) {
+                registry.optionDescriptors(it)
+            }
         }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** The window's docked layout folded with the current rows, so a single collect drives the whole pane. */
@@ -206,4 +210,10 @@ class ExtensionsWindowModel(
         }
         onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(fraction))
     }
+
+    /**
+     * The persisted option values for a handler, read through the registry so the config dialog opens on
+     * current state — the panel never resolves the registry itself.
+     */
+    fun handlerOptionValues(id: String): Map<String, String> = registry.handlerSettings(id).values
 }

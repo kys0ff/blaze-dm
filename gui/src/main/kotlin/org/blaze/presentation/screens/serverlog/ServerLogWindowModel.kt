@@ -5,6 +5,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import org.blaze.data.AppSettingsRepository
+import org.blaze.logging.LogEntry
+import org.blaze.logging.ServerLogRepository
+import org.blaze.presentation.application.AppCommand
+import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.panel.MIN_SPLIT_FRACTION
 import org.blaze.presentation.components.panel.ServerLogLayoutStore
 import org.blaze.presentation.components.panel.ToolWindowLayout
@@ -13,6 +17,8 @@ import org.blaze.presentation.components.panel.ToolWindowMoveTo
 import org.blaze.presentation.components.panel.ToolWindowResize
 import org.blaze.presentation.components.panel.ToolWindowScreenModel
 import org.blaze.presentation.components.panel.ToolWindowViewMode
+import org.blaze.server.ServerStatus
+import java.nio.file.Path
 
 /**
  * Everything the Server Logs tool window presents: its docked layout (inherited from
@@ -41,13 +47,36 @@ data class ServerLogWindowState(
 
 /**
  * The Server Logs window model. Its docked layout — visibility, view mode, move-to, split and floating
- * bounds — is owned entirely by [ToolWindowScreenModel]; only the find state lives here. Layout changes
+ * bounds — is owned entirely by [ToolWindowScreenModel]; the find state lives here. Layout changes
  * arrive as [ToolWindowLayoutAction]s through [onLayoutEvent]; there are no raw layout setters, so the
  * view and the shell drive this window exactly the way they drive every other pane.
+ *
+ * The model also owns the pane's collaborators, so the composable never resolves them itself: the shared
+ * [ServerLogRepository] supplies the live log stream (exposed as [entries] / [autoScroll], with
+ * [clearLog] to empty it), [serverStatus] reflects the embedded API the shell runs, and the server
+ * lifecycle toggles ([startServer] / [stopServer] / [restartServer] / [copyEndpoint]) are raised on the
+ * [AppCommandBus] rather than touching the launcher here — the shell stays the single owner of it.
+ *
+ * The three collaborators default to inert instances so the reduce-only layout/find behaviour can be unit
+ * tested without wiring the whole graph; production DI supplies the real singletons.
  */
 class ServerLogWindowModel(
     appSettingsRepository: AppSettingsRepository,
+    private val logRepository: ServerLogRepository = ServerLogRepository(autoAttach = false),
+    serverStatusFlow: StateFlow<ServerStatus> = MutableStateFlow(
+        ServerStatus(running = false, boundHost = null, boundPort = -1, tokenFile = Path.of("blaze-token")),
+    ),
+    private val commandBus: AppCommandBus = AppCommandBus(),
 ) : ToolWindowScreenModel(ServerLogLayoutStore(appSettingsRepository)) {
+
+    /** The buffered log lines the pane renders. */
+    val entries: StateFlow<List<LogEntry>> = logRepository.entries
+
+    /** Whether the console should follow the newest line. */
+    val autoScroll: StateFlow<Boolean> = logRepository.autoScroll
+
+    /** The embedded server's live status, read by the header to word its Start/Stop toggles. */
+    val serverStatus: StateFlow<ServerStatus> = serverStatusFlow
 
     private val _state = MutableStateFlow(
         ServerLogWindowState(
@@ -98,6 +127,21 @@ class ServerLogWindowModel(
         }
         onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(fraction))
     }
+
+    // ── log stream & server lifecycle ───────────────────────────────────────────
+
+    /** Empties the in-memory log buffer. */
+    fun clearLog() = logRepository.clear()
+
+    // The toggles are raised on the shared bus rather than calling the launcher: the shell owns the
+    // single process-wide server, so this pane only asks for the action the Tools menu also triggers.
+    fun startServer() = commandBus.send(AppCommand.StartServer)
+
+    fun stopServer() = commandBus.send(AppCommand.StopServer)
+
+    fun restartServer() = commandBus.send(AppCommand.RestartServer)
+
+    fun copyEndpoint() = commandBus.send(AppCommand.CopyServerEndpoint)
 
     // ── find ────────────────────────────────────────────────────────────────────
 

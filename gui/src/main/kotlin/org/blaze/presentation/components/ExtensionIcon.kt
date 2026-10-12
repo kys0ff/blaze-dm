@@ -19,23 +19,20 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.skia.Image as SkiaImage
 
 /**
- * Renders the icon supplied by a link-handler extension. The bytes are pulled through
- * [LinkResolverRegistry.loadIconBytes] (which reads them from the resolver's own class
- * loader, so plugin jars can ship their icon alongside their classes). Falls back to a
- * generic "unknown file" IDE icon when the extension doesn't provide one, the resource is
- * missing, or decoding fails — the resolver is never blamed for a broken asset.
+ * Renders the icon supplied by a link-handler extension from already-loaded [iconBytes]. Falls back to a
+ * generic "unknown file" IDE icon when the bytes are null or decoding fails — the resolver is never
+ * blamed for a broken asset. This overload lets a screen model preload the bytes and hand the pane a plain
+ * value, so the composable need not resolve the registry itself.
  */
 @OptIn(ExperimentalJewelApi::class)
 @Composable
 fun ExtensionIcon(
-    handler: LoadedResolver,
-    registry: LinkResolverRegistry,
+    iconBytes: ByteArray?,
     modifier: Modifier = Modifier,
-    size: Dp = 16.dp
+    size: Dp = 16.dp,
 ) {
-    val bytes = remember(handler) { registry.loadIconBytes(handler) }
-    val bitmap: ImageBitmap? = remember(bytes) {
-        bytes?.let {
+    val bitmap: ImageBitmap? = remember(iconBytes) {
+        iconBytes?.let {
             runCatching { SkiaImage.makeFromEncoded(it).toComposeImageBitmap() }.getOrNull()
         }
     }
@@ -56,4 +53,22 @@ fun ExtensionIcon(
             )
         }
     }
+}
+
+/**
+ * Renders the icon supplied by a link-handler extension. The bytes are pulled through
+ * [LinkResolverRegistry.loadIconBytes] (which reads them from the resolver's own class
+ * loader, so plugin jars can ship their icon alongside their classes). Falls back to a
+ * generic "unknown file" IDE icon when the extension doesn't provide one, the resource is
+ * missing, or decoding fails — the resolver is never blamed for a broken asset.
+ */
+@Composable
+fun ExtensionIcon(
+    handler: LoadedResolver,
+    registry: LinkResolverRegistry,
+    modifier: Modifier = Modifier,
+    size: Dp = 16.dp
+) {
+    val bytes = remember(handler) { registry.loadIconBytes(handler) }
+    ExtensionIcon(iconBytes = bytes, modifier = modifier, size = size)
 }

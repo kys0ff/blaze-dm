@@ -10,6 +10,7 @@ import org.blaze.presentation.screens.main.MainScreenModel
 import org.blaze.presentation.screens.serverlog.ServerLogWindowModel
 import org.blaze.presentation.screens.settings.SettingsScreenModel
 import org.blaze.presentation.screens.settings.SettingsUseCases
+import org.blaze.server.DownloadServiceController
 import org.koin.dsl.module
 
 val screenModelModule = module {
@@ -90,7 +91,15 @@ val screenModelModule = module {
     }
 
     single {
-        ServerLogWindowModel(appSettingsRepository = get())
+        // The Server Logs window model owns its pane's collaborators so the composable resolves none: the
+        // shared log repository supplies the live stream, the controller's status flow feeds the header,
+        // and lifecycle toggles go out on the command bus - the shell still owns the launcher itself.
+        ServerLogWindowModel(
+            appSettingsRepository = get(),
+            logRepository = get(),
+            serverStatusFlow = get<DownloadServiceController>().status,
+            commandBus = get(),
+        )
     }
 
     single {

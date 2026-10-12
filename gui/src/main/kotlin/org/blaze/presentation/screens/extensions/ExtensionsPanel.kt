@@ -31,14 +31,12 @@ import org.blaze.presentation.components.panel.ToolWindowLayoutAction
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
-import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import org.koin.compose.koinInject
 
 /**
  * The Extensions tool window: a live view of the installed link handlers that docks beside the
@@ -64,7 +62,6 @@ fun ExtensionsPanel(
     val eStrings = strings.extensions
     val hStrings = strings.settings.handlers
     val pane = strings.downloads.detailsPane
-    val registry = koinInject<LinkResolverRegistry>()
 
     val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
@@ -133,7 +130,6 @@ fun ExtensionsPanel(
                 state.rows.forEach { row ->
                     ExtensionRow(
                         row = row,
-                        registry = registry,
                         infoStyle = infoStyle,
                         builtinTag = eStrings.builtinTag,
                         pluginTag = eStrings.pluginTag,
@@ -165,7 +161,7 @@ fun ExtensionsPanel(
     }
 
     optionsTarget?.let { row ->
-        val persisted = registry.handlerSettings(row.id).values
+        val persisted = model.handlerOptionValues(row.id)
         ResolverOptionsDialog(
             title = hStrings.optionsTitle(row.displayName),
             descriptors = row.options,
@@ -205,7 +201,6 @@ fun ExtensionsPanel(
 @Composable
 private fun ExtensionRow(
     row: ExtensionUiRow,
-    registry: LinkResolverRegistry,
     infoStyle: androidx.compose.ui.text.TextStyle,
     builtinTag: String,
     pluginTag: String,
@@ -221,7 +216,7 @@ private fun ExtensionRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ExtensionIcon(handler = row.resolver, registry = registry, size = 16.dp)
+            ExtensionIcon(iconBytes = row.iconBytes, size = 16.dp)
             CheckboxRow(
                 text = row.displayName,
                 checked = row.enabled,

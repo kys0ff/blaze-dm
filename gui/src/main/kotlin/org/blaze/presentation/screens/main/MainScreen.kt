@@ -26,8 +26,6 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.logging.ServerLogRepository
-import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.application.components.AboutDialog
 import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BackgroundTasksStatusItem
@@ -54,7 +52,6 @@ import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSpeed
-import org.blaze.server.DownloadServiceController
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
@@ -63,11 +60,6 @@ import org.koin.compose.koinInject
 class MainScreen : Screen {
     @Composable
     override fun Content() {
-        // The shell model owns the window-level, ephemeral UI - the About dialog, the background-tasks
-        // popup, the stripe's selected tool window and the running transfers - and folds the shell's
-        // app-wide commands (About, Server Logs) into them. Everything else stays with the model that
-        // owns it: the downloads list and Details pane with [DownloadsScreenModel], each dockable
-        // window with its own model, so the shell never duplicates their state.
         val shellModel = koinScreenModel<MainScreenModel>()
         val shell by shellModel.state.collectAsState()
 
@@ -75,30 +67,16 @@ class MainScreen : Screen {
         val state by screenModel.state.collectAsState()
         val downloads = state.downloads
         val strings = blazeStrings
-        val commandBus = koinInject<AppCommandBus>()
         val searchController = koinInject<SearchController>()
-        // The Server Logs tool window: its own screen model owns visibility and the docked layout, the
-        // shared repository supplies the live log stream, and the controller is read only for the header's
-        // status word (its lifecycle actions go through the command bus so the shell owns the launcher).
         val logModel = koinScreenModel<ServerLogWindowModel>()
         val logState by logModel.state.collectAsState()
-        val logRepository = koinInject<ServerLogRepository>()
-        val serverController = koinInject<DownloadServiceController>()
 
-        // The Extensions tool window: its own model owns the live handler rows and the docked layout
-        // (the same view-mode / move-to model the Details and Server Logs panes use), so the stripe
-        // raises or lowers a panel beside the list instead of swapping the whole main content.
         val extModel = koinScreenModel<ExtensionsWindowModel>()
         val extState by extModel.state.collectAsState()
 
-        // The Details tool window: like the other two dockable panes it owns its layout through its
-        // own model, so the shell frames it from [DetailsPanelScreenModel] rather than reading layout
-        // off the downloads list.
         val detailsModel = koinScreenModel<DetailsPanelScreenModel>()
         val detailsState by detailsModel.state.collectAsState()
 
-        // Live transfers surfaced in the status bar; QUEUED counts too so the popup shows the whole
-        // pending set. The shell projects them; a row's own pause is still a download lifecycle action.
         val running = shell.running
 
         Navigator(DownloadsScreen()) { navigator ->
@@ -218,9 +196,6 @@ class MainScreen : Screen {
                                         content = {
                                             ServerLogPanel(
                                                 model = logModel,
-                                                repository = logRepository,
-                                                controller = serverController,
-                                                commandBus = commandBus,
                                                 onHide = { logModel.setVisible(false) },
                                             )
                                         }
@@ -444,7 +419,7 @@ class MainScreen : Screen {
     }
 }
 
-fun List<Download>.toStatusSummary(strings: BlazeStrings): String {
+private fun List<Download>.toStatusSummary(strings: BlazeStrings): String {
     val list = this
     val parts = buildList {
         val downloading = list.count { it.state == DownloadState.DOWNLOADING }
@@ -465,7 +440,7 @@ fun List<Download>.toStatusSummary(strings: BlazeStrings): String {
  * The one risk from the whole list that stays on screen: something the running totals in
  * [toStatusSummary] do not say, and that a user could easily pay for by clicking pause.
  */
-fun List<Download>.toStatusAlert(strings: BlazeStrings): String? {
+private fun List<Download>.toStatusAlert(strings: BlazeStrings): String? {
     val attention = attention()
     val advisories = strings.downloads.advisories
     return when {

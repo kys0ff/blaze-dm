@@ -34,9 +34,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.logging.LogEntry
-import org.blaze.logging.ServerLogRepository
-import org.blaze.presentation.application.AppCommand
-import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.BlazeKeymap
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.LocalShortcutLabels
@@ -46,7 +43,6 @@ import org.blaze.presentation.components.ToolWindowSearchField
 import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.components.panel.ToolWindowLayoutAction
 import org.blaze.presentation.theme.BlazeColors
-import org.blaze.server.DownloadServiceController
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
@@ -58,6 +54,9 @@ import org.jetbrains.jewel.ui.typography
  * in-panel find bar. Docking is hoisted to [org.blaze.presentation.screens.main.MainScreen]; this renders
  * the window's own chrome and body and never decides where it sits.
  *
+ * Everything it shows or acts on comes through [ServerLogWindowModel] — the log stream, the server status
+ * and the lifecycle commands it raises on the shell's bus — so the pane resolves no dependencies itself.
+ *
  * Find is scoped to this panel: the root takes focus and installs a preview key handler, so Ctrl+F opens
  * the find bar only while this subtree holds focus (the downloads list keeps its own global Ctrl+F), and
  * Enter / Shift+Enter / Escape drive match navigation while the bar is open.
@@ -65,9 +64,6 @@ import org.jetbrains.jewel.ui.typography
 @Composable
 fun ServerLogPanel(
     model: ServerLogWindowModel,
-    repository: ServerLogRepository,
-    controller: DownloadServiceController,
-    commandBus: AppCommandBus,
     onHide: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -76,9 +72,9 @@ fun ServerLogPanel(
     val options = strings.downloads.detailsPane.options
     val shortcuts = LocalShortcutLabels.current
     val state by model.state.collectAsState()
-    val entries by repository.entries.collectAsState()
-    val autoScroll by repository.autoScroll.collectAsState()
-    val status by controller.status.collectAsState()
+    val entries by model.entries.collectAsState()
+    val autoScroll by model.autoScroll.collectAsState()
+    val status by model.serverStatus.collectAsState()
     val running = status.running
 
     val listState = rememberLazyListState()
@@ -143,29 +139,29 @@ fun ServerLogPanel(
                     key = AllIconsKeys.Actions.Execute,
                     tooltip = log.startAction,
                     enabled = !running,
-                    onClick = { commandBus.send(AppCommand.StartServer) },
+                    onClick = { model.startServer() },
                 )
                 ToolbarIconButton(
                     key = AllIconsKeys.Run.Stop,
                     tooltip = log.stopAction,
                     enabled = running,
-                    onClick = { commandBus.send(AppCommand.StopServer) },
+                    onClick = { model.stopServer() },
                 )
                 ToolbarIconButton(
                     key = AllIconsKeys.Actions.Restart,
                     tooltip = log.restartAction,
                     enabled = running,
-                    onClick = { commandBus.send(AppCommand.RestartServer) },
+                    onClick = { model.restartServer() },
                 )
                 ToolbarIconButton(
                     key = AllIconsKeys.Actions.Copy,
                     tooltip = log.endpoint,
-                    onClick = { commandBus.send(AppCommand.CopyServerEndpoint) },
+                    onClick = { model.copyEndpoint() },
                 )
                 ToolbarIconButton(
                     key = AllIconsKeys.General.Delete,
                     tooltip = log.clearAction,
-                    onClick = { repository.clear() },
+                    onClick = { model.clearLog() },
                 )
                 ToolbarIconButton(
                     key = AllIconsKeys.Actions.Find,
