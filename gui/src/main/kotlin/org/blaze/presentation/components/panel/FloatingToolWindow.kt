@@ -41,7 +41,6 @@ import org.blaze.presentation.components.LocalToolWindowDragHandle
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ToolWindowOptionsButton
 import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import java.awt.Cursor
@@ -78,11 +77,11 @@ internal fun clampFloatingBounds(
 
 /**
  * Where a window with no place of its own sits: hugging the corner of the edge it is docked to (see
- * [DetailsMoveTo]), inset by [marginPx] so it clears the island gap. The same corner answers a "Move
+ * [ToolWindowMoveTo]), inset by [marginPx] so it clears the island gap. The same corner answers a "Move
  * To" made while the window was free, which is what makes that submenu row mean something up here.
  */
 internal fun anchoredOffset(
-    moveTo: DetailsMoveTo,
+    moveTo: ToolWindowMoveTo,
     sizePx: IntSize,
     containerPx: IntSize,
     marginPx: Float,
@@ -90,11 +89,11 @@ internal fun anchoredOffset(
     val maxX = (containerPx.width - sizePx.width).toFloat().coerceAtLeast(marginPx)
     val maxY = (containerPx.height - sizePx.height).toFloat().coerceAtLeast(marginPx)
     val x = when (moveTo) {
-        DetailsMoveTo.LEFT_TOP, DetailsMoveTo.LEFT_BOTTOM -> marginPx
+        ToolWindowMoveTo.LEFT_TOP, ToolWindowMoveTo.LEFT_BOTTOM -> marginPx
         else -> maxX - marginPx
     }
     val y = when (moveTo) {
-        DetailsMoveTo.LEFT_TOP, DetailsMoveTo.RIGHT_TOP -> marginPx
+        ToolWindowMoveTo.LEFT_TOP, ToolWindowMoveTo.RIGHT_TOP -> marginPx
         else -> maxY - marginPx
     }
     return Offset(x, y)
@@ -147,7 +146,7 @@ fun FloatingToolWindow(
     }
 
     // The corner the window was last placed at, so a drag or a resize is never undone by re-anchoring.
-    var anchoredTo by remember { mutableStateOf<DetailsMoveTo?>(null) }
+    var anchoredTo by remember { mutableStateOf<ToolWindowMoveTo?>(null) }
 
     // The layer is what gives an unplaced window its corner, and what pulls a pane that no longer fits
     // back onto the screen. Both are re-checked whenever either side changes size or the edge changes.

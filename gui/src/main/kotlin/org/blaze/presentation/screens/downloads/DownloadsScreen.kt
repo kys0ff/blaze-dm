@@ -27,6 +27,11 @@ class DownloadsScreen : Screen {
     override fun Content() {
         val screenModel = koinScreenModel<DownloadsScreenModel>()
         val state by screenModel.state.collectAsState()
+        // The Details pane is its own dockable tool window (a Koin singleton, the same instance the
+        // shell frames in MainScreen), so the toolbar's toggle and the "shown" projection drive that
+        // model rather than the downloads list's own state.
+        val detailsModel = koinScreenModel<DetailsPanelScreenModel>()
+        val detailsState by detailsModel.state.collectAsState()
         // Balloons are hosted once per window (see BlazeWindow) so drag-and-drop notices and screen
         // effects share a single stack; fall back to a private queue only when hosted standalone.
         val notifications = LocalNotifications.current ?: remember { NotificationsState() }
@@ -71,6 +76,9 @@ class DownloadsScreen : Screen {
                 DownloadsScreenContent(
                     state = state,
                     onEvent = screenModel::onEvent,
+                    detailsVisible = detailsState.visible,
+                    detailsAutoHidesWhenEmpty = detailsState.viewMode.autoHidesWhenEmpty,
+                    onSetDetailsVisible = detailsModel::setVisible,
                     onFetchMetadata = { url, credentials -> screenModel.fetchMetadata(url, credentials) },
                     onPrepareTorrent = { url, credentials -> screenModel.prepareTorrent(url, credentials) },
                     onResolveDestinationPath = { url, savePath, name -> screenModel.resolveDestinationPath(url, savePath, name) },

@@ -1,33 +1,29 @@
 package org.blaze.presentation.screens.serverlog
 
-import cafe.adriel.voyager.core.model.ScreenModel
-import cafe.adriel.voyager.core.model.screenModelScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import org.blaze.data.AppSettingsRepository
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsResize
-import org.blaze.presentation.screens.downloads.DetailsViewMode
-import org.blaze.presentation.screens.downloads.contentFractionForViewMode
-import org.blaze.presentation.screens.downloads.detailsMoveToFromName
-import org.blaze.presentation.screens.downloads.detailsViewModeFromName
-import kotlin.time.Duration.Companion.milliseconds
+import org.blaze.presentation.components.panel.MIN_SPLIT_FRACTION
+import org.blaze.presentation.components.panel.ServerLogLayoutStore
+import org.blaze.presentation.components.panel.ToolWindowLayout
+import org.blaze.presentation.components.panel.ToolWindowLayoutAction
+import org.blaze.presentation.components.panel.ToolWindowMoveTo
+import org.blaze.presentation.components.panel.ToolWindowResize
+import org.blaze.presentation.components.panel.ToolWindowScreenModel
+import org.blaze.presentation.components.panel.ToolWindowViewMode
 
 /**
- * Everything the Server Logs tool window presents and persists: its visibility, its docked layout (the
- * same view-mode / move-to / resize model the Details pane uses), and its in-panel find state. The layout
- * seeds from [AppSettingsRepository] on construction and is written back, debounced, on change; the find
- * state is pure in-memory reduce that never outlives the window.
+ * Everything the Server Logs tool window presents: its docked layout (inherited from
+ * [ToolWindowScreenModel], persisted through [ServerLogLayoutStore]) and its in-panel find state, which
+ * is pure in-memory reduce that never outlives the window. The [state] below folds the two together so a
+ * single collect drives the whole pane.
  */
 data class ServerLogWindowState(
     val visible: Boolean,
-    val viewMode: DetailsViewMode,
-    val moveTo: DetailsMoveTo,
+    val viewMode: ToolWindowViewMode,
+    val moveTo: ToolWindowMoveTo,
     /** Fraction of the split given to the *content* (everything but the log window). */
     val splitFraction: Float,
     val innerSplitFraction: Float = 0.50f,
@@ -43,103 +39,64 @@ data class ServerLogWindowState(
     val currentMatch: Int,
 )
 
+/**
+ * The Server Logs window model. Its docked layout — visibility, view mode, move-to, split and floating
+ * bounds — is owned entirely by [ToolWindowScreenModel]; only the find state lives here. Layout changes
+ * arrive as [ToolWindowLayoutAction]s through [onLayoutEvent]; there are no raw layout setters, so the
+ * view and the shell drive this window exactly the way they drive every other pane.
+ */
 class ServerLogWindowModel(
-    private val appSettingsRepository: AppSettingsRepository,
-) : ScreenModel {
+    appSettingsRepository: AppSettingsRepository,
+) : ToolWindowScreenModel(ServerLogLayoutStore(appSettingsRepository)) {
 
     private val _state = MutableStateFlow(
-        appSettingsRepository.settings.value.let { saved ->
-            ServerLogWindowState(
-                visible = saved.serverLogVisible,
-                viewMode = detailsViewModeFromName(saved.serverLogViewMode),
-                moveTo = detailsMoveToFromName(saved.serverLogMoveTo),
-                splitFraction = saved.serverLogSplitFraction,
-                innerSplitFraction = saved.serverLogInnerSplitFraction,
-                floatingOffsetX = saved.serverLogFloatingOffsetX,
-                floatingOffsetY = saved.serverLogFloatingOffsetY,
-                floatingWidthDp = saved.serverLogFloatingWidthDp,
-                floatingHeightDp = saved.serverLogFloatingHeightDp,
-                findBarOpen = false,
-                findQuery = "",
-                matchCount = 0,
-                currentMatch = 0,
-            )
-        }
+        ServerLogWindowState(
+            visible = layout.value.visible,
+            viewMode = layout.value.viewMode,
+            moveTo = layout.value.moveTo,
+            splitFraction = layout.value.splitFraction,
+            innerSplitFraction = layout.value.innerSplitFraction,
+            floatingOffsetX = layout.value.floatingOffsetX,
+            floatingOffsetY = layout.value.floatingOffsetY,
+            floatingWidthDp = layout.value.floatingWidthDp,
+            floatingHeightDp = layout.value.floatingHeightDp,
+            findBarOpen = false,
+            findQuery = "",
+            matchCount = 0,
+            currentMatch = 0,
+        )
     )
     val state: StateFlow<ServerLogWindowState> = _state.asStateFlow()
 
-    private var persistJob: Job? = null
-
-    /** Raises or lowers the window; the "ShowServerLog" command toggles, the header's Hide closes. */
-    fun toggleVisible() = setVisible(!_state.value.visible)
-
-    fun setVisible(visible: Boolean) {
-        if (_state.value.visible == visible) return
-        _state.update { it.copy(visible = visible) }
-        persist()
-    }
-
-    fun setViewMode(mode: DetailsViewMode) {
-        _state.update { s ->
-            // WINDOW is the one mode that re-negotiates the split, claiming the larger share the mode
-            // promises; the other modes leave the user's dragged size untouched. Detaching clears the
-            // placement, asking the layer for the corner of the edge the window leaves, while a hop
-            // between the two floating modes keeps the spot it already sits in.
-            val detaching = mode.isFloatingWindow && !s.viewMode.isFloatingWindow
-            s.copy(
-                viewMode = mode,
-                splitFraction = contentFractionForViewMode(mode, s.splitFraction),
-                floatingOffsetX = if (detaching) 0f else s.floatingOffsetX,
-                floatingOffsetY = if (detaching) 0f else s.floatingOffsetY,
-            )
-        }
-        persist()
-    }
-
-    fun setMoveTo(position: DetailsMoveTo) {
-        _state.update { s ->
-            // A docked window only changes which split it sits in. A free window *is* its edge, so the
-            // same choice moves it to that corner by clearing the placement for the layer to recompute.
-            if (s.viewMode.isFloatingWindow) {
-                s.copy(moveTo = position, floatingOffsetX = 0f, floatingOffsetY = 0f)
-            } else {
-                s.copy(moveTo = position)
-            }
-        }
-        persist()
-    }
-
-    fun setSplitFraction(fraction: Float) {
-        _state.update { it.copy(splitFraction = fraction.coerceIn(MIN_FRACTION, MAX_FRACTION)) }
-        persist()
-    }
-
-    fun setInnerSplitFraction(fraction: Float) {
-        _state.update { it.copy(innerSplitFraction = fraction.coerceIn(MIN_FRACTION, MAX_FRACTION)) }
-        persist()
-    }
-
-    fun setFloatingBounds(x: Float, y: Float, widthDp: Float, heightDp: Float) {
+    /** Mirror the base's layout into the exposed state, leaving the find fields untouched. */
+    override fun onLayoutChanged(layout: ToolWindowLayout) {
         _state.update {
             it.copy(
-                floatingOffsetX = x,
-                floatingOffsetY = y,
-                floatingWidthDp = widthDp,
-                floatingHeightDp = heightDp,
+                visible = layout.visible,
+                viewMode = layout.viewMode,
+                moveTo = layout.moveTo,
+                splitFraction = layout.splitFraction,
+                innerSplitFraction = layout.innerSplitFraction,
+                floatingOffsetX = layout.floatingOffsetX,
+                floatingOffsetY = layout.floatingOffsetY,
+                floatingWidthDp = layout.floatingWidthDp,
+                floatingHeightDp = layout.floatingHeightDp,
             )
         }
-        persist()
     }
 
-    /** A Resize preset shifts the content's share of the split; the log window grows as content shrinks. */
-    fun resize(preset: DetailsResize) {
+    /**
+     * A Resize preset shifts the content's share of the split (the log window grows as content shrinks);
+     * MAXIMIZE claims everything down to the floor. Composed from the shared [ToolWindowLayoutAction] so
+     * it reuses the reducer's clamp rather than a bespoke write.
+     */
+    fun resize(preset: ToolWindowResize) {
         val fraction = when (preset) {
-            DetailsResize.STRETCH_TOP, DetailsResize.STRETCH_LEFT -> _state.value.splitFraction + RESIZE_STEP
-            DetailsResize.STRETCH_BOTTOM, DetailsResize.STRETCH_RIGHT -> _state.value.splitFraction - RESIZE_STEP
-            DetailsResize.MAXIMIZE -> MIN_FRACTION
-        }.coerceIn(MIN_FRACTION, MAX_FRACTION)
-        _state.update { it.copy(splitFraction = fraction) }
-        persist()
+            ToolWindowResize.STRETCH_TOP, ToolWindowResize.STRETCH_LEFT -> currentLayout().splitFraction + RESIZE_STEP
+            ToolWindowResize.STRETCH_BOTTOM, ToolWindowResize.STRETCH_RIGHT -> currentLayout().splitFraction - RESIZE_STEP
+            ToolWindowResize.MAXIMIZE -> MIN_SPLIT_FRACTION
+        }
+        onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(fraction))
     }
 
     // ── find ────────────────────────────────────────────────────────────────────
@@ -175,35 +132,5 @@ class ServerLogWindowModel(
         val total = _state.value.matchCount
         if (total == 0) return
         _state.update { it.copy(currentMatch = ((it.currentMatch + delta) % total + total) % total) }
-    }
-
-    // ── persistence ──────────────────────────────────────────────────────────────
-
-    private fun persist() {
-        persistJob?.cancel()
-        persistJob = screenModelScope.launch {
-            delay(PERSIST_DEBOUNCE_MS.milliseconds)
-            val s = _state.value
-            appSettingsRepository.updateSettings {
-                it.copy(
-                    serverLogVisible = s.visible,
-                    serverLogSplitFraction = s.splitFraction,
-                    serverLogInnerSplitFraction = s.innerSplitFraction,
-                    serverLogFloatingOffsetX = s.floatingOffsetX,
-                    serverLogFloatingOffsetY = s.floatingOffsetY,
-                    serverLogFloatingWidthDp = s.floatingWidthDp,
-                    serverLogFloatingHeightDp = s.floatingHeightDp,
-                    serverLogViewMode = s.viewMode.name,
-                    serverLogMoveTo = s.moveTo.name,
-                )
-            }
-        }
-    }
-
-    private companion object {
-        const val PERSIST_DEBOUNCE_MS = 300L
-        const val MIN_FRACTION = 0.15f
-        const val MAX_FRACTION = 0.85f
-        const val RESIZE_STEP = 0.15f
     }
 }

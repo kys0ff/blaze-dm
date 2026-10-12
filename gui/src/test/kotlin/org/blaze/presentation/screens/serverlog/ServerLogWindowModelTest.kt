@@ -2,9 +2,10 @@ package org.blaze.presentation.screens.serverlog
 
 import kotlinx.coroutines.runBlocking
 import org.blaze.data.AppSettingsRepository
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsResize
-import org.blaze.presentation.screens.downloads.DetailsViewMode
+import org.blaze.presentation.components.panel.ToolWindowLayoutAction
+import org.blaze.presentation.components.panel.ToolWindowMoveTo
+import org.blaze.presentation.components.panel.ToolWindowResize
+import org.blaze.presentation.components.panel.ToolWindowViewMode
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -37,8 +38,8 @@ class ServerLogWindowModelTest {
         val s = m.state.value
         assertFalse(s.visible)
         assertEquals(0.65f, s.splitFraction)
-        assertEquals(DetailsViewMode.DOCK_PINNED, s.viewMode)
-        assertEquals(DetailsMoveTo.BOTTOM_RIGHT, s.moveTo)
+        assertEquals(ToolWindowViewMode.DOCK_PINNED, s.viewMode)
+        assertEquals(ToolWindowMoveTo.BOTTOM_RIGHT, s.moveTo)
     }
 
     @Test
@@ -46,13 +47,13 @@ class ServerLogWindowModelTest {
         val (m, repository) = model()
 
         m.setVisible(true)
-        m.setMoveTo(DetailsMoveTo.RIGHT_TOP)
-        m.setViewMode(DetailsViewMode.FLOAT)
+        m.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(ToolWindowMoveTo.RIGHT_TOP))
+        m.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(ToolWindowViewMode.FLOAT))
 
         val live = m.state.value
         assertTrue(live.visible)
-        assertEquals(DetailsMoveTo.RIGHT_TOP, live.moveTo)
-        assertEquals(DetailsViewMode.FLOAT, live.viewMode)
+        assertEquals(ToolWindowMoveTo.RIGHT_TOP, live.moveTo)
+        assertEquals(ToolWindowViewMode.FLOAT, live.viewMode)
 
         // The persist job debounces into screenModelScope; give it room to settle, then read the disk model.
         Thread.sleep(500)
@@ -77,8 +78,8 @@ class ServerLogWindowModelTest {
         val (m, _) = model(repository)
         val s = m.state.value
         assertTrue(s.visible)
-        assertEquals(DetailsViewMode.WINDOW, s.viewMode)
-        assertEquals(DetailsMoveTo.BOTTOM_LEFT, s.moveTo)
+        assertEquals(ToolWindowViewMode.WINDOW, s.viewMode)
+        assertEquals(ToolWindowMoveTo.BOTTOM_LEFT, s.moveTo)
         assertEquals(0.4f, s.splitFraction)
     }
 
@@ -86,12 +87,12 @@ class ServerLogWindowModelTest {
     fun `resize clamps the content fraction and maximize fills the window`() {
         val (m, _) = model()
 
-        m.resize(DetailsResize.MAXIMIZE)
+        m.resize(ToolWindowResize.MAXIMIZE)
         assertEquals(0.15f, m.state.value.splitFraction)
 
-        m.resize(DetailsResize.STRETCH_BOTTOM)
-        m.resize(DetailsResize.STRETCH_BOTTOM)
-        m.resize(DetailsResize.STRETCH_BOTTOM)
+        m.resize(ToolWindowResize.STRETCH_BOTTOM)
+        m.resize(ToolWindowResize.STRETCH_BOTTOM)
+        m.resize(ToolWindowResize.STRETCH_BOTTOM)
         // Never shrinks the content below its floor, whatever the preset stack.
         assertTrue(m.state.value.splitFraction >= 0.15f)
     }

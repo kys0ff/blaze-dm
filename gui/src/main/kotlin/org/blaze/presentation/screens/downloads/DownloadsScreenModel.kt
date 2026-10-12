@@ -53,6 +53,7 @@ class DownloadsScreenModel(
     private val getDestinationPath: GetDestinationPathUseCase,
     val settingsRepository: EngineSettingsRepository,
     private val appSettingsRepository: AppSettingsRepository,
+    private val detailsPanelModel: DetailsPanelScreenModel,
     private val pauseDownload: PauseDownloadUseCase,
     private val resumeDownload: ResumeDownloadUseCase,
     private val cancelDownload: CancelDownloadUseCase,
@@ -85,24 +86,15 @@ class DownloadsScreenModel(
     private val _searchQuery = MutableStateFlow("")
 
     /**
-     * Persisted tool-window layout (column widths, Details visibility, split fraction, pause
-     * confirmation), seeded from disk on construction and written back on change. Kept in one flow
-     * so the frequent layout edits debounce to a single `app.json` write.
+     * Persisted downloads-table layout (column widths, hidden columns, pause confirmation) and sort,
+     * seeded from disk on construction and written back on change. The Details pane's docked layout is no
+     * longer here — it belongs to [DetailsPanelScreenModel]. Kept in one flow so frequent table edits
+     * debounce to a single `app.json` write.
      */
     private data class LayoutPrefs(
         val columnWidths: Map<String, Float>,
         val hiddenColumns: Set<String>,
-        val detailsVisible: Boolean,
-        val splitFraction: Float,
-        val innerSplitFraction: Float,
-        val floatingOffsetX: Float,
-        val floatingOffsetY: Float,
-        val floatingWidthDp: Float,
-        val floatingHeightDp: Float,
         val warnBeforeDiscarding: Boolean,
-        val viewMode: DetailsViewMode,
-        val moveTo: DetailsMoveTo,
-        val groupTabs: Boolean,
     )
 
     /** Column order + narrowing chosen through the table header / filter bar. */
@@ -122,24 +114,14 @@ class DownloadsScreenModel(
             LayoutPrefs(
                 columnWidths = saved.downloadsColumnWidths,
                 hiddenColumns = saved.downloadsHiddenColumns.toSet(),
-                detailsVisible = saved.detailsPaneVisible,
-                splitFraction = saved.detailsSplitFraction,
-                innerSplitFraction = saved.detailsInnerSplitFraction,
-                floatingOffsetX = saved.detailsFloatingOffsetX,
-                floatingOffsetY = saved.detailsFloatingOffsetY,
-                floatingWidthDp = saved.detailsFloatingWidthDp,
-                floatingHeightDp = saved.detailsFloatingHeightDp,
                 warnBeforeDiscarding = saved.warnBeforeDiscardingProgress,
-                viewMode = detailsViewModeFromName(saved.detailsViewMode),
-                moveTo = detailsMoveToFromName(saved.detailsMoveTo),
-                groupTabs = saved.groupDetailsTabs,
             )
         }
     )
 
     private var layoutPersistJob: Job? = null
 
-    /** Coalesces rapid layout edits (divider / column drags) into one debounced disk write. */
+    /** Coalesces rapid table-layout edits (column drags) into one debounced disk write. */
     private fun persistLayout() {
         layoutPersistJob?.cancel()
         layoutPersistJob = screenModelScope.launch {
@@ -152,17 +134,7 @@ class DownloadsScreenModel(
                     downloadsHiddenColumns = layout.hiddenColumns.toList(),
                     downloadsSortField = field.name,
                     downloadsSortAscending = ascending,
-                    detailsPaneVisible = layout.detailsVisible,
-                    detailsSplitFraction = layout.splitFraction,
-                    detailsInnerSplitFraction = layout.innerSplitFraction,
-                    detailsFloatingOffsetX = layout.floatingOffsetX,
-                    detailsFloatingOffsetY = layout.floatingOffsetY,
-                    detailsFloatingWidthDp = layout.floatingWidthDp,
-                    detailsFloatingHeightDp = layout.floatingHeightDp,
                     warnBeforeDiscardingProgress = layout.warnBeforeDiscarding,
-                    detailsViewMode = layout.viewMode.name,
-                    detailsMoveTo = layout.moveTo.name,
-                    groupDetailsTabs = layout.groupTabs,
                 )
             }
         }
@@ -222,17 +194,7 @@ class DownloadsScreenModel(
             selectedIds = selection.ids.filterTo(LinkedHashSet()) { it in liveIds },
             columnWidths = layout.columnWidths,
             hiddenColumns = layout.hiddenColumns,
-            detailsVisible = layout.detailsVisible,
-            detailsSplitFraction = layout.splitFraction,
-            detailsInnerSplitFraction = layout.innerSplitFraction,
-            detailsFloatingOffsetX = layout.floatingOffsetX,
-            detailsFloatingOffsetY = layout.floatingOffsetY,
-            detailsFloatingWidthDp = layout.floatingWidthDp,
-            detailsFloatingHeightDp = layout.floatingHeightDp,
             warnBeforeDiscardingProgress = layout.warnBeforeDiscarding,
-            viewMode = layout.viewMode,
-            moveTo = layout.moveTo,
-            groupTabs = layout.groupTabs,
         )
     }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5000), DownloadsState(capabilities = capabilities))
 
@@ -241,15 +203,16 @@ class DownloadsScreenModel(
 
     init {
         screenModelScope.launch { watchTransitions() }
-        // The title-bar menu raises app-wide commands; the ones that are inherently about *this view*
-        // (its details pane and its row selection) are folded back into the model's own events here. The
-        // global queue commands (pause/resume all) and exit are handled up in the application shell, and
-        // navigation / new-download / focus-search are handled by the UI layers, so they are ignored here.
+        // The title-bar menu raises app-wide commands; the ones about *this view* are folded back here:
+        // SelectAll into the model's own row-selection event, and ToggleDetails into the Details pane's
+        // own model (a dockable window that outlives this screen, so the shell raises/lowers it directly).
+        // The global queue commands (pause/resume all) and exit are handled up in the application shell,
+        // and navigation / new-download / focus-search are handled by the UI layers, so they are ignored.
         screenModelScope.launch {
             commandBus.commands.collect { command ->
                 when (command) {
                     org.blaze.presentation.application.AppCommand.ToggleDetails ->
-                        onEvent(DownloadsEvent.ToggleDetails(!state.value.detailsVisible))
+                        detailsPanelModel.toggleVisible()
                     org.blaze.presentation.application.AppCommand.SelectAll ->
                         onEvent(DownloadsEvent.SelectAllRows)
                     else -> Unit
@@ -352,87 +315,8 @@ class DownloadsScreenModel(
                 persistLayout()
             }
 
-            is DownloadsEvent.SetSplitFraction -> {
-                _layout.update { it.copy(splitFraction = event.fraction.coerceIn(0.15f, 0.85f)) }
-                persistLayout()
-            }
-
-            is DownloadsEvent.SetInnerSplitFraction -> {
-                _layout.update { it.copy(innerSplitFraction = event.fraction.coerceIn(0.15f, 0.85f)) }
-                persistLayout()
-            }
-
-            is DownloadsEvent.SetFloatingBounds -> {
-                _layout.update {
-                    it.copy(
-                        floatingOffsetX = event.x,
-                        floatingOffsetY = event.y,
-                        floatingWidthDp = event.widthDp,
-                        floatingHeightDp = event.heightDp,
-                    )
-                }
-                persistLayout()
-            }
-
-            is DownloadsEvent.ToggleDetails -> {
-                _layout.update { it.copy(detailsVisible = event.visible) }
-                persistLayout()
-            }
-
             is DownloadsEvent.SetWarnBeforeDiscardingProgress -> {
                 _layout.update { it.copy(warnBeforeDiscarding = event.enabled) }
-                persistLayout()
-            }
-
-            is DownloadsEvent.SetDetailsViewMode -> {
-                _layout.update { l ->
-                    // Only WINDOW moves the split: the mode promises the pane the larger share, so the
-                    // list yields once on entry. Every other mode keeps the size the user dragged to.
-                    // Detaching clears the placement, asking the layer for the corner of the edge the
-                    // pane leaves; moving between the two floating modes keeps the spot it sits in.
-                    val detaching = event.mode.isFloatingWindow && !l.viewMode.isFloatingWindow
-                    l.copy(
-                        viewMode = event.mode,
-                        splitFraction = contentFractionForViewMode(event.mode, l.splitFraction),
-                        floatingOffsetX = if (detaching) 0f else l.floatingOffsetX,
-                        floatingOffsetY = if (detaching) 0f else l.floatingOffsetY,
-                    )
-                }
-                persistLayout()
-            }
-
-            is DownloadsEvent.SetDetailsMoveTo -> {
-                _layout.update { l ->
-                    // A docked pane only changes which split it sits in. A free window *is* its edge, so
-                    // the same choice moves it to that corner - an action nothing reacted to was a dead
-                    // menu row - by clearing the placement for the layer to recompute.
-                    if (l.viewMode.isFloatingWindow) {
-                        l.copy(moveTo = event.position, floatingOffsetX = 0f, floatingOffsetY = 0f)
-                    } else {
-                        l.copy(moveTo = event.position)
-                    }
-                }
-                persistLayout()
-            }
-
-            is DownloadsEvent.ToggleGroupDetailsTabs -> {
-                _layout.update { it.copy(groupTabs = event.enabled) }
-                persistLayout()
-            }
-
-            is DownloadsEvent.ResizeDetails -> {
-                // A resize names the edge the pane stretches toward, so it also docks the pane there
-                // where that edge is a supported side; the size is kept as the list's share.
-                _layout.update { l ->
-                    val (fraction, moveTo) = when (event.preset) {
-                        DetailsResize.STRETCH_LEFT -> 0.30f to DetailsMoveTo.LEFT_TOP
-                        DetailsResize.STRETCH_RIGHT -> 0.30f to DetailsMoveTo.RIGHT_TOP
-                        DetailsResize.STRETCH_BOTTOM -> 0.30f to DetailsMoveTo.BOTTOM_LEFT
-                        DetailsResize.STRETCH_TOP -> 0.30f to l.moveTo
-                        DetailsResize.MAXIMIZE -> 0.15f to l.moveTo
-                    }
-                    l.copy(splitFraction = fraction.coerceIn(0.15f, 0.85f), moveTo = moveTo)
-                }
                 persistLayout()
             }
 
@@ -525,12 +409,11 @@ class DownloadsScreenModel(
         _selection.update { reduceSelection(it, visible, action) }
 
         // Details is a collapsed tool window: selecting a row is what earns it a place on the frame,
-        // so the first selection re-opens the pane (and the reopen is persisted like any other layout
-        // change). Clearing the selection deliberately does NOT close it again - closing is the user's
-        // call, made with the toolbar or title-bar toggle.
-        if (_selection.value.ids.isNotEmpty() && !_layout.value.detailsVisible) {
-            _layout.update { it.copy(detailsVisible = true) }
-            persistLayout()
+        // so the first selection re-opens the pane. Clearing the selection deliberately does NOT close
+        // it again - closing is the user's call, made with the toolbar or title-bar toggle. The pane is
+        // owned by [DetailsPanelScreenModel], which no-ops a re-open that is already visible.
+        if (_selection.value.ids.isNotEmpty()) {
+            detailsPanelModel.setVisible(true)
         }
     }
 

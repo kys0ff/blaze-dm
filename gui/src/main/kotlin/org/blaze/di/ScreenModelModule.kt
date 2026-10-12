@@ -2,6 +2,8 @@ package org.blaze.di
 
 import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.getStrings
+import org.blaze.presentation.components.panel.DetailsLayoutStore
+import org.blaze.presentation.screens.downloads.DetailsPanelScreenModel
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
 import org.blaze.presentation.screens.extensions.ExtensionsWindowModel
 import org.blaze.presentation.screens.main.MainScreenModel
@@ -33,6 +35,7 @@ val screenModelModule = module {
             getDestinationPath = get(),
             settingsRepository = get(),
             appSettingsRepository = get(),
+            detailsPanelModel = get(),
             pauseDownload = get(),
             resumeDownload = get(),
             cancelDownload = get(),
@@ -88,5 +91,13 @@ val screenModelModule = module {
 
     single {
         ServerLogWindowModel(appSettingsRepository = get())
+    }
+
+    single {
+        // The Details tool window is a dockable pane like the two above: a singleton so the shell
+        // (MainScreen), the downloads screen and the download model's "first selection re-opens it"
+        // path all drive the very same instance. Its layout persists through the Details store, which
+        // also carries the pane-only group-tabs flag.
+        DetailsPanelScreenModel(DetailsLayoutStore(get()))
     }
 }

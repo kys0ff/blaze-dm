@@ -27,6 +27,7 @@ import org.blaze.presentation.components.ResolverOptionsDialog
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ToolWindowOptionsButton
 import org.blaze.presentation.components.ToolbarIconButton
+import org.blaze.presentation.components.panel.ToolWindowLayoutAction
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
@@ -79,8 +80,8 @@ fun ExtensionsPanel(
                     options = pane.options,
                     viewMode = state.viewMode,
                     moveTo = state.moveTo,
-                    onViewMode = model::setViewMode,
-                    onMoveTo = model::setMoveTo,
+                    onViewMode = { model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
+                    onMoveTo = { model.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
                     onResize = model::resize,
                 )
                 // A tool window is *hidden*, not closed: the IDE draws the horizontal-line glyph for

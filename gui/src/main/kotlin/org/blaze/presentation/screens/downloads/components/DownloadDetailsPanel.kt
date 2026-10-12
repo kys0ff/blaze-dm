@@ -25,9 +25,9 @@ import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ToolWindowOptionsButton
 import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsViewMode
-import org.blaze.presentation.screens.downloads.DownloadsEvent
+import org.blaze.presentation.components.panel.ToolWindowMoveTo
+import org.blaze.presentation.components.panel.ToolWindowResize
+import org.blaze.presentation.components.panel.ToolWindowViewMode
 import org.blaze.presentation.screens.downloads.ResumeSupport
 import org.blaze.presentation.screens.downloads.isWaitingForPeers
 import org.blaze.presentation.screens.downloads.pauseLosesProgress
@@ -68,10 +68,13 @@ fun DownloadDetailsPanel(
     download: Download?,
     onHide: () -> Unit,
     modifier: Modifier = Modifier,
-    viewMode: DetailsViewMode = DetailsViewMode.DOCK_PINNED,
-    moveTo: DetailsMoveTo = DetailsMoveTo.RIGHT_TOP,
+    viewMode: ToolWindowViewMode = ToolWindowViewMode.DOCK_PINNED,
+    moveTo: ToolWindowMoveTo = ToolWindowMoveTo.RIGHT_TOP,
     groupTabs: Boolean = false,
-    onEvent: (DownloadsEvent) -> Unit = {},
+    onViewMode: (ToolWindowViewMode) -> Unit = {},
+    onMoveTo: (ToolWindowMoveTo) -> Unit = {},
+    onResize: (ToolWindowResize) -> Unit = {},
+    onToggleGroupTabs: (Boolean) -> Unit = {},
 ) {
     val strings = blazeStrings
     val pane = strings.downloads.detailsPane
@@ -84,10 +87,10 @@ fun DownloadDetailsPanel(
                     viewMode = viewMode,
                     moveTo = moveTo,
                     groupTabs = groupTabs,
-                    onToggleGroupTabs = { onEvent(DownloadsEvent.ToggleGroupDetailsTabs(it)) },
-                    onViewMode = { onEvent(DownloadsEvent.SetDetailsViewMode(it)) },
-                    onMoveTo = { onEvent(DownloadsEvent.SetDetailsMoveTo(it)) },
-                    onResize = { onEvent(DownloadsEvent.ResizeDetails(it)) },
+                    onToggleGroupTabs = onToggleGroupTabs,
+                    onViewMode = onViewMode,
+                    onMoveTo = onMoveTo,
+                    onResize = onResize,
                 )
                 // A tool window is *hidden*, not closed: the IDE draws the horizontal-line glyph for that
                 // and keeps the X for closing an editor. `General.Close` here read as "destroy the pane".

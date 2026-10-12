@@ -62,6 +62,9 @@ import java.nio.file.Path
 fun DownloadsScreenContent(
     state: DownloadsState,
     onEvent: (DownloadsEvent) -> Unit,
+    detailsVisible: Boolean,
+    detailsAutoHidesWhenEmpty: Boolean,
+    onSetDetailsVisible: (Boolean) -> Unit,
     onFetchMetadata: suspend (String, Map<String, String>) -> DownloadMetadata?,
     onPrepareTorrent: suspend (String, Map<String, String>) -> TorrentPreview? = { _, _ -> null },
     onResolveDestinationPath: suspend (String, String, String?) -> String,
@@ -130,7 +133,7 @@ fun DownloadsScreenContent(
     val activateFromSearch = rememberUpdatedState<(String) -> Unit> { id ->
         onEvent(DownloadsEvent.SearchChanged(""))
         onEvent(DownloadsEvent.SelectRow(id))
-        onEvent(DownloadsEvent.ToggleDetails(true))
+        onSetDetailsVisible(true)
         pendingSearchScrollId = id
     }
     DisposableEffect(searchController) {
@@ -250,14 +253,14 @@ fun DownloadsScreenContent(
     // ([detailsRequestedEmpty]); a view mode that hides when empty loses that request with the
     // selection, and closing the pane always clears it.
     var detailsRequestedEmpty by remember { mutableStateOf(false) }
-    val detailsShown = state.detailsVisible &&
-        (detailsDownload != null || (detailsRequestedEmpty && !state.viewMode.autoHidesWhenEmpty))
+    val detailsShown = detailsVisible &&
+        (detailsDownload != null || (detailsRequestedEmpty && !detailsAutoHidesWhenEmpty))
     val toggleDetails: (Boolean) -> Unit = { visible ->
         when {
             !visible -> detailsRequestedEmpty = false
             detailsDownload == null -> detailsRequestedEmpty = true
         }
-        onEvent(DownloadsEvent.ToggleDetails(visible))
+        onSetDetailsVisible(visible)
     }
 
     val selectRow: (String, Boolean, Boolean) -> Unit = { id, additive, range ->
@@ -311,7 +314,7 @@ fun DownloadsScreenContent(
             if (finished && runCatching { File(download.savePath).exists() }.getOrDefault(false)) {
                 onEvent(DownloadsEvent.OpenFile(download.id))
             } else {
-                onEvent(DownloadsEvent.ToggleDetails(true))
+                onSetDetailsVisible(true)
             }
         }
     }

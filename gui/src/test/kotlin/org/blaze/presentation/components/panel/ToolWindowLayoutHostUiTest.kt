@@ -13,8 +13,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.Island
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsViewMode
 import org.blaze.presentation.theme.BlazeTheme
 import org.jetbrains.jewel.ui.component.Text
 import kotlin.test.Test
@@ -38,7 +36,7 @@ class ToolWindowLayoutHostUiTest {
     fun `an unpinned pane folds away when the click lands outside it`() {
         var closed = false
         runDesktopComposeUiTest(width = 1000, height = 700) {
-            setContent { HostUnderTest(DetailsViewMode.DOCK_UNPINNED) { closed = true } }
+            setContent { HostUnderTest(ToolWindowViewMode.DOCK_UNPINNED) { closed = true } }
             waitForIdle()
             onNodeWithTag(PANE_TAG).assertIsDisplayed()
             assertTrue(closed.not(), "the pane is open until attention leaves it")
@@ -59,7 +57,7 @@ class ToolWindowLayoutHostUiTest {
     fun `an undocked pane folds away on an outside click`() {
         var closed = false
         runDesktopComposeUiTest(width = 1000, height = 700) {
-            setContent { HostUnderTest(DetailsViewMode.UNDOCK) { closed = true } }
+            setContent { HostUnderTest(ToolWindowViewMode.UNDOCK) { closed = true } }
             waitForIdle()
             onNodeWithTag(CONTENT_TAG).performClick()
             waitForIdle()
@@ -71,7 +69,7 @@ class ToolWindowLayoutHostUiTest {
     fun `a floated window stays open through an outside click`() {
         var closed = false
         runDesktopComposeUiTest(width = 1000, height = 700) {
-            setContent { HostUnderTest(DetailsViewMode.FLOAT) { closed = true } }
+            setContent { HostUnderTest(ToolWindowViewMode.FLOAT) { closed = true } }
             waitForIdle()
             onNodeWithTag(CONTENT_TAG).performClick()
             waitForIdle()
@@ -84,7 +82,7 @@ class ToolWindowLayoutHostUiTest {
     fun `a pinned pane is not disturbed by a click outside it`() {
         var closed = false
         runDesktopComposeUiTest(width = 1000, height = 700) {
-            setContent { HostUnderTest(DetailsViewMode.DOCK_PINNED) { closed = true } }
+            setContent { HostUnderTest(ToolWindowViewMode.DOCK_PINNED) { closed = true } }
             waitForIdle()
             onNodeWithTag(CONTENT_TAG).performClick()
             waitForIdle()
@@ -100,12 +98,12 @@ class ToolWindowLayoutHostUiTest {
         lateinit var overlaying: Rect
         lateinit var docked: Rect
         runDesktopComposeUiTest(width = 1000, height = 700) {
-            setContent { HostUnderTest(DetailsViewMode.DOCK_UNPINNED) { } }
+            setContent { HostUnderTest(ToolWindowViewMode.DOCK_UNPINNED) { } }
             waitForIdle()
             overlaying = onNodeWithTag(CONTENT_TAG).fetchSemanticsNode().boundsInRoot
         }
         runDesktopComposeUiTest(width = 1000, height = 700) {
-            setContent { HostUnderTest(DetailsViewMode.DOCK_PINNED) { } }
+            setContent { HostUnderTest(ToolWindowViewMode.DOCK_PINNED) { } }
             waitForIdle()
             docked = onNodeWithTag(CONTENT_TAG).fetchSemanticsNode().boundsInRoot
         }
@@ -119,7 +117,7 @@ class ToolWindowLayoutHostUiTest {
     @Test
     fun `a floated window takes the corner of the edge it detached from`() {
         runDesktopComposeUiTest(width = 1000, height = 700) {
-            setContent { HostUnderTest(DetailsViewMode.FLOAT) { } }
+            setContent { HostUnderTest(ToolWindowViewMode.FLOAT) { } }
             waitForIdle()
             val pane = onNodeWithTag(PANE_TAG).fetchSemanticsNode().boundsInRoot
             // The pane is docked to the right edge, so that is the corner it must appear at - not the
@@ -132,7 +130,7 @@ class ToolWindowLayoutHostUiTest {
     /** The host under test: one tagged pane at the right edge over a tagged content surface. */
     @Composable
     private fun HostUnderTest(
-        viewMode: DetailsViewMode,
+        viewMode: ToolWindowViewMode,
         onClose: () -> Unit,
     ) {
         BlazeTheme(isDark = true) {
@@ -150,7 +148,7 @@ class ToolWindowLayoutHostUiTest {
                         title = "Details",
                         visible = true,
                         viewMode = viewMode,
-                        moveTo = DetailsMoveTo.RIGHT_TOP,
+                        moveTo = ToolWindowMoveTo.RIGHT_TOP,
                         splitFraction = BlazeLayout.DETAILS_DEFAULT_LIST_FRACTION,
                         onClose = onClose,
                         content = {

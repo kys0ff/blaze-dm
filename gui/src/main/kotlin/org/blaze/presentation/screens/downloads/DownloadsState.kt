@@ -2,7 +2,6 @@ package org.blaze.presentation.screens.downloads
 
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
-import org.blaze.presentation.components.BlazeLayout
 
 /**
  * Which desktop integrations the host can actually perform. Drives whether the download row's
@@ -71,28 +70,15 @@ data class DownloadsState(
     val snailSpeedKbps: Long = 64,
     val capabilities: DownloadCapabilities = DownloadCapabilities(),
 
-    // ── Tool-window layout, seeded from and persisted back to [org.blaze.data.AppSettings] ──
+    // ── Downloads-table layout, seeded from and persisted back to [org.blaze.data.AppSettings] ──
+    // The Details pane's own docked layout (visibility, view mode, split, floating) moved to
+    // [DetailsPanelScreenModel]; only the table's column concerns remain here.
     /** Chosen column widths in dp keyed by [org.blaze.presentation.components.DownloadsColumn.id]. */
     val columnWidths: Map<String, Float> = emptyMap(),
     /** Ids of the columns hidden through the header's Table options menu (see [columnWidths]). */
     val hiddenColumns: Set<String> = emptySet(),
-    /** Whether the Details tool window beside the list is shown. Collapsed until a row is picked. */
-    val detailsVisible: Boolean = false,
-    /** Fraction of the list|details split given to the list. */
-    val detailsSplitFraction: Float = BlazeLayout.DETAILS_DEFAULT_LIST_FRACTION,
-    val detailsInnerSplitFraction: Float = 0.50f,
-    val detailsFloatingOffsetX: Float = 40f,
-    val detailsFloatingOffsetY: Float = 40f,
-    val detailsFloatingWidthDp: Float = 380f,
-    val detailsFloatingHeightDp: Float = 480f,
     /** Whether pausing a progress-losing download asks first (persisted "do not ask again"). */
     val warnBeforeDiscardingProgress: Boolean = true,
-    /** How the Details tool window presents itself (docked beside the list, or floated over it). */
-    val viewMode: DetailsViewMode = DetailsViewMode.DOCK_PINNED,
-    /** Which edge/corner the Details pane docks to, driving the split's orientation and order. */
-    val moveTo: DetailsMoveTo = DetailsMoveTo.RIGHT_TOP,
-    /** When true the pane stacks its tabs into one continuous view instead of a tab strip. */
-    val groupTabs: Boolean = false,
 )
 
 /**

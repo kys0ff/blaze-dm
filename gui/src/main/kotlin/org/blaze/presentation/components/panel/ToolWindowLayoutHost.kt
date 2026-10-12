@@ -36,8 +36,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.LocalWindowActive
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsViewMode
 import org.jetbrains.jewel.ui.component.HorizontalSplitLayout
 import org.jetbrains.jewel.ui.component.SplitLayoutState
 import org.jetbrains.jewel.ui.component.VerticalSplitLayout
@@ -50,15 +48,15 @@ import kotlin.math.abs
  *
  * The five view modes split along two axes, and the host routes each pane by them:
  *
- * - **Docked** ([DetailsViewMode.isDocked]) panes reserve a permanent share of the frame through the
+ * - **Docked** ([ToolWindowViewMode.isDocked]) panes reserve a permanent share of the frame through the
  *   outer split. They are routed into the three dock regions (Left, Right, Bottom) around the central
  *   content; several panes in one region share it through an inner split.
- * - **Overlay** ([DetailsViewMode.overlaysContent]) panes cover the content instead of reserving a
+ * - **Overlay** ([ToolWindowViewMode.overlaysContent]) panes cover the content instead of reserving a
  *   share of it, so the list keeps its full width. A pane unpinned from a dock edge is drawn flush
  *   against that edge at the size the user dragged it to
  *   ([EdgeDockedOverlay]); a pane undocked or floated is a free, draggable window
  *   ([FloatingToolWindow]) in the same layer.
- * - **Auto-hiding** ([DetailsViewMode.autoHidesWhenUnfocused]) panes fold away the moment attention
+ * - **Auto-hiding** ([ToolWindowViewMode.autoHidesWhenUnfocused]) panes fold away the moment attention
  *   leaves them: a press that lands outside the pane, or the frame losing focus. That is the one
  *   behavior an unpinned tool window exists for, and it is what a pinned pane refuses to do.
  */
@@ -124,8 +122,8 @@ fun ToolWindowLayoutHost(
  * than private) so the categorization the layout relies on can be asserted directly.
  */
 internal fun List<ToolWindowSpec>.regionFor(
-    start: DetailsMoveTo,
-    end: DetailsMoveTo,
+    start: ToolWindowMoveTo,
+    end: ToolWindowMoveTo,
 ): List<ToolWindowSpec> = filter { it.moveTo == start || it.moveTo == end }
     .sortedBy { if (it.moveTo == start) 0 else 1 }
 
@@ -140,9 +138,9 @@ private fun DockedWorkspace(
     dockedPanels: List<ToolWindowSpec>,
     gapDivider: DividerStyle,
 ) {
-    val leftPanels = dockedPanels.regionFor(DetailsMoveTo.LEFT_TOP, DetailsMoveTo.LEFT_BOTTOM)
-    val rightPanels = dockedPanels.regionFor(DetailsMoveTo.RIGHT_TOP, DetailsMoveTo.RIGHT_BOTTOM)
-    val bottomPanels = dockedPanels.regionFor(DetailsMoveTo.BOTTOM_LEFT, DetailsMoveTo.BOTTOM_RIGHT)
+    val leftPanels = dockedPanels.regionFor(ToolWindowMoveTo.LEFT_TOP, ToolWindowMoveTo.LEFT_BOTTOM)
+    val rightPanels = dockedPanels.regionFor(ToolWindowMoveTo.RIGHT_TOP, ToolWindowMoveTo.RIGHT_BOTTOM)
+    val bottomPanels = dockedPanels.regionFor(ToolWindowMoveTo.BOTTOM_LEFT, ToolWindowMoveTo.BOTTOM_RIGHT)
 
     var workspace: @Composable () -> Unit = mainContent
 
@@ -433,7 +431,7 @@ private fun OverlayLayer(
 /**
  * A tool window unpinned from its dock edge: it keeps the edge and the size the user dragged it to, but
  * it is drawn *over* the content instead of taking a share of it, and it carries the shadow that says
- * so. The corner half of [DetailsMoveTo] is meaningless for a pane that spans its edge, so only the
+ * so. The corner half of [ToolWindowMoveTo] is meaningless for a pane that spans its edge, so only the
  * dominant side is honored - which is exactly what the IDE does with an unpinned window.
  */
 @Composable
@@ -446,8 +444,8 @@ private fun BoxScope.EdgeDockedOverlay(
     val paneShare = (1f - spec.splitFraction).coerceIn(0.2f, 0.9f)
     val dockedToBottom = spec.moveTo.isBottom
     val alignment = when (spec.moveTo) {
-        DetailsMoveTo.LEFT_TOP, DetailsMoveTo.LEFT_BOTTOM -> Alignment.TopStart
-        DetailsMoveTo.RIGHT_TOP, DetailsMoveTo.RIGHT_BOTTOM -> Alignment.TopEnd
+        ToolWindowMoveTo.LEFT_TOP, ToolWindowMoveTo.LEFT_BOTTOM -> Alignment.TopStart
+        ToolWindowMoveTo.RIGHT_TOP, ToolWindowMoveTo.RIGHT_BOTTOM -> Alignment.TopEnd
         else -> Alignment.BottomCenter
     }
     val sizeModifier = if (dockedToBottom) {

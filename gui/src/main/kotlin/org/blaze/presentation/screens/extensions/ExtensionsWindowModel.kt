@@ -1,9 +1,6 @@
 package org.blaze.presentation.screens.extensions
 
-import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -12,12 +9,14 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.blaze.data.AppSettingsRepository
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsResize
-import org.blaze.presentation.screens.downloads.DetailsViewMode
-import org.blaze.presentation.screens.downloads.contentFractionForViewMode
-import org.blaze.presentation.screens.downloads.detailsMoveToFromName
-import org.blaze.presentation.screens.downloads.detailsViewModeFromName
+import org.blaze.presentation.components.panel.ExtensionsLayoutStore
+import org.blaze.presentation.components.panel.MIN_SPLIT_FRACTION
+import org.blaze.presentation.components.panel.ToolWindowLayout
+import org.blaze.presentation.components.panel.ToolWindowLayoutAction
+import org.blaze.presentation.components.panel.ToolWindowMoveTo
+import org.blaze.presentation.components.panel.ToolWindowResize
+import org.blaze.presentation.components.panel.ToolWindowScreenModel
+import org.blaze.presentation.components.panel.ToolWindowViewMode
 import org.blaze.resolver.api.ResolverOption
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
@@ -28,7 +27,6 @@ import org.blaze.security.ConsentService
 import org.blaze.security.ConsentSubjectKind
 import org.blaze.service.security.ConsentDecision
 import java.nio.file.Path
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * One handler as the Extensions panel renders it: identity for the row, the live enable/priority
@@ -71,17 +69,16 @@ internal fun buildExtensionRows(
 }
 
 /**
- * Everything the Extensions tool window presents and persists: its visibility and docked layout (the
- * same view-mode / move-to / resize model the Details and Server Logs panes use) folded together with
- * the live handler rows. The layout seeds from [AppSettingsRepository] on construction and is written
- * back, debounced, on change; the rows are a pure projection of the registry's handler stream and the
- * resolver settings, so a toggle or option edit made in the panel is reflected the moment the repository
+ * Everything the Extensions tool window presents: its docked layout (inherited from
+ * [ToolWindowScreenModel], persisted through [ExtensionsLayoutStore]) folded together with the live
+ * handler rows. The rows are a pure projection of the registry's handler stream and the resolver
+ * settings, so a toggle or option edit made in the panel is reflected the moment the repository
  * republishes — there is no draft to commit.
  */
 data class ExtensionsWindowState(
     val visible: Boolean,
-    val viewMode: DetailsViewMode,
-    val moveTo: DetailsMoveTo,
+    val viewMode: ToolWindowViewMode,
+    val moveTo: ToolWindowMoveTo,
     /** Fraction of the split given to the *content* (everything but the extensions window). */
     val splitFraction: Float,
     val innerSplitFraction: Float = 0.50f,
@@ -93,21 +90,21 @@ data class ExtensionsWindowState(
 )
 
 /**
- * The live Extensions tool-window model. Its content folds the registry's handler stream together with
- * the resolver settings, so every control — enable/disable, install/remove, per-handler options and
- * ordering priority — takes effect immediately, the way an IDE tool window edits its own state rather
- * than a modal draft. Its layout (visibility, docked position, split size) is persisted exactly like the
- * Server Logs window's. Global preferences (always-ask, extensions folder, request timeout) intentionally
- * stay in the Settings EXTENSIONS category.
+ * The live Extensions tool-window model. Its docked layout is owned entirely by [ToolWindowScreenModel]
+ * and driven through [onLayoutEvent]; its content folds the registry's handler stream together with the
+ * resolver settings, so every control — enable/disable, install/remove, per-handler options and ordering
+ * priority — takes effect immediately, the way an IDE tool window edits its own state rather than a
+ * modal draft. Global preferences (always-ask, extensions folder, request timeout) intentionally stay in
+ * the Settings EXTENSIONS category.
  *
  * Torrent/magnet handling is deliberately absent: resolvers only claim HTTP(S) pages.
  */
 class ExtensionsWindowModel(
-    private val appSettingsRepository: AppSettingsRepository,
+    appSettingsRepository: AppSettingsRepository,
     private val registry: LinkResolverRegistry,
     private val settingsRepository: LinkResolverSettingsRepository,
     private val consentService: ConsentService,
-) : ScreenModel {
+) : ToolWindowScreenModel(ExtensionsLayoutStore(appSettingsRepository)) {
 
     /** The live rows: registry handlers folded with the persisted resolver settings. */
     private val rows: StateFlow<List<ExtensionUiRow>> =
@@ -115,29 +112,38 @@ class ExtensionsWindowModel(
             buildExtensionRows(handlers, settings) { registry.optionDescriptors(it) }
         }.stateIn(screenModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val _state = MutableStateFlow(
-        appSettingsRepository.settings.value.let { saved ->
-            ExtensionsWindowState(
-                visible = saved.extensionsVisible,
-                viewMode = detailsViewModeFromName(saved.extensionsViewMode),
-                moveTo = detailsMoveToFromName(saved.extensionsMoveTo),
-                splitFraction = saved.extensionsSplitFraction,
-                innerSplitFraction = saved.extensionsInnerSplitFraction,
-                floatingOffsetX = saved.extensionsFloatingOffsetX,
-                floatingOffsetY = saved.extensionsFloatingOffsetY,
-                floatingWidthDp = saved.extensionsFloatingWidthDp,
-                floatingHeightDp = saved.extensionsFloatingHeightDp,
-            )
-        }
-    )
-
-    /** The window's layout folded with the current rows, so a single collect drives the whole pane. */
+    /** The window's docked layout folded with the current rows, so a single collect drives the whole pane. */
     val state: StateFlow<ExtensionsWindowState> =
-        combine(_state, rows) { window, currentRows -> window.copy(rows = currentRows) }
-            .stateIn(screenModelScope, SharingStarted.Eagerly, _state.value)
+        combine(layout, rows) { l, currentRows ->
+            ExtensionsWindowState(
+                visible = l.visible,
+                viewMode = l.viewMode,
+                moveTo = l.moveTo,
+                splitFraction = l.splitFraction,
+                innerSplitFraction = l.innerSplitFraction,
+                floatingOffsetX = l.floatingOffsetX,
+                floatingOffsetY = l.floatingOffsetY,
+                floatingWidthDp = l.floatingWidthDp,
+                floatingHeightDp = l.floatingHeightDp,
+                rows = currentRows,
+            )
+        }.stateIn(screenModelScope, SharingStarted.Eagerly, initialState())
+
+    private fun initialState(): ExtensionsWindowState = layout.value.let { l ->
+        ExtensionsWindowState(
+            visible = l.visible,
+            viewMode = l.viewMode,
+            moveTo = l.moveTo,
+            splitFraction = l.splitFraction,
+            innerSplitFraction = l.innerSplitFraction,
+            floatingOffsetX = l.floatingOffsetX,
+            floatingOffsetY = l.floatingOffsetY,
+            floatingWidthDp = l.floatingWidthDp,
+            floatingHeightDp = l.floatingHeightDp,
+        )
+    }
 
     private var busy = false
-    private var persistJob: Job? = null
 
     // ── content events ──────────────────────────────────────────────────────────
 
@@ -187,107 +193,17 @@ class ExtensionsWindowModel(
         }
     }
 
-    // ── window layout ───────────────────────────────────────────────────────────
-
-    /** Raises or lowers the window; the stripe's Extensions toggle drives this. */
-    fun toggleVisible() = setVisible(!_state.value.visible)
-
-    fun setVisible(visible: Boolean) {
-        if (_state.value.visible == visible) return
-        _state.update { it.copy(visible = visible) }
-        persist()
-    }
-
-    fun setViewMode(mode: DetailsViewMode) {
-        _state.update { s ->
-            // WINDOW is the one mode that re-negotiates the split, claiming the larger share the mode
-            // promises; the other modes leave the user's dragged size untouched. Detaching clears the
-            // placement, asking the layer for the corner of the edge the window leaves, while a hop
-            // between the two floating modes keeps the spot it already sits in.
-            val detaching = mode.isFloatingWindow && !s.viewMode.isFloatingWindow
-            s.copy(
-                viewMode = mode,
-                splitFraction = contentFractionForViewMode(mode, s.splitFraction),
-                floatingOffsetX = if (detaching) 0f else s.floatingOffsetX,
-                floatingOffsetY = if (detaching) 0f else s.floatingOffsetY,
-            )
-        }
-        persist()
-    }
-
-    fun setMoveTo(position: DetailsMoveTo) {
-        _state.update { s ->
-            // A docked window only changes which split it sits in. A free window *is* its edge, so the
-            // same choice moves it to that corner by clearing the placement for the layer to recompute.
-            if (s.viewMode.isFloatingWindow) {
-                s.copy(moveTo = position, floatingOffsetX = 0f, floatingOffsetY = 0f)
-            } else {
-                s.copy(moveTo = position)
-            }
-        }
-        persist()
-    }
-
-    fun setSplitFraction(fraction: Float) {
-        _state.update { it.copy(splitFraction = fraction.coerceIn(MIN_FRACTION, MAX_FRACTION)) }
-        persist()
-    }
-
-    fun setInnerSplitFraction(fraction: Float) {
-        _state.update { it.copy(innerSplitFraction = fraction.coerceIn(MIN_FRACTION, MAX_FRACTION)) }
-        persist()
-    }
-
-    fun setFloatingBounds(x: Float, y: Float, widthDp: Float, heightDp: Float) {
-        _state.update {
-            it.copy(
-                floatingOffsetX = x,
-                floatingOffsetY = y,
-                floatingWidthDp = widthDp,
-                floatingHeightDp = heightDp,
-            )
-        }
-        persist()
-    }
-
-    /** A Resize preset shifts the content's share of the split; the window grows as content shrinks. */
-    fun resize(preset: DetailsResize) {
+    /**
+     * A Resize preset shifts the content's share of the split (the window grows as content shrinks);
+     * MAXIMIZE claims everything down to the floor. Composed from the shared [ToolWindowLayoutAction] so
+     * it reuses the reducer's clamp rather than a bespoke write.
+     */
+    fun resize(preset: ToolWindowResize) {
         val fraction = when (preset) {
-            DetailsResize.STRETCH_TOP, DetailsResize.STRETCH_LEFT -> _state.value.splitFraction + RESIZE_STEP
-            DetailsResize.STRETCH_BOTTOM, DetailsResize.STRETCH_RIGHT -> _state.value.splitFraction - RESIZE_STEP
-            DetailsResize.MAXIMIZE -> MIN_FRACTION
-        }.coerceIn(MIN_FRACTION, MAX_FRACTION)
-        _state.update { it.copy(splitFraction = fraction) }
-        persist()
-    }
-
-    // ── persistence ──────────────────────────────────────────────────────────────
-
-    private fun persist() {
-        persistJob?.cancel()
-        persistJob = screenModelScope.launch {
-            delay(PERSIST_DEBOUNCE_MS.milliseconds)
-            val s = _state.value
-            appSettingsRepository.updateSettings {
-                it.copy(
-                    extensionsVisible = s.visible,
-                    extensionsSplitFraction = s.splitFraction,
-                    extensionsInnerSplitFraction = s.innerSplitFraction,
-                    extensionsFloatingOffsetX = s.floatingOffsetX,
-                    extensionsFloatingOffsetY = s.floatingOffsetY,
-                    extensionsFloatingWidthDp = s.floatingWidthDp,
-                    extensionsFloatingHeightDp = s.floatingHeightDp,
-                    extensionsViewMode = s.viewMode.name,
-                    extensionsMoveTo = s.moveTo.name,
-                )
-            }
+            ToolWindowResize.STRETCH_TOP, ToolWindowResize.STRETCH_LEFT -> currentLayout().splitFraction + RESIZE_STEP
+            ToolWindowResize.STRETCH_BOTTOM, ToolWindowResize.STRETCH_RIGHT -> currentLayout().splitFraction - RESIZE_STEP
+            ToolWindowResize.MAXIMIZE -> MIN_SPLIT_FRACTION
         }
-    }
-
-    private companion object {
-        const val PERSIST_DEBOUNCE_MS = 300L
-        const val MIN_FRACTION = 0.15f
-        const val MAX_FRACTION = 0.85f
-        const val RESIZE_STEP = 0.15f
+        onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(fraction))
     }
 }

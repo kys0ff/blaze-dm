@@ -36,8 +36,10 @@ import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
 import org.blaze.presentation.components.ToolWindowStripe
+import org.blaze.presentation.components.panel.ToolWindowLayoutAction
 import org.blaze.presentation.components.panel.ToolWindowLayoutHost
 import org.blaze.presentation.components.panel.ToolWindowSpec
+import org.blaze.presentation.screens.downloads.DetailsPanelScreenModel
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
@@ -88,6 +90,12 @@ class MainScreen : Screen {
         // raises or lowers a panel beside the list instead of swapping the whole main content.
         val extModel = koinScreenModel<ExtensionsWindowModel>()
         val extState by extModel.state.collectAsState()
+
+        // The Details tool window: like the other two dockable panes it owns its layout through its
+        // own model, so the shell frames it from [DetailsPanelScreenModel] rather than reading layout
+        // off the downloads list.
+        val detailsModel = koinScreenModel<DetailsPanelScreenModel>()
+        val detailsState by detailsModel.state.collectAsState()
 
         // Live transfers surfaced in the status bar; QUEUED counts too so the popup shows the whole
         // pending set. The shell projects them; a row's own pause is still a download lifecycle action.
@@ -150,7 +158,7 @@ class MainScreen : Screen {
 
                     val selectedIds = state.selectedIds
                     val detailsDownload: Download? = if (selectedIds.size == 1) downloads.find { it.id == selectedIds.first() } else null
-                    val detailsShown = state.detailsVisible && (detailsDownload != null || (!state.viewMode.autoHidesWhenEmpty))
+                    val detailsShown = detailsState.visible && (detailsDownload != null || (!detailsState.viewMode.autoHidesWhenEmpty))
 
                     val panels = buildList {
                         if (logState.visible) {
@@ -165,12 +173,12 @@ class MainScreen : Screen {
                                     innerSplitFraction = logState.innerSplitFraction,
                                     floatingOffset = Offset(logState.floatingOffsetX, logState.floatingOffsetY),
                                     floatingSize = DpSize(logState.floatingWidthDp.dp, logState.floatingHeightDp.dp),
-                                    onMoveTo = { logModel.setMoveTo(it) },
-                                    onViewMode = { logModel.setViewMode(it) },
-                                    onSplitFractionChange = { logModel.setSplitFraction(it) },
-                                    onInnerSplitFractionChange = { logModel.setInnerSplitFraction(it) },
+                                    onMoveTo = { logModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
+                                    onViewMode = { logModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
+                                    onSplitFractionChange = { logModel.onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(it)) },
+                                    onInnerSplitFractionChange = { logModel.onLayoutEvent(ToolWindowLayoutAction.SetInnerSplitFraction(it)) },
                                     onFloatingBoundsChange = { offset, size ->
-                                        logModel.setFloatingBounds(offset.x, offset.y, size.width.value, size.height.value)
+                                        logModel.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(offset.x, offset.y, size.width.value, size.height.value))
                                     },
                                     onResize = { logModel.resize(it) },
                                     onClose = { logModel.setVisible(false) },
@@ -193,30 +201,33 @@ class MainScreen : Screen {
                                     id = "download_details",
                                     title = detailsDownload?.name ?: strings.downloads.dialogs.details.title,
                                     visible = true,
-                                    viewMode = state.viewMode,
-                                    moveTo = state.moveTo,
-                                    splitFraction = state.detailsSplitFraction,
-                                    innerSplitFraction = state.detailsInnerSplitFraction,
-                                    floatingOffset = Offset(state.detailsFloatingOffsetX, state.detailsFloatingOffsetY),
-                                    floatingSize = DpSize(state.detailsFloatingWidthDp.dp, state.detailsFloatingHeightDp.dp),
-                                    onMoveTo = { screenModel.onEvent(DownloadsEvent.SetDetailsMoveTo(it)) },
-                                    onViewMode = { screenModel.onEvent(DownloadsEvent.SetDetailsViewMode(it)) },
-                                    onSplitFractionChange = { screenModel.onEvent(DownloadsEvent.SetSplitFraction(it)) },
-                                    onInnerSplitFractionChange = { screenModel.onEvent(DownloadsEvent.SetInnerSplitFraction(it)) },
+                                    viewMode = detailsState.viewMode,
+                                    moveTo = detailsState.moveTo,
+                                    splitFraction = detailsState.splitFraction,
+                                    innerSplitFraction = detailsState.innerSplitFraction,
+                                    floatingOffset = Offset(detailsState.floatingOffsetX, detailsState.floatingOffsetY),
+                                    floatingSize = DpSize(detailsState.floatingWidthDp.dp, detailsState.floatingHeightDp.dp),
+                                    onMoveTo = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
+                                    onViewMode = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
+                                    onSplitFractionChange = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(it)) },
+                                    onInnerSplitFractionChange = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetInnerSplitFraction(it)) },
                                     onFloatingBoundsChange = { offset, size ->
-                                        screenModel.onEvent(DownloadsEvent.SetFloatingBounds(offset.x, offset.y, size.width.value, size.height.value))
+                                        detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(offset.x, offset.y, size.width.value, size.height.value))
                                     },
-                                    onResize = { screenModel.onEvent(DownloadsEvent.ResizeDetails(it)) },
-                                    onClose = { screenModel.onEvent(DownloadsEvent.ToggleDetails(false)) },
+                                    onResize = { detailsModel.resize(it) },
+                                    onClose = { detailsModel.setVisible(false) },
                                     content = {
                                         DownloadDetailsPanel(
                                             download = detailsDownload,
-                                            onHide = { screenModel.onEvent(DownloadsEvent.ToggleDetails(false)) },
+                                            onHide = { detailsModel.setVisible(false) },
                                             modifier = Modifier.fillMaxSize(),
-                                            viewMode = state.viewMode,
-                                            moveTo = state.moveTo,
-                                            groupTabs = state.groupTabs,
-                                            onEvent = screenModel::onEvent,
+                                            viewMode = detailsState.viewMode,
+                                            moveTo = detailsState.moveTo,
+                                            groupTabs = detailsState.groupTabs,
+                                            onViewMode = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
+                                            onMoveTo = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
+                                            onResize = { detailsModel.resize(it) },
+                                            onToggleGroupTabs = { detailsModel.setGroupTabs(it) },
                                         )
                                     }
                                 )
@@ -235,12 +246,12 @@ class MainScreen : Screen {
                                     innerSplitFraction = extState.innerSplitFraction,
                                     floatingOffset = Offset(extState.floatingOffsetX, extState.floatingOffsetY),
                                     floatingSize = DpSize(extState.floatingWidthDp.dp, extState.floatingHeightDp.dp),
-                                    onMoveTo = { extModel.setMoveTo(it) },
-                                    onViewMode = { extModel.setViewMode(it) },
-                                    onSplitFractionChange = { extModel.setSplitFraction(it) },
-                                    onInnerSplitFractionChange = { extModel.setInnerSplitFraction(it) },
+                                    onMoveTo = { extModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
+                                    onViewMode = { extModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
+                                    onSplitFractionChange = { extModel.onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(it)) },
+                                    onInnerSplitFractionChange = { extModel.onLayoutEvent(ToolWindowLayoutAction.SetInnerSplitFraction(it)) },
                                     onFloatingBoundsChange = { offset, size ->
-                                        extModel.setFloatingBounds(offset.x, offset.y, size.width.value, size.height.value)
+                                        extModel.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(offset.x, offset.y, size.width.value, size.height.value))
                                     },
                                     onResize = { extModel.resize(it) },
                                     onClose = { extModel.setVisible(false) },

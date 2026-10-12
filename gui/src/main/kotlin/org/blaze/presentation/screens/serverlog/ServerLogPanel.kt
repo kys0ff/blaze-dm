@@ -44,6 +44,7 @@ import org.blaze.presentation.components.ToolWindowHeader
 import org.blaze.presentation.components.ToolWindowOptionsButton
 import org.blaze.presentation.components.ToolWindowSearchField
 import org.blaze.presentation.components.ToolbarIconButton
+import org.blaze.presentation.components.panel.ToolWindowLayoutAction
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.server.DownloadServiceController
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -176,8 +177,8 @@ fun ServerLogPanel(
                     options = options,
                     viewMode = state.viewMode,
                     moveTo = state.moveTo,
-                    onViewMode = model::setViewMode,
-                    onMoveTo = model::setMoveTo,
+                    onViewMode = { model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
+                    onMoveTo = { model.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
                     onResize = model::resize,
                 )
                 ToolbarIconButton(

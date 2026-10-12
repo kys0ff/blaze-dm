@@ -7,9 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import org.blaze.i18n.BlazeStrings
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsResize
-import org.blaze.presentation.screens.downloads.DetailsViewMode
+import org.blaze.presentation.components.panel.ToolWindowMoveTo
+import org.blaze.presentation.components.panel.ToolWindowResize
+import org.blaze.presentation.components.panel.ToolWindowViewMode
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 /**
@@ -27,24 +27,24 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 @Composable
 fun ToolWindowOptionsButton(
     options: BlazeStrings.Downloads.DetailsPane.ToolWindowOptions,
-    viewMode: DetailsViewMode,
-    moveTo: DetailsMoveTo,
+    viewMode: ToolWindowViewMode,
+    moveTo: ToolWindowMoveTo,
     onToggleGroupTabs: ((Boolean) -> Unit)? = null,
     groupTabs: Boolean? = null,
-    onViewMode: (DetailsViewMode) -> Unit,
-    onMoveTo: (DetailsMoveTo) -> Unit,
-    onResize: (DetailsResize) -> Unit,
+    onViewMode: (ToolWindowViewMode) -> Unit,
+    onMoveTo: (ToolWindowMoveTo) -> Unit,
+    onResize: (ToolWindowResize) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val anchor = rememberMenuAnchor()
 
     // The one place the mode's own vocabulary decides what the menu can offer: a free window has no
     // split to stretch, so the Resize presets only mean something to the modes that hold a share of the
-    // frame or cover an edge of it (see [DetailsViewMode.isFloatingWindow]).
+    // frame or cover an edge of it (see [ToolWindowViewMode.isFloatingWindow]).
     val isFloating = viewMode.isFloatingWindow
-    val isRightDocked = !isFloating && (moveTo == DetailsMoveTo.RIGHT_TOP || moveTo == DetailsMoveTo.RIGHT_BOTTOM)
-    val isLeftDocked = !isFloating && (moveTo == DetailsMoveTo.LEFT_TOP || moveTo == DetailsMoveTo.LEFT_BOTTOM)
-    val isBottomDocked = !isFloating && (moveTo == DetailsMoveTo.BOTTOM_LEFT || moveTo == DetailsMoveTo.BOTTOM_RIGHT)
+    val isRightDocked = !isFloating && (moveTo == ToolWindowMoveTo.RIGHT_TOP || moveTo == ToolWindowMoveTo.RIGHT_BOTTOM)
+    val isLeftDocked = !isFloating && (moveTo == ToolWindowMoveTo.LEFT_TOP || moveTo == ToolWindowMoveTo.LEFT_BOTTOM)
+    val isBottomDocked = !isFloating && (moveTo == ToolWindowMoveTo.BOTTOM_LEFT || moveTo == ToolWindowMoveTo.BOTTOM_RIGHT)
 
     val canStretchLeft = !isFloating && !isLeftDocked
     val canStretchRight = !isFloating && !isRightDocked
@@ -74,20 +74,20 @@ fun ToolWindowOptionsButton(
                         MenuEntry.Submenu(
                             label = options.viewMode,
                             children = listOf(
-                                marked(options.dockPinned, selected = viewMode == DetailsViewMode.DOCK_PINNED) {
-                                    onViewMode(DetailsViewMode.DOCK_PINNED)
+                                marked(options.dockPinned, selected = viewMode == ToolWindowViewMode.DOCK_PINNED) {
+                                    onViewMode(ToolWindowViewMode.DOCK_PINNED)
                                 },
-                                marked(options.dockUnpinned, selected = viewMode == DetailsViewMode.DOCK_UNPINNED) {
-                                    onViewMode(DetailsViewMode.DOCK_UNPINNED)
+                                marked(options.dockUnpinned, selected = viewMode == ToolWindowViewMode.DOCK_UNPINNED) {
+                                    onViewMode(ToolWindowViewMode.DOCK_UNPINNED)
                                 },
-                                marked(options.undock, selected = viewMode == DetailsViewMode.UNDOCK) {
-                                    onViewMode(DetailsViewMode.UNDOCK)
+                                marked(options.undock, selected = viewMode == ToolWindowViewMode.UNDOCK) {
+                                    onViewMode(ToolWindowViewMode.UNDOCK)
                                 },
-                                marked(options.float, selected = viewMode == DetailsViewMode.FLOAT) {
-                                    onViewMode(DetailsViewMode.FLOAT)
+                                marked(options.float, selected = viewMode == ToolWindowViewMode.FLOAT) {
+                                    onViewMode(ToolWindowViewMode.FLOAT)
                                 },
-                                marked(options.window, selected = viewMode == DetailsViewMode.WINDOW) {
-                                    onViewMode(DetailsViewMode.WINDOW)
+                                marked(options.window, selected = viewMode == ToolWindowViewMode.WINDOW) {
+                                    onViewMode(ToolWindowViewMode.WINDOW)
                                 },
                             ),
                         ),
@@ -96,23 +96,23 @@ fun ToolWindowOptionsButton(
                         MenuEntry.Submenu(
                             label = options.moveTo,
                             children = listOf(
-                                marked(options.leftTop, selected = moveTo == DetailsMoveTo.LEFT_TOP) {
-                                    onMoveTo(DetailsMoveTo.LEFT_TOP)
+                                marked(options.leftTop, selected = moveTo == ToolWindowMoveTo.LEFT_TOP) {
+                                    onMoveTo(ToolWindowMoveTo.LEFT_TOP)
                                 },
-                                marked(options.leftBottom, selected = moveTo == DetailsMoveTo.LEFT_BOTTOM) {
-                                    onMoveTo(DetailsMoveTo.LEFT_BOTTOM)
+                                marked(options.leftBottom, selected = moveTo == ToolWindowMoveTo.LEFT_BOTTOM) {
+                                    onMoveTo(ToolWindowMoveTo.LEFT_BOTTOM)
                                 },
-                                marked(options.bottomRight, selected = moveTo == DetailsMoveTo.BOTTOM_RIGHT) {
-                                    onMoveTo(DetailsMoveTo.BOTTOM_RIGHT)
+                                marked(options.bottomRight, selected = moveTo == ToolWindowMoveTo.BOTTOM_RIGHT) {
+                                    onMoveTo(ToolWindowMoveTo.BOTTOM_RIGHT)
                                 },
-                                marked(options.bottomLeft, selected = moveTo == DetailsMoveTo.BOTTOM_LEFT) {
-                                    onMoveTo(DetailsMoveTo.BOTTOM_LEFT)
+                                marked(options.bottomLeft, selected = moveTo == ToolWindowMoveTo.BOTTOM_LEFT) {
+                                    onMoveTo(ToolWindowMoveTo.BOTTOM_LEFT)
                                 },
-                                marked(options.rightBottom, selected = moveTo == DetailsMoveTo.RIGHT_BOTTOM) {
-                                    onMoveTo(DetailsMoveTo.RIGHT_BOTTOM)
+                                marked(options.rightBottom, selected = moveTo == ToolWindowMoveTo.RIGHT_BOTTOM) {
+                                    onMoveTo(ToolWindowMoveTo.RIGHT_BOTTOM)
                                 },
-                                marked(options.rightTop, selected = moveTo == DetailsMoveTo.RIGHT_TOP) {
-                                    onMoveTo(DetailsMoveTo.RIGHT_TOP)
+                                marked(options.rightTop, selected = moveTo == ToolWindowMoveTo.RIGHT_TOP) {
+                                    onMoveTo(ToolWindowMoveTo.RIGHT_TOP)
                                 },
                             ),
                         ),
@@ -121,11 +121,11 @@ fun ToolWindowOptionsButton(
                         MenuEntry.Submenu(
                             label = options.resize,
                             children = listOf(
-                                marked(options.stretchLeft, enabled = canStretchLeft) { onResize(DetailsResize.STRETCH_LEFT) },
-                                marked(options.stretchRight, enabled = canStretchRight) { onResize(DetailsResize.STRETCH_RIGHT) },
-                                marked(options.stretchTop, enabled = canStretchTop) { onResize(DetailsResize.STRETCH_TOP) },
-                                marked(options.stretchBottom, enabled = canStretchBottom) { onResize(DetailsResize.STRETCH_BOTTOM) },
-                                marked(options.maximize) { onResize(DetailsResize.MAXIMIZE) },
+                                marked(options.stretchLeft, enabled = canStretchLeft) { onResize(ToolWindowResize.STRETCH_LEFT) },
+                                marked(options.stretchRight, enabled = canStretchRight) { onResize(ToolWindowResize.STRETCH_RIGHT) },
+                                marked(options.stretchTop, enabled = canStretchTop) { onResize(ToolWindowResize.STRETCH_TOP) },
+                                marked(options.stretchBottom, enabled = canStretchBottom) { onResize(ToolWindowResize.STRETCH_BOTTOM) },
+                                marked(options.maximize) { onResize(ToolWindowResize.MAXIMIZE) },
                             ),
                         ),
                     )

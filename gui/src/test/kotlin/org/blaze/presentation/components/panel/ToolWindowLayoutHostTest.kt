@@ -6,10 +6,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.runBlocking
 import org.blaze.data.AppSettingsRepository
-import org.blaze.presentation.screens.downloads.DetailsMoveTo
-import org.blaze.presentation.screens.downloads.DetailsViewMode
-import org.blaze.presentation.screens.downloads.WINDOW_MODE_CONTENT_FRACTION
-import org.blaze.presentation.screens.downloads.contentFractionForViewMode
 import org.blaze.presentation.screens.serverlog.ServerLogWindowModel
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -29,15 +25,15 @@ class ToolWindowLayoutHostTest {
 
     @Test
     fun `tool window spec holds view layout properties and bounds`() {
-        var movedTo: DetailsMoveTo? = null
+        var movedTo: ToolWindowMoveTo? = null
         var innerFraction: Float? = null
 
         val spec = ToolWindowSpec(
             id = "test_panel",
             title = "Test Panel",
             visible = true,
-            viewMode = DetailsViewMode.DOCK_PINNED,
-            moveTo = DetailsMoveTo.RIGHT_TOP,
+            viewMode = ToolWindowViewMode.DOCK_PINNED,
+            moveTo = ToolWindowMoveTo.RIGHT_TOP,
             splitFraction = 0.65f,
             innerSplitFraction = 0.50f,
             floatingOffset = Offset(100f, 150f),
@@ -49,11 +45,11 @@ class ToolWindowLayoutHostTest {
 
         assertEquals("test_panel", spec.id)
         assertEquals("Test Panel", spec.title)
-        assertEquals(DetailsViewMode.DOCK_PINNED, spec.viewMode)
-        assertEquals(DetailsMoveTo.RIGHT_TOP, spec.moveTo)
+        assertEquals(ToolWindowViewMode.DOCK_PINNED, spec.viewMode)
+        assertEquals(ToolWindowMoveTo.RIGHT_TOP, spec.moveTo)
 
-        spec.onMoveTo(DetailsMoveTo.LEFT_BOTTOM)
-        assertEquals(DetailsMoveTo.LEFT_BOTTOM, movedTo)
+        spec.onMoveTo(ToolWindowMoveTo.LEFT_BOTTOM)
+        assertEquals(ToolWindowMoveTo.LEFT_BOTTOM, movedTo)
 
         spec.onInnerSplitFractionChange(0.40f)
         assertEquals(0.40f, innerFraction)
@@ -64,8 +60,8 @@ class ToolWindowLayoutHostTest {
         val repository = AppSettingsRepository(tempDir)
         val model = ServerLogWindowModel(repository)
 
-        model.setInnerSplitFraction(0.35f)
-        model.setFloatingBounds(120f, 200f, 500f, 400f)
+        model.onLayoutEvent(ToolWindowLayoutAction.SetInnerSplitFraction(0.35f))
+        model.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(120f, 200f, 500f, 400f))
 
         val live = model.state.value
         assertEquals(0.35f, live.innerSplitFraction)
@@ -85,9 +81,9 @@ class ToolWindowLayoutHostTest {
 
     @Test
     fun `dock regions categorize panels by position correctly`() {
-        val p1 = spec("p1", viewMode = DetailsViewMode.DOCK_PINNED, moveTo = DetailsMoveTo.RIGHT_TOP)
-        val p2 = spec("p2", viewMode = DetailsViewMode.DOCK_PINNED, moveTo = DetailsMoveTo.RIGHT_BOTTOM)
-        val p3 = spec("p3", viewMode = DetailsViewMode.FLOAT, moveTo = DetailsMoveTo.BOTTOM_RIGHT)
+        val p1 = spec("p1", viewMode = ToolWindowViewMode.DOCK_PINNED, moveTo = ToolWindowMoveTo.RIGHT_TOP)
+        val p2 = spec("p2", viewMode = ToolWindowViewMode.DOCK_PINNED, moveTo = ToolWindowMoveTo.RIGHT_BOTTOM)
+        val p3 = spec("p3", viewMode = ToolWindowViewMode.FLOAT, moveTo = ToolWindowMoveTo.BOTTOM_RIGHT)
 
         val panels = listOf(p1, p2, p3)
         val docked = panels.filter { it.visible && it.viewMode.isDocked }
@@ -97,7 +93,7 @@ class ToolWindowLayoutHostTest {
         assertEquals(1, overlay.size)
         assertEquals("p3", overlay.first().id)
 
-        val rightDocked = docked.regionFor(DetailsMoveTo.RIGHT_TOP, DetailsMoveTo.RIGHT_BOTTOM)
+        val rightDocked = docked.regionFor(ToolWindowMoveTo.RIGHT_TOP, ToolWindowMoveTo.RIGHT_BOTTOM)
         assertEquals(listOf("p1", "p2"), rightDocked.map { it.id }, "the region's corner pane stacks first")
         assertTrue(rightDocked.contains(p1))
         assertTrue(rightDocked.contains(p2))
@@ -105,17 +101,17 @@ class ToolWindowLayoutHostTest {
 
     @Test
     fun `changing panel position to bottom left and bottom right sorts and reverses slot order`() {
-        val details = spec("details", moveTo = DetailsMoveTo.BOTTOM_RIGHT)
-        val log = spec("log", moveTo = DetailsMoveTo.BOTTOM_LEFT)
+        val details = spec("details", moveTo = ToolWindowMoveTo.BOTTOM_RIGHT)
+        val log = spec("log", moveTo = ToolWindowMoveTo.BOTTOM_LEFT)
 
-        val bottomPanels = listOf(details, log).regionFor(DetailsMoveTo.BOTTOM_LEFT, DetailsMoveTo.BOTTOM_RIGHT)
+        val bottomPanels = listOf(details, log).regionFor(ToolWindowMoveTo.BOTTOM_LEFT, ToolWindowMoveTo.BOTTOM_RIGHT)
         assertEquals("log", bottomPanels[0].id, "BOTTOM_LEFT panel is first (left slot)")
         assertEquals("details", bottomPanels[1].id, "BOTTOM_RIGHT panel is second (right slot)")
 
         // User swaps their positions: details -> BOTTOM_LEFT, log -> BOTTOM_RIGHT
         val reversedPanels =
-            listOf(details.copy(moveTo = DetailsMoveTo.BOTTOM_LEFT), log.copy(moveTo = DetailsMoveTo.BOTTOM_RIGHT))
-                .regionFor(DetailsMoveTo.BOTTOM_LEFT, DetailsMoveTo.BOTTOM_RIGHT)
+            listOf(details.copy(moveTo = ToolWindowMoveTo.BOTTOM_LEFT), log.copy(moveTo = ToolWindowMoveTo.BOTTOM_RIGHT))
+                .regionFor(ToolWindowMoveTo.BOTTOM_LEFT, ToolWindowMoveTo.BOTTOM_RIGHT)
 
         assertEquals("details", reversedPanels[0].id, "details is now first (left slot)")
         assertEquals("log", reversedPanels[1].id, "log is now second (right slot)")
@@ -124,13 +120,13 @@ class ToolWindowLayoutHostTest {
     @Test
     fun `a third pane in one region still belongs to that region`() {
         val panels = listOf(
-            spec("a", moveTo = DetailsMoveTo.LEFT_TOP),
-            spec("b", moveTo = DetailsMoveTo.LEFT_BOTTOM),
-            spec("c", moveTo = DetailsMoveTo.LEFT_TOP),
-            spec("d", viewMode = DetailsViewMode.FLOAT, moveTo = DetailsMoveTo.LEFT_TOP),
+            spec("a", moveTo = ToolWindowMoveTo.LEFT_TOP),
+            spec("b", moveTo = ToolWindowMoveTo.LEFT_BOTTOM),
+            spec("c", moveTo = ToolWindowMoveTo.LEFT_TOP),
+            spec("d", viewMode = ToolWindowViewMode.FLOAT, moveTo = ToolWindowMoveTo.LEFT_TOP),
         )
 
-        val left = panels.filter { it.viewMode.isDocked }.regionFor(DetailsMoveTo.LEFT_TOP, DetailsMoveTo.LEFT_BOTTOM)
+        val left = panels.filter { it.viewMode.isDocked }.regionFor(ToolWindowMoveTo.LEFT_TOP, ToolWindowMoveTo.LEFT_BOTTOM)
 
         assertEquals(
             listOf("a", "c", "b"),
@@ -142,27 +138,27 @@ class ToolWindowLayoutHostTest {
     @Test
     fun `view modes split along the reserved-share and fold-away axes`() {
         // Reserved-share axis: only a pinned pane and WINDOW hold a permanent piece of the frame.
-        assertTrue(DetailsViewMode.DOCK_PINNED.isDocked, "DOCK_PINNED mode must be docked")
-        assertTrue(DetailsViewMode.WINDOW.isDocked, "WINDOW mode must be docked")
-        assertFalse(DetailsViewMode.DOCK_UNPINNED.isDocked, "an unpinned pane covers the content, it does not reserve it")
-        assertFalse(DetailsViewMode.UNDOCK.isDocked, "UNDOCK mode must not be docked")
-        assertFalse(DetailsViewMode.FLOAT.isDocked, "FLOAT mode must not be docked")
-        DetailsViewMode.entries.forEach { mode ->
+        assertTrue(ToolWindowViewMode.DOCK_PINNED.isDocked, "DOCK_PINNED mode must be docked")
+        assertTrue(ToolWindowViewMode.WINDOW.isDocked, "WINDOW mode must be docked")
+        assertFalse(ToolWindowViewMode.DOCK_UNPINNED.isDocked, "an unpinned pane covers the content, it does not reserve it")
+        assertFalse(ToolWindowViewMode.UNDOCK.isDocked, "UNDOCK mode must not be docked")
+        assertFalse(ToolWindowViewMode.FLOAT.isDocked, "FLOAT mode must not be docked")
+        ToolWindowViewMode.entries.forEach { mode ->
             assertEquals(mode.isDocked, !mode.overlaysContent, "$mode must sit on exactly one side of the split")
         }
 
         // Fold-away axis: the two transient modes are the ones that hide when attention leaves.
-        assertTrue(DetailsViewMode.DOCK_UNPINNED.autoHidesWhenUnfocused, "an unpinned pane is precisely the one that hides")
-        assertTrue(DetailsViewMode.UNDOCK.autoHidesWhenUnfocused, "an undocked pane folds away too")
-        assertFalse(DetailsViewMode.DOCK_PINNED.autoHidesWhenUnfocused, "a pinned pane stays until told otherwise")
-        assertFalse(DetailsViewMode.FLOAT.autoHidesWhenUnfocused, "a floated window stays until told otherwise")
-        assertFalse(DetailsViewMode.WINDOW.autoHidesWhenUnfocused, "WINDOW stays until told otherwise")
+        assertTrue(ToolWindowViewMode.DOCK_UNPINNED.autoHidesWhenUnfocused, "an unpinned pane is precisely the one that hides")
+        assertTrue(ToolWindowViewMode.UNDOCK.autoHidesWhenUnfocused, "an undocked pane folds away too")
+        assertFalse(ToolWindowViewMode.DOCK_PINNED.autoHidesWhenUnfocused, "a pinned pane stays until told otherwise")
+        assertFalse(ToolWindowViewMode.FLOAT.autoHidesWhenUnfocused, "a floated window stays until told otherwise")
+        assertFalse(ToolWindowViewMode.WINDOW.autoHidesWhenUnfocused, "WINDOW stays until told otherwise")
 
         // Only the two free windows can be dragged around the layer.
-        assertTrue(DetailsViewMode.FLOAT.isFloatingWindow)
-        assertTrue(DetailsViewMode.UNDOCK.isFloatingWindow)
-        assertFalse(DetailsViewMode.DOCK_UNPINNED.isFloatingWindow, "an unpinned pane keeps its edge")
-        assertFalse(DetailsViewMode.WINDOW.isFloatingWindow)
+        assertTrue(ToolWindowViewMode.FLOAT.isFloatingWindow)
+        assertTrue(ToolWindowViewMode.UNDOCK.isFloatingWindow)
+        assertFalse(ToolWindowViewMode.DOCK_UNPINNED.isFloatingWindow, "an unpinned pane keeps its edge")
+        assertFalse(ToolWindowViewMode.WINDOW.isFloatingWindow)
     }
 
     @Test
@@ -170,12 +166,12 @@ class ToolWindowLayoutHostTest {
         // WINDOW promises the pane the larger half, so a list holding 68% yields down to the window share.
         assertEquals(
             WINDOW_MODE_CONTENT_FRACTION,
-            contentFractionForViewMode(DetailsViewMode.WINDOW, 0.68f),
+            contentFractionForViewMode(ToolWindowViewMode.WINDOW, 0.68f),
         )
         // A split already friendlier to the pane is left alone: entering WINDOW never *shrinks* the pane.
-        assertEquals(0.20f, contentFractionForViewMode(DetailsViewMode.WINDOW, 0.20f))
+        assertEquals(0.20f, contentFractionForViewMode(ToolWindowViewMode.WINDOW, 0.20f))
         // Every other mode keeps whatever the user dragged, so switching away and back loses no size.
-        DetailsViewMode.entries.filter { it != DetailsViewMode.WINDOW }.forEach { mode ->
+        ToolWindowViewMode.entries.filter { it != ToolWindowViewMode.WINDOW }.forEach { mode ->
             assertEquals(0.68f, contentFractionForViewMode(mode, 0.68f), "$mode must not move the divider")
         }
     }
@@ -187,12 +183,12 @@ class ToolWindowLayoutHostTest {
             id = "undocked_panel",
             title = "Undocked Panel",
             visible = true,
-            viewMode = DetailsViewMode.UNDOCK,
+            viewMode = ToolWindowViewMode.UNDOCK,
             onClose = { closed = true },
             content = {}
         )
 
-        assertEquals(DetailsViewMode.UNDOCK, spec.viewMode)
+        assertEquals(ToolWindowViewMode.UNDOCK, spec.viewMode)
         assertFalse(closed)
         spec.onClose()
         assertTrue(closed)
@@ -222,10 +218,10 @@ class ToolWindowLayoutHostTest {
         val layer = IntSize(1000, 800)
         val size = IntSize(400, 300)
 
-        assertEquals(Offset(16f, 16f), anchoredOffset(DetailsMoveTo.LEFT_TOP, size, layer, 16f))
-        assertEquals(Offset(584f, 16f), anchoredOffset(DetailsMoveTo.RIGHT_TOP, size, layer, 16f))
-        assertEquals(Offset(584f, 484f), anchoredOffset(DetailsMoveTo.RIGHT_BOTTOM, size, layer, 16f))
-        assertEquals(Offset(16f, 484f), anchoredOffset(DetailsMoveTo.LEFT_BOTTOM, size, layer, 16f))
+        assertEquals(Offset(16f, 16f), anchoredOffset(ToolWindowMoveTo.LEFT_TOP, size, layer, 16f))
+        assertEquals(Offset(584f, 16f), anchoredOffset(ToolWindowMoveTo.RIGHT_TOP, size, layer, 16f))
+        assertEquals(Offset(584f, 484f), anchoredOffset(ToolWindowMoveTo.RIGHT_BOTTOM, size, layer, 16f))
+        assertEquals(Offset(16f, 484f), anchoredOffset(ToolWindowMoveTo.LEFT_BOTTOM, size, layer, 16f))
     }
 
     @Test
@@ -233,29 +229,29 @@ class ToolWindowLayoutHostTest {
         val model = ServerLogWindowModel(AppSettingsRepository(tempDir))
 
         // A docked window keeps its remembered place when the mode changes to another docked one.
-        model.setFloatingBounds(300f, 200f, 500f, 400f)
-        model.setViewMode(DetailsViewMode.DOCK_PINNED)
+        model.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(300f, 200f, 500f, 400f))
+        model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(ToolWindowViewMode.DOCK_PINNED))
         assertEquals(300f, model.state.value.floatingOffsetX, "a docked pane has nowhere to be anchored")
 
         // Detaching clears the place, which is the request the floating window reads as "give me a corner".
-        model.setViewMode(DetailsViewMode.FLOAT)
+        model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(ToolWindowViewMode.FLOAT))
         assertEquals(0f, model.state.value.floatingOffsetX)
         assertEquals(0f, model.state.value.floatingOffsetY)
 
         // A hop between the two free modes keeps the spot the window reported.
-        model.setFloatingBounds(640f, 20f, 500f, 400f)
-        model.setViewMode(DetailsViewMode.UNDOCK)
+        model.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(640f, 20f, 500f, 400f))
+        model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(ToolWindowViewMode.UNDOCK))
         assertEquals(640f, model.state.value.floatingOffsetX, "an undock must not throw the window back to a corner")
 
         // Move To means something for a free window: it follows the edge the user just picked.
-        model.setMoveTo(DetailsMoveTo.LEFT_TOP)
-        assertEquals(DetailsMoveTo.LEFT_TOP, model.state.value.moveTo)
+        model.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(ToolWindowMoveTo.LEFT_TOP))
+        assertEquals(ToolWindowMoveTo.LEFT_TOP, model.state.value.moveTo)
         assertEquals(0f, model.state.value.floatingOffsetX, "a free window is re-anchored, not left where it was")
 
         // ...and does not for a docked one, whose place is the split's business rather than its own.
-        model.setViewMode(DetailsViewMode.DOCK_PINNED)
-        model.setFloatingBounds(120f, 40f, 500f, 400f)
-        model.setMoveTo(DetailsMoveTo.BOTTOM_LEFT)
+        model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(ToolWindowViewMode.DOCK_PINNED))
+        model.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(120f, 40f, 500f, 400f))
+        model.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(ToolWindowMoveTo.BOTTOM_LEFT))
         assertEquals(120f, model.state.value.floatingOffsetX, "a docked pane keeps its stored window geometry")
     }
 
@@ -263,19 +259,19 @@ class ToolWindowLayoutHostTest {
     fun `window mode hands the pane the larger share through the model`() {
         val model = ServerLogWindowModel(AppSettingsRepository(tempDir))
 
-        model.setSplitFraction(0.68f)
-        model.setViewMode(DetailsViewMode.WINDOW)
+        model.onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(0.68f))
+        model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(ToolWindowViewMode.WINDOW))
         assertEquals(WINDOW_MODE_CONTENT_FRACTION, model.state.value.splitFraction, "the pane claims the larger half")
 
         // Leaving the mode does not give the share back, so the pane the user grew stays grown.
-        model.setViewMode(DetailsViewMode.DOCK_PINNED)
+        model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(ToolWindowViewMode.DOCK_PINNED))
         assertEquals(WINDOW_MODE_CONTENT_FRACTION, model.state.value.splitFraction)
     }
 
     private fun spec(
         id: String,
-        viewMode: DetailsViewMode = DetailsViewMode.DOCK_PINNED,
-        moveTo: DetailsMoveTo = DetailsMoveTo.RIGHT_TOP,
+        viewMode: ToolWindowViewMode = ToolWindowViewMode.DOCK_PINNED,
+        moveTo: ToolWindowMoveTo = ToolWindowMoveTo.RIGHT_TOP,
     ): ToolWindowSpec = ToolWindowSpec(
         id = id,
         title = id,
