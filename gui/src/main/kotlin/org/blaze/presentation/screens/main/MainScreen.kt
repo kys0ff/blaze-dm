@@ -102,9 +102,6 @@ class MainScreen : Screen {
         val running = shell.running
 
         Navigator(DownloadsScreen()) { navigator ->
-            // One-shot shell effects: a background-task click routes through the very activator the
-            // downloads screen registers for Search Everywhere, so "jump to this download" behaves
-            // identically from both places. The command bus is collected by the shell model itself.
             LaunchedEffect(shellModel, searchController) {
                 shellModel.effects.collect { effect ->
                     when (effect) {
@@ -112,233 +109,336 @@ class MainScreen : Screen {
                     }
                 }
             }
-            // The frame (flat color + ambient glow) is painted once, by BlazeContent, so the
-            // chrome and every gap in this screen leak the same continuous field. Painting a solid
-            // background here would bury it.
+
             Box(
                 modifier = Modifier
                     .fillMaxSize(),
             ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Row(modifier = Modifier.weight(1f)) {
-                    val sidebarItems = listOf(
-                        SidebarItem(
-                            label = strings.downloads.title,
-                            icon = AllIconsKeys.Actions.Download,
-                            id = MainToolWindowId.DOWNLOADS.stripeId,
-                            count = downloads.size.takeIf { it > 0 }
-                        ),
-                        SidebarItem(
-                            label = strings.extensions.title,
-                            icon = AllIconsKeys.Nodes.Plugin,
-                            id = MainToolWindowId.EXTENSIONS.stripeId,
-                        ),
-                    )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(modifier = Modifier.weight(1f)) {
+                        val sidebarItems = listOf(
+                            SidebarItem(
+                                label = strings.downloads.title,
+                                icon = AllIconsKeys.Actions.Download,
+                                id = MainToolWindowId.DOWNLOADS.stripeId,
+                                count = downloads.size.takeIf { it > 0 }
+                            ),
+                            SidebarItem(
+                                label = strings.extensions.title,
+                                icon = AllIconsKeys.Nodes.Plugin,
+                                id = MainToolWindowId.EXTENSIONS.stripeId,
+                            ),
+                        )
 
-                    val currentScreen = navigator.lastItem
-                    // Downloads is the central content; Extensions is a dockable tool window the stripe
-                    // raises over the side, not a screen that replaces the list. The shell projects which
-                    // entry to mark (Extensions while its panel is up); clicking an entry folds back into
-                    // the shell model, which raises or lowers the window through the model that owns it.
-                    // Settings is not a stripe item anymore - it is a modal window reached from the
-                    // File menu and Search Everywhere - so opening it never changes the selection.
-                    ToolWindowStripe(
-                        items = sidebarItems,
-                        selectedId = shell.activeToolWindow.stripeId,
-                        onItemSelected = { item ->
-                            when (item.id) {
-                                MainToolWindowId.DOWNLOADS.stripeId ->
-                                    shellModel.onEvent(MainEvent.SelectToolWindow(MainToolWindowId.DOWNLOADS))
+                        val currentScreen = navigator.lastItem
 
-                                MainToolWindowId.EXTENSIONS.stripeId ->
-                                    shellModel.onEvent(MainEvent.SelectToolWindow(MainToolWindowId.EXTENSIONS))
+                        ToolWindowStripe(
+                            items = sidebarItems,
+                            selectedId = shell.activeToolWindow.stripeId,
+                            onItemSelected = { item ->
+                                when (item.id) {
+                                    MainToolWindowId.DOWNLOADS.stripeId ->
+                                        shellModel.onEvent(
+                                            MainEvent.SelectToolWindow(
+                                                MainToolWindowId.DOWNLOADS
+                                            )
+                                        )
+
+                                    MainToolWindowId.EXTENSIONS.stripeId ->
+                                        shellModel.onEvent(
+                                            MainEvent.SelectToolWindow(
+                                                MainToolWindowId.EXTENSIONS
+                                            )
+                                        )
+                                }
+                            }
+                        )
+
+                        val selectedIds = state.selectedIds
+                        val detailsDownload: Download? =
+                            if (selectedIds.size == 1) downloads.find { it.id == selectedIds.first() } else null
+                        val detailsShown =
+                            detailsState.visible && (detailsDownload != null || (!detailsState.viewMode.autoHidesWhenEmpty))
+
+                        val panels = buildList {
+                            if (logState.visible) {
+                                add(
+                                    ToolWindowSpec(
+                                        id = "server_log",
+                                        title = strings.serverLog.title,
+                                        visible = true,
+                                        viewMode = logState.viewMode,
+                                        moveTo = logState.moveTo,
+                                        splitFraction = logState.splitFraction,
+                                        innerSplitFraction = logState.innerSplitFraction,
+                                        floatingOffset = Offset(
+                                            logState.floatingOffsetX,
+                                            logState.floatingOffsetY
+                                        ),
+                                        floatingSize = DpSize(
+                                            logState.floatingWidthDp.dp,
+                                            logState.floatingHeightDp.dp
+                                        ),
+                                        onMoveTo = {
+                                            logModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetMoveTo(
+                                                    it
+                                                )
+                                            )
+                                        },
+                                        onViewMode = {
+                                            logModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetViewMode(
+                                                    it
+                                                )
+                                            )
+                                        },
+                                        onSplitFractionChange = {
+                                            logModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetSplitFraction(it)
+                                            )
+                                        },
+                                        onInnerSplitFractionChange = {
+                                            logModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetInnerSplitFraction(it)
+                                            )
+                                        },
+                                        onFloatingBoundsChange = { offset, size ->
+                                            logModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetFloatingBounds(
+                                                    offset.x,
+                                                    offset.y,
+                                                    size.width.value,
+                                                    size.height.value
+                                                )
+                                            )
+                                        },
+                                        onResize = { logModel.resize(it) },
+                                        onClose = { logModel.setVisible(false) },
+                                        content = {
+                                            ServerLogPanel(
+                                                model = logModel,
+                                                repository = logRepository,
+                                                controller = serverController,
+                                                commandBus = commandBus,
+                                                onHide = { logModel.setVisible(false) },
+                                            )
+                                        }
+                                    )
+                                )
+                            }
+
+                            if (currentScreen is DownloadsScreen && detailsShown) {
+                                add(
+                                    ToolWindowSpec(
+                                        id = "download_details",
+                                        title = detailsDownload?.name
+                                            ?: strings.downloads.dialogs.details.title,
+                                        visible = true,
+                                        viewMode = detailsState.viewMode,
+                                        moveTo = detailsState.moveTo,
+                                        splitFraction = detailsState.splitFraction,
+                                        innerSplitFraction = detailsState.innerSplitFraction,
+                                        floatingOffset = Offset(
+                                            detailsState.floatingOffsetX,
+                                            detailsState.floatingOffsetY
+                                        ),
+                                        floatingSize = DpSize(
+                                            detailsState.floatingWidthDp.dp,
+                                            detailsState.floatingHeightDp.dp
+                                        ),
+                                        onMoveTo = {
+                                            detailsModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetMoveTo(it)
+                                            )
+                                        },
+                                        onViewMode = {
+                                            detailsModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetViewMode(it)
+                                            )
+                                        },
+                                        onSplitFractionChange = {
+                                            detailsModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetSplitFraction(it)
+                                            )
+                                        },
+                                        onInnerSplitFractionChange = {
+                                            detailsModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetInnerSplitFraction(it)
+                                            )
+                                        },
+                                        onFloatingBoundsChange = { offset, size ->
+                                            detailsModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetFloatingBounds(
+                                                    offset.x,
+                                                    offset.y,
+                                                    size.width.value,
+                                                    size.height.value
+                                                )
+                                            )
+                                        },
+                                        onResize = { detailsModel.resize(it) },
+                                        onClose = { detailsModel.setVisible(false) },
+                                        content = {
+                                            DownloadDetailsPanel(
+                                                download = detailsDownload,
+                                                onHide = { detailsModel.setVisible(false) },
+                                                modifier = Modifier.fillMaxSize(),
+                                                viewMode = detailsState.viewMode,
+                                                moveTo = detailsState.moveTo,
+                                                groupTabs = detailsState.groupTabs,
+                                                onViewMode = {
+                                                    detailsModel.onLayoutEvent(
+                                                        ToolWindowLayoutAction.SetViewMode(it)
+                                                    )
+                                                },
+                                                onMoveTo = {
+                                                    detailsModel.onLayoutEvent(
+                                                        ToolWindowLayoutAction.SetMoveTo(it)
+                                                    )
+                                                },
+                                                onResize = { detailsModel.resize(it) },
+                                                onToggleGroupTabs = { detailsModel.setGroupTabs(it) },
+                                            )
+                                        }
+                                    )
+                                )
+                            }
+
+                            if (extState.visible) {
+                                add(
+                                    ToolWindowSpec(
+                                        id = "extensions",
+                                        title = strings.extensions.title,
+                                        visible = true,
+                                        viewMode = extState.viewMode,
+                                        moveTo = extState.moveTo,
+                                        splitFraction = extState.splitFraction,
+                                        innerSplitFraction = extState.innerSplitFraction,
+                                        floatingOffset = Offset(
+                                            extState.floatingOffsetX,
+                                            extState.floatingOffsetY
+                                        ),
+                                        floatingSize = DpSize(
+                                            extState.floatingWidthDp.dp,
+                                            extState.floatingHeightDp.dp
+                                        ),
+                                        onMoveTo = {
+                                            extModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetMoveTo(
+                                                    it
+                                                )
+                                            )
+                                        },
+                                        onViewMode = {
+                                            extModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetViewMode(
+                                                    it
+                                                )
+                                            )
+                                        },
+                                        onSplitFractionChange = {
+                                            extModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetSplitFraction(it)
+                                            )
+                                        },
+                                        onInnerSplitFractionChange = {
+                                            extModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetInnerSplitFraction(it)
+                                            )
+                                        },
+                                        onFloatingBoundsChange = { offset, size ->
+                                            extModel.onLayoutEvent(
+                                                ToolWindowLayoutAction.SetFloatingBounds(
+                                                    offset.x,
+                                                    offset.y,
+                                                    size.width.value,
+                                                    size.height.value
+                                                )
+                                            )
+                                        },
+                                        onResize = { extModel.resize(it) },
+                                        onClose = { extModel.setVisible(false) },
+                                        content = {
+                                            ExtensionsPanel(
+                                                model = extModel,
+                                                onHide = { extModel.setVisible(false) },
+                                            )
+                                        }
+                                    )
+                                )
                             }
                         }
-                    )
 
-                    val selectedIds = state.selectedIds
-                    val detailsDownload: Download? = if (selectedIds.size == 1) downloads.find { it.id == selectedIds.first() } else null
-                    val detailsShown = detailsState.visible && (detailsDownload != null || (!detailsState.viewMode.autoHidesWhenEmpty))
+                        val areaModifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(BlazeLayout.IslandGap)
 
-                    val panels = buildList {
-                        if (logState.visible) {
-                            add(
-                                ToolWindowSpec(
-                                    id = "server_log",
-                                    title = strings.serverLog.title,
-                                    visible = true,
-                                    viewMode = logState.viewMode,
-                                    moveTo = logState.moveTo,
-                                    splitFraction = logState.splitFraction,
-                                    innerSplitFraction = logState.innerSplitFraction,
-                                    floatingOffset = Offset(logState.floatingOffsetX, logState.floatingOffsetY),
-                                    floatingSize = DpSize(logState.floatingWidthDp.dp, logState.floatingHeightDp.dp),
-                                    onMoveTo = { logModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
-                                    onViewMode = { logModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
-                                    onSplitFractionChange = { logModel.onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(it)) },
-                                    onInnerSplitFractionChange = { logModel.onLayoutEvent(ToolWindowLayoutAction.SetInnerSplitFraction(it)) },
-                                    onFloatingBoundsChange = { offset, size ->
-                                        logModel.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(offset.x, offset.y, size.width.value, size.height.value))
-                                    },
-                                    onResize = { logModel.resize(it) },
-                                    onClose = { logModel.setVisible(false) },
-                                    content = {
-                                        ServerLogPanel(
-                                            model = logModel,
-                                            repository = logRepository,
-                                            controller = serverController,
-                                            commandBus = commandBus,
-                                            onHide = { logModel.setVisible(false) },
-                                        )
-                                    }
-                                )
-                            )
-                        }
-
-                        if (currentScreen is DownloadsScreen && detailsShown) {
-                            add(
-                                ToolWindowSpec(
-                                    id = "download_details",
-                                    title = detailsDownload?.name ?: strings.downloads.dialogs.details.title,
-                                    visible = true,
-                                    viewMode = detailsState.viewMode,
-                                    moveTo = detailsState.moveTo,
-                                    splitFraction = detailsState.splitFraction,
-                                    innerSplitFraction = detailsState.innerSplitFraction,
-                                    floatingOffset = Offset(detailsState.floatingOffsetX, detailsState.floatingOffsetY),
-                                    floatingSize = DpSize(detailsState.floatingWidthDp.dp, detailsState.floatingHeightDp.dp),
-                                    onMoveTo = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
-                                    onViewMode = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
-                                    onSplitFractionChange = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(it)) },
-                                    onInnerSplitFractionChange = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetInnerSplitFraction(it)) },
-                                    onFloatingBoundsChange = { offset, size ->
-                                        detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(offset.x, offset.y, size.width.value, size.height.value))
-                                    },
-                                    onResize = { detailsModel.resize(it) },
-                                    onClose = { detailsModel.setVisible(false) },
-                                    content = {
-                                        DownloadDetailsPanel(
-                                            download = detailsDownload,
-                                            onHide = { detailsModel.setVisible(false) },
-                                            modifier = Modifier.fillMaxSize(),
-                                            viewMode = detailsState.viewMode,
-                                            moveTo = detailsState.moveTo,
-                                            groupTabs = detailsState.groupTabs,
-                                            onViewMode = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
-                                            onMoveTo = { detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
-                                            onResize = { detailsModel.resize(it) },
-                                            onToggleGroupTabs = { detailsModel.setGroupTabs(it) },
-                                        )
-                                    }
-                                )
-                            )
-                        }
-
-                        if (extState.visible) {
-                            add(
-                                ToolWindowSpec(
-                                    id = "extensions",
-                                    title = strings.extensions.title,
-                                    visible = true,
-                                    viewMode = extState.viewMode,
-                                    moveTo = extState.moveTo,
-                                    splitFraction = extState.splitFraction,
-                                    innerSplitFraction = extState.innerSplitFraction,
-                                    floatingOffset = Offset(extState.floatingOffsetX, extState.floatingOffsetY),
-                                    floatingSize = DpSize(extState.floatingWidthDp.dp, extState.floatingHeightDp.dp),
-                                    onMoveTo = { extModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
-                                    onViewMode = { extModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
-                                    onSplitFractionChange = { extModel.onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(it)) },
-                                    onInnerSplitFractionChange = { extModel.onLayoutEvent(ToolWindowLayoutAction.SetInnerSplitFraction(it)) },
-                                    onFloatingBoundsChange = { offset, size ->
-                                        extModel.onLayoutEvent(ToolWindowLayoutAction.SetFloatingBounds(offset.x, offset.y, size.width.value, size.height.value))
-                                    },
-                                    onResize = { extModel.resize(it) },
-                                    onClose = { extModel.setVisible(false) },
-                                    content = {
-                                        ExtensionsPanel(
-                                            model = extModel,
-                                            onHide = { extModel.setVisible(false) },
-                                        )
-                                    }
-                                )
-                            )
-                        }
+                        ToolWindowLayoutHost(
+                            mainContent = {
+                                Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+                                    navigator.lastItem.Content()
+                                }
+                            },
+                            panels = panels,
+                            modifier = areaModifier,
+                        )
                     }
 
-                    val areaModifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(BlazeLayout.IslandGap)
-
-                    ToolWindowLayoutHost(
-                        mainContent = {
-                            Box(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-                                navigator.lastItem.Content()
-                            }
+                    StatusBar(
+                        info = if (state.selectedIds.size > 1) {
+                            strings.downloads.selection.count(state.selectedIds.size)
+                        } else {
+                            downloads.toStatusSummary(strings)
                         },
-                        panels = panels,
-                        modifier = areaModifier,
+                        throughput = downloads.aggregateSpeed().takeIf { it > 0 }
+                            ?.let { formatSpeed(it, strings) },
+                        alert = downloads.toStatusAlert(strings),
+                        trailing = {
+                            BackgroundTasksStatusItem(
+                                runningCount = running.size,
+                                expanded = shell.tasksPopupExpanded,
+                                onClick = { shellModel.onEvent(MainEvent.ToggleTasksPopup) },
+                            )
+                            if (state.snailModeEnabled) {
+                                val snailStyle = BlazeTypography.statusBar
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        key = BlazeIcons.SnailMode,
+                                        contentDescription = null,
+                                        tint = BlazeColors.warning,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = strings.statusSummary.snailMode("${state.snailSpeedKbps} KB/s"),
+                                        style = snailStyle,
+                                        color = BlazeColors.warning,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
                     )
                 }
 
-                StatusBar(
-                    // When more than one row is selected the left message reports the selection, so the
-                    // bulk actions always have a visible count to explain what they will act on.
-                    info = if (state.selectedIds.size > 1) {
-                        strings.downloads.selection.count(state.selectedIds.size)
-                    } else {
-                        downloads.toStatusSummary(strings)
-                    },
-                    throughput = downloads.aggregateSpeed().takeIf { it > 0 }
-                        ?.let { formatSpeed(it, strings) },
-                    alert = downloads.toStatusAlert(strings),
-                    trailing = {
-                        BackgroundTasksStatusItem(
-                            runningCount = running.size,
-                            expanded = shell.tasksPopupExpanded,
-                            onClick = { shellModel.onEvent(MainEvent.ToggleTasksPopup) },
-                        )
-                        if (state.snailModeEnabled) {
-                            // Small, regular, secondary-adjacent: the status bar never carries weight.
-                            val snailStyle = BlazeTypography.statusBar
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Icon(
-                                    key = BlazeIcons.SnailMode,
-                                    contentDescription = null,
-                                    tint = BlazeColors.warning,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = strings.statusSummary.snailMode("${state.snailSpeedKbps} KB/s"),
-                                    style = snailStyle,
-                                    color = BlazeColors.warning,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-
-            if (shell.tasksPopupExpanded) {
-                BackgroundTasksPopup(
-                    running = running,
-                    onPause = { id -> screenModel.onEvent(DownloadsEvent.Pause(id)) },
-                    onCancel = { id -> screenModel.onEvent(DownloadsEvent.Cancel(id)) },
-                    // A row click folds into the shell model, which emits the jump as a one-shot effect
-                    // served by the very activator the downloads screen registers for Search Everywhere.
-                    onOpenDetails = { id -> shellModel.onEvent(MainEvent.FocusDownload(id)) },
-                    onDismiss = { shellModel.onEvent(MainEvent.DismissTasksPopup) },
-                )
-            }
-            if (shell.aboutVisible) {
-                AboutDialog(onDismiss = { shellModel.onEvent(MainEvent.DismissAbout) })
-            }
+                if (shell.tasksPopupExpanded) {
+                    BackgroundTasksPopup(
+                        running = running,
+                        onPause = { id -> screenModel.onEvent(DownloadsEvent.Pause(id)) },
+                        onCancel = { id -> screenModel.onEvent(DownloadsEvent.Cancel(id)) },
+                        onOpenDetails = { id -> shellModel.onEvent(MainEvent.FocusDownload(id)) },
+                        onDismiss = { shellModel.onEvent(MainEvent.DismissTasksPopup) },
+                    )
+                }
+                if (shell.aboutVisible) {
+                    AboutDialog(onDismiss = { shellModel.onEvent(MainEvent.DismissAbout) })
+                }
             }
         }
     }

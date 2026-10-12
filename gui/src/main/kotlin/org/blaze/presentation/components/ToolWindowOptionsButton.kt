@@ -80,14 +80,8 @@ fun ToolWindowOptionsButton(
                                 marked(options.dockUnpinned, selected = viewMode == ToolWindowViewMode.DOCK_UNPINNED) {
                                     onViewMode(ToolWindowViewMode.DOCK_UNPINNED)
                                 },
-                                marked(options.undock, selected = viewMode == ToolWindowViewMode.UNDOCK) {
-                                    onViewMode(ToolWindowViewMode.UNDOCK)
-                                },
                                 marked(options.float, selected = viewMode == ToolWindowViewMode.FLOAT) {
                                     onViewMode(ToolWindowViewMode.FLOAT)
-                                },
-                                marked(options.window, selected = viewMode == ToolWindowViewMode.WINDOW) {
-                                    onViewMode(ToolWindowViewMode.WINDOW)
                                 },
                             ),
                         ),
