@@ -645,21 +645,31 @@ class DownloadManager(
             // around and start another download in the same folder, and "is that name free?" is only
             // answerable once the deletion it just asked for has actually happened.
             withContext(Dispatchers.IO) {
-                try {
-                    val dest = task.request.destination
-                    if (task.request is DownloadRequest.Torrent) {
-                        // A torrent's destination *is* its folder - the content sits directly inside
-                        // it (see org.blaze.engine.storage.TorrentContentStorage), along with the
-                        // portable marker - so removing the download means removing that folder, and
-                        // nothing above it.
-                        storage.deleteRecursively(dest)
-                    } else {
-                        storage.delete(dest)
-                        storage.delete(storage.getPartialFile(dest).toPath())
-                        storage.delete(storage.getResumeStateFile(dest).toPath())
+                val dest = task.request.destination
+                if (task.request is DownloadRequest.Torrent) {
+                    // A torrent's destination *is* its folder - the content sits directly inside
+                    // it (see org.blaze.engine.storage.TorrentContentStorage), along with the
+                    // portable marker - so removing the download means removing that folder, and
+                    // nothing above it. A folder that is not there means there is nothing to delete:
+                    // a clean removal, not a failure, so it stays quiet.
+                    if (storage.exists(dest)) {
+                        runCatching { storage.deleteRecursively(dest) }
+                            .onFailure { logger.warn("Failed to delete the torrent folder {} (download {})", dest, id, it) }
                     }
-                } catch (e: Exception) {
-                    logger.error("Failed to delete files", e)
+                } else {
+                    // An HTTP download leaves up to three artifacts behind - the finished file, the
+                    // partial and the resume-metadata sidecar. Delete only those actually present, so
+                    // a download that never wrote bytes is a silent no-op rather than a failed delete,
+                    // and a single artifact that resists removal is named precisely instead of reading
+                    // as a wholesale failure.
+                    listOf(
+                        dest,
+                        storage.getPartialFile(dest).toPath(),
+                        storage.getResumeStateFile(dest).toPath(),
+                    ).filter(storage::exists).forEach { path ->
+                        runCatching { storage.delete(path) }
+                            .onFailure { logger.warn("Failed to delete {} (download {})", path, id, it) }
+                    }
                 }
             }
         }

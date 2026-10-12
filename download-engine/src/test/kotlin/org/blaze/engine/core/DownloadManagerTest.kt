@@ -21,6 +21,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -88,6 +89,84 @@ class DownloadManagerTest {
                 Files.exists(unrelatedFile),
                 "Unrelated file in parent folder must not be deleted!"
             )
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `test remove http download with no files on disk is a clean no-op`() = runTest {
+        val tempDir = Files.createTempDirectory("blaze-dm-nofiles-test")
+        val storageDir = tempDir.resolve("storage")
+        val downloadsDir = tempDir.resolve("downloads")
+        Files.createDirectories(storageDir)
+        Files.createDirectories(downloadsDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo,
+        )
+
+        // A download that never wrote bytes: none of the finished / partial / resume files exist.
+        val target = downloadsDir.resolve("nothing.bin")
+        val id = manager.enqueue(
+            DownloadRequest.Http(name = "nothing.bin", url = "http://test", destination = target)
+        )
+
+        try {
+            // Removing it with deleteFiles must not raise (and must not read as a failed delete):
+            // there is simply nothing on disk to take away.
+            manager.remove(id, deleteFiles = true)
+
+            assertFalse(Files.exists(target))
+            assertNull(manager.getTask(id), "The download should be gone from the manager")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `test remove http download deletes only its own artifacts and leaves siblings`() = runTest {
+        val tempDir = Files.createTempDirectory("blaze-dm-http-test")
+        val storageDir = tempDir.resolve("storage")
+        val downloadsDir = tempDir.resolve("downloads")
+        Files.createDirectories(storageDir)
+        Files.createDirectories(downloadsDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo,
+        )
+
+        val target = downloadsDir.resolve("movie.mp4")
+        val partial = downloadsDir.resolve("movie.mp4.part")
+        val resume = downloadsDir.resolve("movie.mp4.meta")
+        val unrelated = downloadsDir.resolve("keepme.txt")
+        val id = manager.enqueue(
+            DownloadRequest.Http(name = "movie.mp4", url = "http://test", destination = target)
+        )
+
+        try {
+            Files.writeString(target, "finished")
+            Files.writeString(partial, "partial")
+            Files.writeString(resume, "resume state")
+            Files.writeString(unrelated, "do not delete me")
+
+            manager.remove(id, deleteFiles = true)
+
+            // Awaited deletion: the download's three artifacts are gone the moment remove returns.
+            assertFalse(Files.exists(target), "The finished file should be deleted")
+            assertFalse(Files.exists(partial), "The partial file should be deleted")
+            assertFalse(Files.exists(resume), "The resume sidecar should be deleted")
+            assertTrue(Files.exists(unrelated), "An unrelated file in the folder must survive")
         } finally {
             manager.shutdown()
             tempDir.toFile().deleteRecursively()
