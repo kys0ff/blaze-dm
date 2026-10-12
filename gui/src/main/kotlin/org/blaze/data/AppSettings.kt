@@ -21,6 +21,12 @@ data class AppSettings(
     /** Register Blaze to start automatically when the user logs in. */
     val runAtStartup: Boolean = false,
     /**
+     * Open Blaze hidden in the tray instead of showing the window when it starts. Only honoured when
+     * the tray is actually available ([trayEnabled] and a platform that offers a tray); otherwise the
+     * window opens normally so the app is never left unreachable with no way back. Off by default.
+     */
+    val startMinimizedInTray: Boolean = false,
+    /**
      * Watch the system clipboard for copied web links, magnets or `.torrent` paths and offer them
      * as downloads. Off by default: reading the clipboard is a user-visible side effect, so it
      * must be opted into, not granted silently.

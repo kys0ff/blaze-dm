@@ -592,6 +592,8 @@ object EnStrings : BlazeStrings {
         override val minimizeToTrayLabel = "Hide the window to the tray when closed"
         override val runAtStartupLabel = "Run Blaze at system startup"
         override val runAtStartupDesc = "Registers Blaze to start automatically when you log in."
+        override val startMinimizedInTrayLabel = "Start minimized to the tray"
+        override val startMinimizedInTrayDesc = "When Blaze launches, open hidden in the tray instead of showing the window. Needs the tray icon to be on; a link opened from outside still brings the window forward."
         override val clipboardMonitoringLabel = "Monitor the clipboard for downloaded links"
         override val clipboardMonitoringDesc = "When you copy a web link, magnet link or .torrent path, Blaze offers it as a new download. Nothing is added until you confirm."
         override val securityHeader = "Security"

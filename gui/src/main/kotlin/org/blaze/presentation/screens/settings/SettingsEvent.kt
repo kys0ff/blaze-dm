@@ -56,6 +56,8 @@ sealed interface SettingsEvent {
     data class UpdateTrayEnabled(val enabled: Boolean) : SettingsEvent
     data class UpdateMinimizeToTrayOnClose(val enabled: Boolean) : SettingsEvent
     data class UpdateRunAtStartup(val enabled: Boolean) : SettingsEvent
+    /** Open hidden in the tray on launch (app-settings draft); only honoured when a tray is available. */
+    data class UpdateStartMinimizedInTray(val enabled: Boolean) : SettingsEvent
     data class UpdateClipboardMonitoring(val enabled: Boolean) : SettingsEvent
 
     // Security & consent — like every app-shell option these are buffered in the app-settings draft,

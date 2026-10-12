@@ -125,7 +125,7 @@ compose.desktop {
             copyright = "© 2026 kys0ff. All rights reserved."
 
             // An explicit module list switches jpackage off its automatic jdeps sweep: *every* JDK module
-            // the app needs at runtime must be named here or it is simply absent from the jlink image
+            // the app needs at runtime must be named here, or it is simply absent from the jlink image
             // (dev runs on a full JDK and never notice).
             // - jdk.httpserver: com.sun.net.httpserver backs the local download API (LocalApiServer);
             //   without it the packaged service dies with NoClassDefFoundError and reports "Stopped".
@@ -140,8 +140,7 @@ compose.desktop {
 
             linux {
                 iconFile = file("src/main/resources/app-icon.png")
-                // deb/rpm ship a jpackage-generated .desktop with these MimeType entries, and the
-                // AppImage/desktop-entry installer honors them the same way (xdg registration).
+
                 fileAssociation(
                     mimeType = "application/x-bittorrent",
                     extension = "torrent",
@@ -151,12 +150,8 @@ compose.desktop {
 
             windows {
                 iconFile = file("src/main/resources/app-icon.ico")
-                // MSI-level .torrent association (HKCR write during install, cleaned on uninstall).
-                // A fixed upgradeUuid makes successive MSIs *replace* the old registration instead
-                // of stacking orphan entries. The magnet: URL protocol cannot be declared through
-                // jpackage at all, so the packaged launcher registers it per-user at runtime
-                // (see org.blaze.osintegration.platform.WindowsUrlSchemeRegistrar in Main.kt).
                 upgradeUuid = "7dc9b2e1-34f5-4c6a-9b3d-0a2e7b1c8f55"
+
                 fileAssociation(
                     mimeType = "application/x-bittorrent",
                     extension = "torrent",
@@ -167,15 +162,12 @@ compose.desktop {
 
             macOS {
                 iconFile = file("src/main/resources/app-icon.icns")
-                // -> CFBundleDocumentTypes: Launch Services learns to open .torrent with Blaze.
+
                 fileAssociation(
                     mimeType = "application/x-bittorrent",
                     extension = "torrent",
                     description = "BitTorrent torrent file",
                 )
-                // jpackage/Compose has no URL-scheme knob, so the raw plist key is injected
-                // verbatim into Info.plist: CFBundleURLTypes registers magnet: with
-                // Launch Services. Warm opens arrive via MacOpenEventsBridge, not argv.
                 infoPlist {
                     extraKeysRawXml = """
                         <key>CFBundleURLTypes</key>

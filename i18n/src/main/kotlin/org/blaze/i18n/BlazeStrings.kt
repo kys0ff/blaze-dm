@@ -758,6 +758,8 @@ interface BlazeStrings {
         val minimizeToTrayLabel: String
         val runAtStartupLabel: String
         val runAtStartupDesc: String
+        val startMinimizedInTrayLabel: String
+        val startMinimizedInTrayDesc: String
         val clipboardMonitoringLabel: String
         val clipboardMonitoringDesc: String
         /** Security group: consent prompts for external API clients and untrusted extension jars. */

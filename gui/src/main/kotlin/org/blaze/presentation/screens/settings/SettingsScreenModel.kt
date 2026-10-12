@@ -271,7 +271,18 @@ class SettingsScreenModel(
         }
 
         is SettingsEvent.UpdateRunAtStartup -> _state.update {
-            it.copy(appSettings = it.appSettings.copy(runAtStartup = event.enabled))
+            // Turning autostart off also drops its dependent "start minimized" sub-option, so a hidden
+            // persisted flag can never keep minimizing manual launches behind an unchecked parent.
+            it.copy(
+                appSettings = it.appSettings.copy(
+                    runAtStartup = event.enabled,
+                    startMinimizedInTray = if (event.enabled) it.appSettings.startMinimizedInTray else false,
+                )
+            )
+        }
+
+        is SettingsEvent.UpdateStartMinimizedInTray -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(startMinimizedInTray = event.enabled))
         }
 
         is SettingsEvent.UpdateClipboardMonitoring -> _state.update {

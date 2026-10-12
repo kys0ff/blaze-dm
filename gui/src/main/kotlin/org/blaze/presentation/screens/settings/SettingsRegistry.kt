@@ -83,6 +83,11 @@ object SettingsRegistry {
             keywords = listOf("autostart", "startup", "boot", "login"),
         ),
         SettingsOption(
+            id = "general.startMinimizedInTray", category = SettingsCategory.GENERAL, groupKey = "systemIntegration",
+            title = { it.settings.startMinimizedInTrayLabel }, description = { it.settings.startMinimizedInTrayDesc },
+            keywords = listOf("minimize", "minimised", "tray", "startup", "hidden", "autostart"),
+        ),
+        SettingsOption(
             id = "general.clipboardMonitoring", category = SettingsCategory.GENERAL, groupKey = "systemIntegration",
             title = { it.settings.clipboardMonitoringLabel }, description = { it.settings.clipboardMonitoringDesc },
             keywords = listOf("clipboard", "paste", "link", "magnet"),

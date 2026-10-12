@@ -598,6 +598,8 @@ object ArStrings : BlazeStrings {
         override val minimizeToTrayLabel = "إخفاء النافذة إلى الدرج عند الإغلاق"
         override val runAtStartupLabel = "تشغيل Blaze مع بدء النظام"
         override val runAtStartupDesc = "يسجّل Blaze للعمل تلقائيًا عند تسجيل دخولك."
+        override val startMinimizedInTrayLabel = "البدء بصيغة تصغير إلى الدرج"
+        override val startMinimizedInTrayDesc = "عند تشغيل Blaze يُفتح مخفيًا في الدرج بدل إظهار النافذة؛ يتطلب إيقونة الدرج مفعّلة، بينما يبقى فتح رابط من الخارج يُبرز النافذة."
         override val clipboardMonitoringLabel = "مراقبة الحافظة عن الروابط المنزَّلة"
         override val clipboardMonitoringDesc = "عند نسخ رابط ويب أو رابط magnet أو مسار ملف ‎.torrent سيعرضه Blaze تنزيلًا جديدًا؛ لا يُضاف شيء حتى تؤكد."
         override val securityHeader = "الأمان"

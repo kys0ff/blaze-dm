@@ -118,6 +118,23 @@ internal fun GeneralSection(
                     modifier = Modifier.padding(start = DependentIndent)
                 )
             }
+            // Dependent option: only while autostart is on, and only when there is a tray to hide
+            // into — a minimized window with no tray would leave Blaze unreachable at login.
+            if (state.appSettings.runAtStartup && state.traySupported && trayEnabled) {
+                SettingRow("general.startMinimizedInTray", modifier = Modifier.padding(start = DependentIndent)) {
+                    CheckboxRow(
+                        text = strings.settings.startMinimizedInTrayLabel,
+                        checked = state.appSettings.startMinimizedInTray,
+                        onCheckedChange = { onEvent(SettingsEvent.UpdateStartMinimizedInTray(it)) }
+                    )
+                    Text(
+                        text = strings.settings.startMinimizedInTrayDesc,
+                        style = infoStyle,
+                        color = JewelTheme.globalColors.text.info,
+                        modifier = Modifier.padding(start = DependentIndent)
+                    )
+                }
+            }
         }
         // Clipboard watching is pure client behavior, so it carries no platform gate: when the
         // clipboard itself is unavailable the monitor quietly stays off (see AppClipboardMonitor).

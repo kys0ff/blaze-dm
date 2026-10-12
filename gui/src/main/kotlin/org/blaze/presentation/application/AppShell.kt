@@ -144,12 +144,20 @@ fun ApplicationScope.rememberAppShell(): AppShell {
     val windowState = rememberWindowState(
         size = DpSize(1100.dp, 720.dp),
     )
-    val windowVisible = remember { mutableStateOf(true) }
-    val windowRaiseToken = remember { mutableStateOf(0L) }
-    val settingsOpen = remember { mutableStateOf(false) }
     val appSettingsRepository = koinInject<AppSettingsRepository>()
     val trayService = koinInject<TrayService>()
     val downloadsApi = koinInject<DownloadsApi>()
+
+    // Start-up visibility is decided once, from the settings actually on disk: "start minimized" only
+    // opens hidden when the tray can hold the app (enabled and supported); with no tray the window shows
+    // so Blaze is never left unreachable. An external open (magnet/torrent) arriving at launch still
+    // raises the window through BlazeApplication's inbox effect, so a link click is never swallowed.
+    val startMinimized = appSettingsRepository.settings.value.let { settings ->
+        settings.startMinimizedInTray && settings.trayEnabled && trayService.isSupported
+    }
+    val windowVisible = remember { mutableStateOf(!startMinimized) }
+    val windowRaiseToken = remember { mutableStateOf(0L) }
+    val settingsOpen = remember { mutableStateOf(false) }
 
     return remember(windowState, windowVisible, settingsOpen) {
         AppShell(
