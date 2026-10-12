@@ -3,7 +3,6 @@ package org.blaze.presentation.screens.extensions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,156 +19,183 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import cafe.adriel.voyager.core.screen.Screen
-import cafe.adriel.voyager.koin.koinScreenModel
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.ExtensionIcon
 import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.components.Island
 import org.blaze.presentation.components.ResolverOptionsDialog
+import org.blaze.presentation.components.ToolWindowHeader
+import org.blaze.presentation.components.ToolWindowOptionsButton
+import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
-import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.koin.compose.koinInject
 
 /**
- * The Extensions tool-window panel: a live view of the installed link handlers that sits on the
- * main window's stripe, next to Downloads. Every control here takes effect immediately — enable /
- * disable, install / remove, per-handler options and ordering priority — the way an IDE tool window
- * edits its own state rather than a modal draft. Global preferences (always-ask, extensions folder,
- * request timeout) intentionally stay in the Settings EXTENSIONS category.
+ * The Extensions tool window: a live view of the installed link handlers that docks beside the
+ * downloads list. Every control here takes effect immediately — enable / disable, install / remove,
+ * per-handler options and ordering priority — the way an IDE tool window edits its own state rather
+ * than a modal draft. Global preferences (always-ask, extensions folder, request timeout)
+ * intentionally stay in the Settings EXTENSIONS category.
  *
- * Content is framed as an [Island] so it floats on the window shell with the same gap the
- * downloads view uses.
+ * Docking (view mode, move-to, split size, hide) is hoisted to
+ * [org.blaze.presentation.screens.main.MainScreen], which mounts this inside a [org.blaze.presentation.components.panel.ToolWindowSpec];
+ * the pane draws its own [ToolWindowHeader] chrome and never decides where it sits — the host frames
+ * it in an island.
  */
-class ExtensionsPanel : Screen {
+@OptIn(ExperimentalJewelApi::class)
+@Composable
+fun ExtensionsPanel(
+    model: ExtensionsWindowModel,
+    onHide: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val state by model.state.collectAsState()
+    val strings = blazeStrings
+    val eStrings = strings.extensions
+    val hStrings = strings.settings.handlers
+    val pane = strings.downloads.detailsPane
+    val registry = koinInject<LinkResolverRegistry>()
 
-    @OptIn(ExperimentalJewelApi::class)
-    @Composable
-    override fun Content() {
-        val screenModel = koinScreenModel<ExtensionsScreenModel>()
-        val state by screenModel.state.collectAsState()
-        val strings = blazeStrings
-        val eStrings = strings.extensions
-        val hStrings = strings.settings.handlers
-        val registry = koinInject<LinkResolverRegistry>()
+    val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
 
-        val infoStyle = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
+    var showJarPicker by remember { mutableStateOf(false) }
+    var optionsTarget by remember { mutableStateOf<ExtensionUiRow?>(null) }
+    var removeTarget by remember { mutableStateOf<ExtensionUiRow?>(null) }
 
-        var showJarPicker by remember { mutableStateOf(false) }
-        var optionsTarget by remember { mutableStateOf<ExtensionUiRow?>(null) }
-        var removeTarget by remember { mutableStateOf<ExtensionUiRow?>(null) }
+    Column(modifier = modifier.fillMaxSize()) {
+        ToolWindowHeader(
+            title = eStrings.title,
+            actions = {
+                ToolWindowOptionsButton(
+                    options = pane.options,
+                    viewMode = state.viewMode,
+                    moveTo = state.moveTo,
+                    onViewMode = model::setViewMode,
+                    onMoveTo = model::setMoveTo,
+                    onResize = model::resize,
+                )
+                // A tool window is *hidden*, not closed: the IDE draws the horizontal-line glyph for
+                // that and keeps the X for closing an editor.
+                ToolbarIconButton(
+                    key = AllIconsKeys.General.HideToolWindow,
+                    tooltip = pane.hide,
+                    onClick = onHide,
+                )
+            },
+        )
 
-        Island(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(text = eStrings.title, style = BlazeTypography.emphasizedHeader)
-                    Spacer(Modifier.weight(1f))
-                    OutlinedButton(onClick = { showJarPicker = true }) {
-                        Text(eStrings.installAction)
-                    }
-                    OutlinedButton(onClick = { screenModel.onEvent(ExtensionsEvent.Reload) }) {
-                        Text(eStrings.reloadAction)
-                    }
+                Text(
+                    text = eStrings.subtitle,
+                    style = infoStyle,
+                    color = JewelTheme.globalColors.text.info,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedButton(onClick = { showJarPicker = true }) {
+                    Text(eStrings.installAction)
                 }
-                Text(text = eStrings.subtitle, style = infoStyle, color = JewelTheme.globalColors.text.info)
+                OutlinedButton(onClick = { model.onEvent(ExtensionsEvent.Reload) }) {
+                    Text(eStrings.reloadAction)
+                }
+            }
 
-                if (state.rows.isEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(text = eStrings.emptyTitle)
-                        Text(
-                            text = eStrings.emptyDescription,
-                            style = infoStyle,
-                            color = JewelTheme.globalColors.text.info
-                        )
-                    }
-                } else {
-                    state.rows.forEach { row ->
-                        ExtensionRow(
-                            row = row,
-                            registry = registry,
-                            infoStyle = infoStyle,
-                            builtinTag = eStrings.builtinTag,
-                            pluginTag = eStrings.pluginTag,
-                            optionsAction = eStrings.optionsAction,
-                            removeAction = eStrings.removeAction,
-                            onToggle = { checked -> screenModel.onEvent(ExtensionsEvent.Toggle(row.id, checked)) },
-                            onConfigure = { optionsTarget = row },
-                            onRemove = { removeTarget = row },
-                        )
-                    }
+            if (state.rows.isEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(text = eStrings.emptyTitle)
+                    Text(
+                        text = eStrings.emptyDescription,
+                        style = infoStyle,
+                        color = JewelTheme.globalColors.text.info
+                    )
+                }
+            } else {
+                state.rows.forEach { row ->
+                    ExtensionRow(
+                        row = row,
+                        registry = registry,
+                        infoStyle = infoStyle,
+                        builtinTag = eStrings.builtinTag,
+                        pluginTag = eStrings.pluginTag,
+                        optionsAction = eStrings.optionsAction,
+                        removeAction = eStrings.removeAction,
+                        onToggle = { checked -> model.onEvent(ExtensionsEvent.Toggle(row.id, checked)) },
+                        onConfigure = { optionsTarget = row },
+                        onRemove = { removeTarget = row },
+                    )
                 }
             }
         }
+    }
 
-        if (showJarPicker) {
-            FilePickerDialog(
-                title = eStrings.installAction,
-                mode = FilePickerMode.File,
-                // Remembers its own folder - and shares it with Settings' handler-install button, because
-                // both ask for the same jar. A download picker's history has nothing to do with this.
-                context = FilePickerContext.ExtensionJar,
-                onDismiss = { showJarPicker = false },
-                onPick = { path ->
-                    showJarPicker = false
-                    screenModel.onEvent(ExtensionsEvent.Install(path.toString()))
-                },
-                fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
-            )
-        }
+    if (showJarPicker) {
+        FilePickerDialog(
+            title = eStrings.installAction,
+            mode = FilePickerMode.File,
+            // Remembers its own folder - and shares it with Settings' handler-install button, because
+            // both ask for the same jar. A download picker's history has nothing to do with this.
+            context = FilePickerContext.ExtensionJar,
+            onDismiss = { showJarPicker = false },
+            onPick = { path ->
+                showJarPicker = false
+                model.onEvent(ExtensionsEvent.Install(path.toString()))
+            },
+            fileFilter = { it.toFile().extension.equals("jar", ignoreCase = true) }
+        )
+    }
 
-        optionsTarget?.let { row ->
-            val persisted = registry.handlerSettings(row.id).values
-            ResolverOptionsDialog(
-                title = hStrings.optionsTitle(row.displayName),
-                descriptors = row.options,
-                initialValues = persisted,
-                okLabel = strings.common.ok,
-                cancelLabel = strings.common.cancel,
-                restoreDefaultsLabel = hStrings.restoreDefaultsAction,
-                priorityLabel = hStrings.priorityLabel,
-                priorityDescription = hStrings.priorityDesc,
-                initialPriority = row.priority,
-                onDismiss = { optionsTarget = null },
-                onConfirm = { values, priority ->
-                    screenModel.onEvent(ExtensionsEvent.SaveOptions(row.id, values))
-                    screenModel.onEvent(ExtensionsEvent.SetPriority(row.id, priority))
-                    optionsTarget = null
-                }
-            )
-        }
+    optionsTarget?.let { row ->
+        val persisted = registry.handlerSettings(row.id).values
+        ResolverOptionsDialog(
+            title = hStrings.optionsTitle(row.displayName),
+            descriptors = row.options,
+            initialValues = persisted,
+            okLabel = strings.common.ok,
+            cancelLabel = strings.common.cancel,
+            restoreDefaultsLabel = hStrings.restoreDefaultsAction,
+            priorityLabel = hStrings.priorityLabel,
+            priorityDescription = hStrings.priorityDesc,
+            initialPriority = row.priority,
+            onDismiss = { optionsTarget = null },
+            onConfirm = { values, priority ->
+                model.onEvent(ExtensionsEvent.SaveOptions(row.id, values))
+                model.onEvent(ExtensionsEvent.SetPriority(row.id, priority))
+                optionsTarget = null
+            }
+        )
+    }
 
-        removeTarget?.let { row ->
-            RemoveExtensionDialog(
-                title = eStrings.removeConfirmTitle,
-                body = eStrings.removeConfirm(row.displayName),
-                okLabel = strings.common.ok,
-                cancelLabel = strings.common.cancel,
-                onDismiss = { removeTarget = null },
-                onConfirm = {
-                    screenModel.onEvent(ExtensionsEvent.Uninstall(row.id))
-                    removeTarget = null
-                }
-            )
-        }
+    removeTarget?.let { row ->
+        RemoveExtensionDialog(
+            title = eStrings.removeConfirmTitle,
+            body = eStrings.removeConfirm(row.displayName),
+            okLabel = strings.common.ok,
+            cancelLabel = strings.common.cancel,
+            onDismiss = { removeTarget = null },
+            onConfirm = {
+                model.onEvent(ExtensionsEvent.Uninstall(row.id))
+                removeTarget = null
+            }
+        )
     }
 }
 

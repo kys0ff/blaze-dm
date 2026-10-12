@@ -109,6 +109,25 @@ data class AppSettings(
     val serverLogFloatingWidthDp: Float = 450f,
     val serverLogFloatingHeightDp: Float = 320f,
 
+    // ── Extensions tool-window layout ─────────────────────────────────────────
+    // The Extensions live manager is a dockable tool window beside the downloads list, not a full
+    // screen; it reuses the Details/Server-Log view-mode + move-to enums, so its persisted layout is
+    // the same shape (primitives only, rehydrated by the model).
+
+    /** Whether the dockable Extensions tool window is shown. Off by default: it is a tool window. */
+    val extensionsVisible: Boolean = false,
+    /** Fraction of the content|extensions split given to the content, persisted across launches. */
+    val extensionsSplitFraction: Float = 0.65f,
+    /** Name of the [org.blaze.presentation.screens.downloads.DetailsViewMode] the window presents in. */
+    val extensionsViewMode: String = "DOCK_PINNED",
+    /** Name of the [org.blaze.presentation.screens.downloads.DetailsMoveTo] the window docks to. */
+    val extensionsMoveTo: String = "RIGHT_TOP",
+    val extensionsInnerSplitFraction: Float = 0.50f,
+    val extensionsFloatingOffsetX: Float = 120f,
+    val extensionsFloatingOffsetY: Float = 120f,
+    val extensionsFloatingWidthDp: Float = 420f,
+    val extensionsFloatingHeightDp: Float = 480f,
+
     // ── Chrome ─────────────────────────────────────────────────────────────────
     /**
      * The IDE's soft accent-colored glow at the top-left of the window frame (behind the title bar,

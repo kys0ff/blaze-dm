@@ -27,7 +27,7 @@ private class StubResolver(override val id: String) : LinkResolver {
  * snapshot without a coroutine scope or a live registry: enable state, ordering priority, the
  * built-in/plugin tag, and which handler exposes options all come straight through.
  */
-class ExtensionsScreenModelTest {
+class ExtensionsWindowModelTest {
 
     @Test
     fun `rows reflect enable state, priority, source and declared options`() {

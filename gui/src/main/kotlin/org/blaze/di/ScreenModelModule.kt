@@ -3,7 +3,7 @@ package org.blaze.di
 import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.getStrings
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
-import org.blaze.presentation.screens.extensions.ExtensionsScreenModel
+import org.blaze.presentation.screens.extensions.ExtensionsWindowModel
 import org.blaze.presentation.screens.serverlog.ServerLogWindowModel
 import org.blaze.presentation.screens.settings.SettingsScreenModel
 import org.blaze.presentation.screens.settings.SettingsUseCases
@@ -61,8 +61,11 @@ val screenModelModule = module {
         )
     }
 
-    factory {
-        ExtensionsScreenModel(
+    single {
+        // A dockable tool window outlives any single composition of its pane, so it is a singleton like
+        // the Server Logs window: the stripe raises and lowers it without losing its live rows or dock.
+        ExtensionsWindowModel(
+            appSettingsRepository = get(),
             registry = get(),
             settingsRepository = get(),
             consentService = get(),

@@ -48,6 +48,7 @@ import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.screens.downloads.attention
 import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
 import org.blaze.presentation.screens.extensions.ExtensionsPanel
+import org.blaze.presentation.screens.extensions.ExtensionsWindowModel
 import org.blaze.presentation.screens.serverlog.ServerLogPanel
 import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.theme.BlazeTypography
@@ -74,6 +75,12 @@ class MainScreen : Screen {
         val logState by logModel.state.collectAsState()
         val logRepository = koinInject<org.blaze.logging.ServerLogRepository>()
         val serverController = koinInject<org.blaze.server.DownloadServiceController>()
+
+        // The Extensions tool window: its own model owns the live handler rows and the docked layout
+        // (the same view-mode / move-to model the Details and Server Logs panes use), so the stripe
+        // raises or lowers a panel beside the list instead of swapping the whole main content.
+        val extModel = koinScreenModel<ExtensionsWindowModel>()
+        val extState by extModel.state.collectAsState()
 
         // Live transfers surfaced in the status bar; QUEUED counts too so the popup shows the whole
         // pending set, while a row's own pause button is only offered while it is actually moving.
@@ -120,24 +127,22 @@ class MainScreen : Screen {
                     )
 
                     val currentScreen = navigator.lastItem
-                    // Downloads and Extensions are the two views the stripe switches between. Settings is
-                    // not a stripe item any more - it is a modal window reached from the File menu and
-                    // Search Everywhere - so opening it never changes the selection.
+                    // Downloads is the central content; Extensions is a dockable tool window the stripe
+                    // raises over the side, not a screen that replaces the list. The stripe marks
+                    // Extensions while its panel is up, and the Downloads entry simply lowers it again.
+                    // Settings is not a stripe item any more - it is a modal window reached from the
+                    // File menu and Search Everywhere - so opening it never changes the selection.
                     val selectedItem =
-                        if (currentScreen is ExtensionsPanel) sidebarItems[1] else sidebarItems[0]
+                        if (extState.visible) sidebarItems[1] else sidebarItems[0]
 
                     ToolWindowStripe(
                         items = sidebarItems,
                         selectedId = selectedItem.id,
                         onItemSelected = { item ->
                             when (item.id) {
-                                "downloads" -> if (currentScreen !is DownloadsScreen) navigator.replaceAll(
-                                    DownloadsScreen()
-                                )
+                                "downloads" -> extModel.setVisible(false)
 
-                                "extensions" -> if (currentScreen !is ExtensionsPanel) navigator.replaceAll(
-                                    ExtensionsPanel()
-                                )
+                                "extensions" -> extModel.toggleVisible()
                             }
                         }
                     )
@@ -211,6 +216,37 @@ class MainScreen : Screen {
                                             moveTo = state.moveTo,
                                             groupTabs = state.groupTabs,
                                             onEvent = screenModel::onEvent,
+                                        )
+                                    }
+                                )
+                            )
+                        }
+
+                        if (extState.visible) {
+                            add(
+                                ToolWindowSpec(
+                                    id = "extensions",
+                                    title = strings.extensions.title,
+                                    visible = true,
+                                    viewMode = extState.viewMode,
+                                    moveTo = extState.moveTo,
+                                    splitFraction = extState.splitFraction,
+                                    innerSplitFraction = extState.innerSplitFraction,
+                                    floatingOffset = Offset(extState.floatingOffsetX, extState.floatingOffsetY),
+                                    floatingSize = DpSize(extState.floatingWidthDp.dp, extState.floatingHeightDp.dp),
+                                    onMoveTo = { extModel.setMoveTo(it) },
+                                    onViewMode = { extModel.setViewMode(it) },
+                                    onSplitFractionChange = { extModel.setSplitFraction(it) },
+                                    onInnerSplitFractionChange = { extModel.setInnerSplitFraction(it) },
+                                    onFloatingBoundsChange = { offset, size ->
+                                        extModel.setFloatingBounds(offset.x, offset.y, size.width.value, size.height.value)
+                                    },
+                                    onResize = { extModel.resize(it) },
+                                    onClose = { extModel.setVisible(false) },
+                                    content = {
+                                        ExtensionsPanel(
+                                            model = extModel,
+                                            onHide = { extModel.setVisible(false) },
                                         )
                                     }
                                 )
