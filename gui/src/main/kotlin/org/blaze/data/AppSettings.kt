@@ -121,7 +121,7 @@ data class AppSettings(
     /** Name of the [org.blaze.presentation.screens.downloads.DetailsViewMode] the window presents in. */
     val extensionsViewMode: String = "DOCK_PINNED",
     /** Name of the [org.blaze.presentation.screens.downloads.DetailsMoveTo] the window docks to. */
-    val extensionsMoveTo: String = "RIGHT_TOP",
+    val extensionsMoveTo: String = "LEFT_TOP",
     val extensionsInnerSplitFraction: Float = 0.50f,
     val extensionsFloatingOffsetX: Float = 120f,
     val extensionsFloatingOffsetY: Float = 120f,
