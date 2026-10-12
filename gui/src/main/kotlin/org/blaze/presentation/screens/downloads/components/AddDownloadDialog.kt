@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -106,6 +109,19 @@ fun AddDownloadDialog(
 
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
+
+    // A slow or half-dead server can leave the spinner turning for a long time with no feedback, which
+    // reads as a freeze. Rather than go silent, the label starts as the plain verb and escalates into a
+    // friendly nudge as the wait grows, so the user knows Blaze is still on it.
+    var fetchHint by remember { mutableStateOf(dStrings.fetchingMetadata) }
+    LaunchedEffect(state.isFetching) {
+        if (!state.isFetching) return@LaunchedEffect
+        fetchHint = dStrings.fetchingMetadata
+        delay(FETCH_HINT_SLOW_MS.milliseconds)
+        fetchHint = dStrings.fetchingSlow
+        delay(FETCH_HINT_TROUBLE_MS.milliseconds)
+        fetchHint = dStrings.fetchingTrouble
+    }
 
     // The save folder is checked here rather than in the input view, because the review step needs
     // the answer too - does the announced size fit? - and the folder is known whether the
@@ -395,7 +411,7 @@ fun AddDownloadDialog(
             ) {
                 IndeterminateHorizontalProgressBar(modifier = Modifier.fillMaxWidth())
                 Text(
-                    text = dStrings.fetchingMetadata,
+                    text = fetchHint,
                     style = JewelTheme.typography.small
                 )
             }
@@ -429,7 +445,12 @@ fun AddDownloadDialog(
     state.pendingPlainPageSource?.let { source ->
         PlainPageDownloadDialog(
             url = source,
-            onDismiss = { state.pendingPlainPageSource = null },
+            // Cancelling the warning means "I don't want the page" — there's nothing left to do here,
+            // so the add dialog is dismissed alongside it rather than dropped back on an empty step.
+            onDismiss = {
+                state.pendingPlainPageSource = null
+                onDismiss()
+            },
             onProceed = {
                 state.pendingPlainPageSource = null
                 probeDirectly(source)
@@ -440,3 +461,9 @@ fun AddDownloadDialog(
 
 /** Keeps a folder that is being typed at from being stat-ed on every keystroke. */
 private const val DESTINATION_CHECK_DEBOUNCE_MS = 200L
+
+/** How long a fetch runs before the hint softens into "still working on it". */
+private const val FETCH_HINT_SLOW_MS = 4_000L
+
+/** Additional wait before the hint admits it may be "having a little trouble". */
+private const val FETCH_HINT_TROUBLE_MS = 6_000L

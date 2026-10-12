@@ -232,6 +232,10 @@ interface BlazeStrings {
             val size: String
             val fetchingMetadata: String
             val fetchingItems: String
+            /** Friendly nudge shown once a fetch runs longer than the plain label implies. */
+            val fetchingSlow: String
+            /** Reassuring note shown when a fetch looks like it may be struggling. */
+            val fetchingTrouble: String
             val sourceWarning: String
             val files: String
             val selectAll: String

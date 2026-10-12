@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -46,6 +47,7 @@ fun BaseDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = 460.dp,
+    height: Dp? = null, // null = wrap content; set for dialogs with a scrollable/weighted region
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(12.dp),
     requestFocus: Boolean = true,
     title: String? = null,
@@ -58,7 +60,7 @@ fun BaseDialog(
 
     val state = rememberDialogState(
         position = WindowPosition(Alignment.Center),
-        size = DpSize(width, 230.dp),
+        size = DpSize(width, height ?: 230.dp),
     )
 
     if (requestFocus) {
@@ -73,11 +75,11 @@ fun BaseDialog(
     ) {
         preventDialogMinimize()
 
-        LaunchedEffect(width, contentHeight) {
-            if (contentHeight > 0.dp) {
-                val decorations = (window.insets.top + window.insets.bottom).dp
-                state.size = DpSize(width, contentHeight + decorations)
-            }
+        LaunchedEffect(width, height, contentHeight) {
+            val target = height ?: contentHeight.takeIf { it > 0.dp } ?: return@LaunchedEffect
+            val insets = window.insets
+            val decorations = (insets.top + insets.bottom).dp
+            state.size = DpSize(width, target + decorations)
         }
 
         Box(
@@ -87,22 +89,26 @@ fun BaseDialog(
                 .focusRequester(focusRequester)
                 .onPreviewKeyEvent { event ->
                     if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                        onDismiss()
-                        true
-                    } else {
-                        false
-                    }
+                        onDismiss(); true
+                    } else false
                 }
                 .focusable(),
         ) {
             Column(
                 modifier = modifier
                     .fillMaxWidth()
-                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                    .onSizeChanged { size ->
-                        val newHeight = with(density) { size.height.toDp() }
-                        if (newHeight != contentHeight) contentHeight = newHeight
-                    }
+                    .then(
+                        if (height != null) {
+                            Modifier.fillMaxHeight()
+                        } else {
+                            Modifier
+                                .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                                .onSizeChanged { size ->
+                                    val newHeight = with(density) { size.height.toDp() }
+                                    if (newHeight != contentHeight) contentHeight = newHeight
+                                }
+                        }
+                    )
                     .padding(
                         horizontal = BlazeLayout.DialogPaddingHorizontal,
                         vertical = BlazeLayout.DialogPaddingVertical,

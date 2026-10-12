@@ -174,6 +174,8 @@ object ArStrings : BlazeStrings {
             override val size = "الحجم:"
             override val fetchingMetadata = "جارٍ جلب البيانات الوصفية..."
             override val fetchingItems = "جارٍ جلب العناصر..."
+            override val fetchingSlow = "ما زلنا نعمل على ذلك…"
+            override val fetchingTrouble = "نواجه بعض الصعوبة — هذا الرابط يستغرق وقتًا."
             override val sourceWarning = "ليس رابط HTTP(S) ولا رابط magnet ولا ملف ‎.torrent؛ قد يفشل التنزيل."
             override val files = "الملفات:"
             override val selectAll = "تحديد الكل"

@@ -168,6 +168,8 @@ object EnStrings : BlazeStrings {
             override val size = "Size:"
             override val fetchingMetadata = "Fetching metadata..."
             override val fetchingItems = "Fetching items..."
+            override val fetchingSlow = "Still working on it…"
+            override val fetchingTrouble = "Having a little trouble — this link is taking its time."
             override val sourceWarning = "Not an HTTP(S) link, magnet link or .torrent file. It may fail to download."
             override val files = "Files:"
             override val selectAll = "Select All"

@@ -54,7 +54,8 @@ fun FilePickerDialog(
     val strings = blazeStrings
     val fStrings = strings.filePicker
 
-    val actualTitle = title ?: if (mode == FilePickerMode.Directory) fStrings.titleFolder else fStrings.titleFile
+    val actualTitle =
+        title ?: if (mode == FilePickerMode.Directory) fStrings.titleFolder else fStrings.titleFile
     val actualConfirmText = confirmText ?: strings.common.ok
 
     val screenModel = org.koin.compose.koinInject<FilePickerScreenModel>()
@@ -86,6 +87,7 @@ fun FilePickerDialog(
                     onPick(effect.path)
                     onDismiss()
                 }
+
                 FilePickerEffect.Dismiss -> onDismiss()
                 is FilePickerEffect.ScrollToSelection -> {
                     scrollEffectTrigger++
@@ -105,7 +107,13 @@ fun FilePickerDialog(
         } ?: Path.of(System.getProperty("user.home"))
     }
 
-    BaseDialog(onDismiss = onDismiss, width = 620.dp, requestFocus = false, title = actualTitle) {
+    BaseDialog(
+        onDismiss = onDismiss,
+        width = 620.dp,
+        height = 520.dp,
+        requestFocus = false,
+        title = actualTitle
+    ) {
         // The title lives in the window caption (single source of truth), so the content opens with
         // the optional description rather than repeating the heading.
         state.description?.let { desc ->
