@@ -34,13 +34,17 @@ import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.components.SidebarItem
 import org.blaze.presentation.components.StatusBar
 import org.blaze.presentation.components.ToolWindowStripe
+import org.blaze.presentation.components.panel.ToolWindowLayout
 import org.blaze.presentation.components.panel.ToolWindowLayoutAction
 import org.blaze.presentation.components.panel.ToolWindowLayoutHost
+import org.blaze.presentation.components.panel.ToolWindowResize
+import org.blaze.presentation.components.panel.ToolWindowScreenModel
 import org.blaze.presentation.components.panel.ToolWindowSpec
 import org.blaze.presentation.screens.downloads.DetailsPanelScreenModel
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.DownloadsScreen
 import org.blaze.presentation.screens.downloads.DownloadsScreenModel
+import org.blaze.presentation.screens.downloads.DownloadsState
 import org.blaze.presentation.screens.downloads.aggregateSpeed
 import org.blaze.presentation.screens.downloads.attention
 import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
@@ -57,6 +61,18 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.koin.compose.koinInject
 
+/**
+ * The application shell. It owns only the window-level, ephemeral UI - the About dialog, the
+ * background-tasks popup, the stripe's selected tool window and the running transfers - and folds the
+ * shell's app-wide commands into them. Everything else stays with the model that owns it: the downloads
+ * list with [DownloadsScreenModel], the Details/Server Logs/Extensions panes with their own window
+ * models, so the shell never duplicates their state or resolves their collaborators.
+ *
+ * The body reads as a small orchestrator: collect the models, frame the [Navigator] content, and hand
+ * the repetitive layout to focused sub-composables ([MainToolWindowStripe], [MainStatusBar],
+ * [MainOverlayDialogs]) plus the [toolWindowSpec] builder that turns any dockable [ToolWindowScreenModel]
+ * into a [ToolWindowSpec] the [ToolWindowLayoutHost] can dock.
+ */
 class MainScreen : Screen {
     @Composable
     override fun Content() {
@@ -68,14 +84,17 @@ class MainScreen : Screen {
         val downloads = state.downloads
         val strings = blazeStrings
         val searchController = koinInject<SearchController>()
+
+        // Each dockable pane frames itself through its own model; the shell only reads the layout to place it.
         val logModel = koinScreenModel<ServerLogWindowModel>()
-        val logState by logModel.state.collectAsState()
+        val logLayout by logModel.layout.collectAsState()
 
         val extModel = koinScreenModel<ExtensionsWindowModel>()
-        val extState by extModel.state.collectAsState()
+        val extLayout by extModel.layout.collectAsState()
 
         val detailsModel = koinScreenModel<DetailsPanelScreenModel>()
         val detailsState by detailsModel.state.collectAsState()
+        val detailsLayout by detailsModel.layout.collectAsState()
 
         val running = shell.running
 
@@ -88,267 +107,37 @@ class MainScreen : Screen {
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize(),
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     Row(modifier = Modifier.weight(1f)) {
-                        val sidebarItems = listOf(
-                            SidebarItem(
-                                label = strings.downloads.title,
-                                icon = AllIconsKeys.Actions.Download,
-                                id = MainToolWindowId.DOWNLOADS.stripeId,
-                                count = downloads.size.takeIf { it > 0 }
-                            ),
-                            SidebarItem(
-                                label = strings.extensions.title,
-                                icon = AllIconsKeys.Nodes.Plugin,
-                                id = MainToolWindowId.EXTENSIONS.stripeId,
-                            ),
-                        )
-
                         val currentScreen = navigator.lastItem
 
-                        ToolWindowStripe(
-                            items = sidebarItems,
+                        MainToolWindowStripe(
+                            strings = strings,
+                            downloadCount = downloads.size,
                             selectedId = shell.activeToolWindow.stripeId,
-                            onItemSelected = { item ->
-                                when (item.id) {
-                                    MainToolWindowId.DOWNLOADS.stripeId ->
-                                        shellModel.onEvent(
-                                            MainEvent.SelectToolWindow(
-                                                MainToolWindowId.DOWNLOADS
-                                            )
-                                        )
-
-                                    MainToolWindowId.EXTENSIONS.stripeId ->
-                                        shellModel.onEvent(
-                                            MainEvent.SelectToolWindow(
-                                                MainToolWindowId.EXTENSIONS
-                                            )
-                                        )
-                                }
-                            }
+                            onSelected = { shellModel.onEvent(MainEvent.SelectToolWindow(it)) },
                         )
 
-                        val selectedIds = state.selectedIds
-                        val detailsDownload: Download? =
-                            if (selectedIds.size == 1) downloads.find { it.id == selectedIds.first() } else null
-                        val detailsShown =
-                            detailsState.visible && (detailsDownload != null || (!detailsState.viewMode.autoHidesWhenEmpty))
+                        val detailsDownload: Download? = state.selectedIds
+                            .takeIf { it.size == 1 }
+                            ?.first()
+                            ?.let { selected -> downloads.find { it.id == selected } }
+                        val detailsShown = detailsLayout.visible &&
+                            (detailsDownload != null || !detailsLayout.viewMode.autoHidesWhenEmpty)
 
-                        val panels = buildList {
-                            if (logState.visible) {
-                                add(
-                                    ToolWindowSpec(
-                                        id = "server_log",
-                                        title = strings.serverLog.title,
-                                        visible = true,
-                                        viewMode = logState.viewMode,
-                                        moveTo = logState.moveTo,
-                                        splitFraction = logState.splitFraction,
-                                        innerSplitFraction = logState.innerSplitFraction,
-                                        floatingOffset = Offset(
-                                            logState.floatingOffsetX,
-                                            logState.floatingOffsetY
-                                        ),
-                                        floatingSize = DpSize(
-                                            logState.floatingWidthDp.dp,
-                                            logState.floatingHeightDp.dp
-                                        ),
-                                        onMoveTo = {
-                                            logModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetMoveTo(
-                                                    it
-                                                )
-                                            )
-                                        },
-                                        onViewMode = {
-                                            logModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetViewMode(
-                                                    it
-                                                )
-                                            )
-                                        },
-                                        onSplitFractionChange = {
-                                            logModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetSplitFraction(it)
-                                            )
-                                        },
-                                        onInnerSplitFractionChange = {
-                                            logModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetInnerSplitFraction(it)
-                                            )
-                                        },
-                                        onFloatingBoundsChange = { offset, size ->
-                                            logModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetFloatingBounds(
-                                                    offset.x,
-                                                    offset.y,
-                                                    size.width.value,
-                                                    size.height.value
-                                                )
-                                            )
-                                        },
-                                        onResize = { logModel.resize(it) },
-                                        onClose = { logModel.setVisible(false) },
-                                        content = {
-                                            ServerLogPanel(
-                                                model = logModel,
-                                                onHide = { logModel.setVisible(false) },
-                                            )
-                                        }
-                                    )
-                                )
-                            }
-
-                            if (currentScreen is DownloadsScreen && detailsShown) {
-                                add(
-                                    ToolWindowSpec(
-                                        id = "download_details",
-                                        title = detailsDownload?.name
-                                            ?: strings.downloads.dialogs.details.title,
-                                        visible = true,
-                                        viewMode = detailsState.viewMode,
-                                        moveTo = detailsState.moveTo,
-                                        splitFraction = detailsState.splitFraction,
-                                        innerSplitFraction = detailsState.innerSplitFraction,
-                                        floatingOffset = Offset(
-                                            detailsState.floatingOffsetX,
-                                            detailsState.floatingOffsetY
-                                        ),
-                                        floatingSize = DpSize(
-                                            detailsState.floatingWidthDp.dp,
-                                            detailsState.floatingHeightDp.dp
-                                        ),
-                                        onMoveTo = {
-                                            detailsModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetMoveTo(it)
-                                            )
-                                        },
-                                        onViewMode = {
-                                            detailsModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetViewMode(it)
-                                            )
-                                        },
-                                        onSplitFractionChange = {
-                                            detailsModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetSplitFraction(it)
-                                            )
-                                        },
-                                        onInnerSplitFractionChange = {
-                                            detailsModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetInnerSplitFraction(it)
-                                            )
-                                        },
-                                        onFloatingBoundsChange = { offset, size ->
-                                            detailsModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetFloatingBounds(
-                                                    offset.x,
-                                                    offset.y,
-                                                    size.width.value,
-                                                    size.height.value
-                                                )
-                                            )
-                                        },
-                                        onResize = { detailsModel.resize(it) },
-                                        onClose = { detailsModel.setVisible(false) },
-                                        content = {
-                                            DownloadDetailsPanel(
-                                                download = detailsDownload,
-                                                onHide = { detailsModel.setVisible(false) },
-                                                modifier = Modifier.fillMaxSize(),
-                                                viewMode = detailsState.viewMode,
-                                                moveTo = detailsState.moveTo,
-                                                groupTabs = detailsState.groupTabs,
-                                                onViewMode = {
-                                                    detailsModel.onLayoutEvent(
-                                                        ToolWindowLayoutAction.SetViewMode(it)
-                                                    )
-                                                },
-                                                onMoveTo = {
-                                                    detailsModel.onLayoutEvent(
-                                                        ToolWindowLayoutAction.SetMoveTo(it)
-                                                    )
-                                                },
-                                                onResize = { detailsModel.resize(it) },
-                                                onToggleGroupTabs = { detailsModel.setGroupTabs(it) },
-                                            )
-                                        }
-                                    )
-                                )
-                            }
-
-                            if (extState.visible) {
-                                add(
-                                    ToolWindowSpec(
-                                        id = "extensions",
-                                        title = strings.extensions.title,
-                                        visible = true,
-                                        viewMode = extState.viewMode,
-                                        moveTo = extState.moveTo,
-                                        splitFraction = extState.splitFraction,
-                                        innerSplitFraction = extState.innerSplitFraction,
-                                        floatingOffset = Offset(
-                                            extState.floatingOffsetX,
-                                            extState.floatingOffsetY
-                                        ),
-                                        floatingSize = DpSize(
-                                            extState.floatingWidthDp.dp,
-                                            extState.floatingHeightDp.dp
-                                        ),
-                                        onMoveTo = {
-                                            extModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetMoveTo(
-                                                    it
-                                                )
-                                            )
-                                        },
-                                        onViewMode = {
-                                            extModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetViewMode(
-                                                    it
-                                                )
-                                            )
-                                        },
-                                        onSplitFractionChange = {
-                                            extModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetSplitFraction(it)
-                                            )
-                                        },
-                                        onInnerSplitFractionChange = {
-                                            extModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetInnerSplitFraction(it)
-                                            )
-                                        },
-                                        onFloatingBoundsChange = { offset, size ->
-                                            extModel.onLayoutEvent(
-                                                ToolWindowLayoutAction.SetFloatingBounds(
-                                                    offset.x,
-                                                    offset.y,
-                                                    size.width.value,
-                                                    size.height.value
-                                                )
-                                            )
-                                        },
-                                        onResize = { extModel.resize(it) },
-                                        onClose = { extModel.setVisible(false) },
-                                        content = {
-                                            ExtensionsPanel(
-                                                model = extModel,
-                                                onHide = { extModel.setVisible(false) },
-                                            )
-                                        }
-                                    )
-                                )
-                            }
-                        }
-
-                        val areaModifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .padding(BlazeLayout.IslandGap)
+                        val panels = buildToolWindowPanels(
+                            strings = strings,
+                            log = logModel to logLayout,
+                            details = DetailsPane(
+                                model = detailsModel,
+                                layout = detailsLayout,
+                                groupTabs = detailsState.groupTabs,
+                                download = detailsDownload,
+                                show = currentScreen is DownloadsScreen && detailsShown,
+                            ),
+                            extensions = extModel to extLayout,
+                        )
 
                         ToolWindowLayoutHost(
                             mainContent = {
@@ -357,67 +146,281 @@ class MainScreen : Screen {
                                 }
                             },
                             panels = panels,
-                            modifier = areaModifier,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(BlazeLayout.IslandGap),
                         )
                     }
 
-                    StatusBar(
-                        info = if (state.selectedIds.size > 1) {
-                            strings.downloads.selection.count(state.selectedIds.size)
-                        } else {
-                            downloads.toStatusSummary(strings)
-                        },
-                        throughput = downloads.aggregateSpeed().takeIf { it > 0 }
-                            ?.let { formatSpeed(it, strings) },
-                        alert = downloads.toStatusAlert(strings),
-                        trailing = {
-                            BackgroundTasksStatusItem(
-                                runningCount = running.size,
-                                expanded = shell.tasksPopupExpanded,
-                                onClick = { shellModel.onEvent(MainEvent.ToggleTasksPopup) },
-                            )
-                            if (state.snailModeEnabled) {
-                                val snailStyle = BlazeTypography.statusBar
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Icon(
-                                        key = BlazeIcons.SnailMode,
-                                        contentDescription = null,
-                                        tint = BlazeColors.warning,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Text(
-                                        text = strings.statusSummary.snailMode("${state.snailSpeedKbps} KB/s"),
-                                        style = snailStyle,
-                                        color = BlazeColors.warning,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
+                    MainStatusBar(
+                        state = state,
+                        strings = strings,
+                        runningCount = running.size,
+                        tasksPopupExpanded = shell.tasksPopupExpanded,
+                        onToggleTasksPopup = { shellModel.onEvent(MainEvent.ToggleTasksPopup) },
                     )
                 }
 
-                if (shell.tasksPopupExpanded) {
-                    BackgroundTasksPopup(
-                        running = running,
-                        onPause = { id -> screenModel.onEvent(DownloadsEvent.Pause(id)) },
-                        onCancel = { id -> screenModel.onEvent(DownloadsEvent.Cancel(id)) },
-                        onOpenDetails = { id -> shellModel.onEvent(MainEvent.FocusDownload(id)) },
-                        onDismiss = { shellModel.onEvent(MainEvent.DismissTasksPopup) },
-                    )
-                }
-                if (shell.aboutVisible) {
-                    AboutDialog(onDismiss = { shellModel.onEvent(MainEvent.DismissAbout) })
-                }
+                MainOverlayDialogs(
+                    shell = shell,
+                    running = running,
+                    onPause = { id -> screenModel.onEvent(DownloadsEvent.Pause(id)) },
+                    onCancel = { id -> screenModel.onEvent(DownloadsEvent.Cancel(id)) },
+                    onOpenDetails = { id -> shellModel.onEvent(MainEvent.FocusDownload(id)) },
+                    onDismissTasks = { shellModel.onEvent(MainEvent.DismissTasksPopup) },
+                    onDismissAbout = { shellModel.onEvent(MainEvent.DismissAbout) },
+                )
             }
         }
     }
 }
+
+// ── dockable tool windows ───────────────────────────────────────────────────────
+
+/** The Details pane's inputs to [buildToolWindowPanels]: its layout plus the selection it shows. */
+private class DetailsPane(
+    val model: DetailsPanelScreenModel,
+    val layout: ToolWindowLayout,
+    val groupTabs: Boolean,
+    val download: Download?,
+    val show: Boolean,
+)
+
+/**
+ * Assembles the visible dockable panes - Server Logs, Details, Extensions - into the specs the host
+ * docks. Each pane's layout is folded into a [ToolWindowSpec] through [toolWindowSpec], so the shell
+ * wires all three identically and only their content and title differ.
+ */
+private fun buildToolWindowPanels(
+    strings: BlazeStrings,
+    log: Pair<ServerLogWindowModel, ToolWindowLayout>,
+    details: DetailsPane,
+    extensions: Pair<ExtensionsWindowModel, ToolWindowLayout>,
+): List<ToolWindowSpec> {
+    val (logModel, logLayout) = log
+    val (extModel, extLayout) = extensions
+    val detailsModel = details.model
+
+    return buildList {
+        if (logLayout.visible) {
+            add(
+                toolWindowSpec(
+                    model = logModel,
+                    layout = logLayout,
+                    id = "server_log",
+                    title = strings.serverLog.title,
+                    onResize = logModel::resize,
+                    content = {
+                        ServerLogPanel(
+                            model = logModel,
+                            onHide = { logModel.setVisible(false) },
+                        )
+                    },
+                ),
+            )
+        }
+
+        if (details.show) {
+            add(
+                toolWindowSpec(
+                    model = detailsModel,
+                    layout = details.layout,
+                    id = "download_details",
+                    title = details.download?.name ?: strings.downloads.dialogs.details.title,
+                    onResize = detailsModel::resize,
+                    content = {
+                        DownloadDetailsPanel(
+                            download = details.download,
+                            onHide = { detailsModel.setVisible(false) },
+                            modifier = Modifier.fillMaxSize(),
+                            viewMode = details.layout.viewMode,
+                            moveTo = details.layout.moveTo,
+                            groupTabs = details.groupTabs,
+                            onViewMode = {
+                                detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it))
+                            },
+                            onMoveTo = {
+                                detailsModel.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it))
+                            },
+                            onResize = detailsModel::resize,
+                            onToggleGroupTabs = { detailsModel.setGroupTabs(it) },
+                        )
+                    },
+                ),
+            )
+        }
+
+        if (extLayout.visible) {
+            add(
+                toolWindowSpec(
+                    model = extModel,
+                    layout = extLayout,
+                    id = "extensions",
+                    title = strings.extensions.title,
+                    onResize = extModel::resize,
+                    content = {
+                        ExtensionsPanel(
+                            model = extModel,
+                            onHide = { extModel.setVisible(false) },
+                        )
+                    },
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * Frames any dockable [model] as a [ToolWindowSpec] from its current [layout]. Every layout callback
+ * funnels through [ToolWindowScreenModel.onLayoutEvent] with the shared [ToolWindowLayoutAction]s, so the
+ * three panes are wired identically and none drifts from the reducer's rules; only the [content],
+ * [title] and pane-specific [onResize] preset differ.
+ */
+private fun toolWindowSpec(
+    model: ToolWindowScreenModel,
+    layout: ToolWindowLayout,
+    id: String,
+    title: String,
+    onResize: (ToolWindowResize) -> Unit,
+    content: @Composable () -> Unit,
+): ToolWindowSpec = ToolWindowSpec(
+    id = id,
+    title = title,
+    visible = true,
+    viewMode = layout.viewMode,
+    moveTo = layout.moveTo,
+    splitFraction = layout.splitFraction,
+    innerSplitFraction = layout.innerSplitFraction,
+    floatingOffset = Offset(layout.floatingOffsetX, layout.floatingOffsetY),
+    floatingSize = DpSize(layout.floatingWidthDp.dp, layout.floatingHeightDp.dp),
+    onMoveTo = { model.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
+    onViewMode = { model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
+    onSplitFractionChange = { model.onLayoutEvent(ToolWindowLayoutAction.SetSplitFraction(it)) },
+    onInnerSplitFractionChange = { model.onLayoutEvent(ToolWindowLayoutAction.SetInnerSplitFraction(it)) },
+    onFloatingBoundsChange = { offset, size ->
+        model.onLayoutEvent(
+            ToolWindowLayoutAction.SetFloatingBounds(
+                offset.x,
+                offset.y,
+                size.width.value,
+                size.height.value,
+            ),
+        )
+    },
+    onResize = onResize,
+    onClose = { model.setVisible(false) },
+    content = content,
+)
+
+// ── shell chrome ────────────────────────────────────────────────────────────────
+
+/** The left tool-window stripe: the two side-bar destinations, with the live download count on the list. */
+@Composable
+private fun MainToolWindowStripe(
+    strings: BlazeStrings,
+    downloadCount: Int,
+    selectedId: String,
+    onSelected: (MainToolWindowId) -> Unit,
+) {
+    ToolWindowStripe(
+        items = listOf(
+            SidebarItem(
+                label = strings.downloads.title,
+                icon = AllIconsKeys.Actions.Download,
+                id = MainToolWindowId.DOWNLOADS.stripeId,
+                count = downloadCount.takeIf { it > 0 },
+            ),
+            SidebarItem(
+                label = strings.extensions.title,
+                icon = AllIconsKeys.Nodes.Plugin,
+                id = MainToolWindowId.EXTENSIONS.stripeId,
+            ),
+        ),
+        selectedId = selectedId,
+        onItemSelected = { item ->
+            when (item.id) {
+                MainToolWindowId.DOWNLOADS.stripeId -> onSelected(MainToolWindowId.DOWNLOADS)
+                MainToolWindowId.EXTENSIONS.stripeId -> onSelected(MainToolWindowId.EXTENSIONS)
+            }
+        },
+    )
+}
+
+/** The bottom status bar: the running-summary text, aggregate throughput, a risk alert and the trailing chips. */
+@Composable
+private fun MainStatusBar(
+    state: DownloadsState,
+    strings: BlazeStrings,
+    runningCount: Int,
+    tasksPopupExpanded: Boolean,
+    onToggleTasksPopup: () -> Unit,
+) {
+    val downloads = state.downloads
+    StatusBar(
+        info = if (state.selectedIds.size > 1) {
+            strings.downloads.selection.count(state.selectedIds.size)
+        } else {
+            downloads.toStatusSummary(strings)
+        },
+        throughput = downloads.aggregateSpeed().takeIf { it > 0 }?.let { formatSpeed(it, strings) },
+        alert = downloads.toStatusAlert(strings),
+        trailing = {
+            BackgroundTasksStatusItem(
+                runningCount = runningCount,
+                expanded = tasksPopupExpanded,
+                onClick = onToggleTasksPopup,
+            )
+            if (state.snailModeEnabled) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(
+                        key = BlazeIcons.SnailMode,
+                        contentDescription = null,
+                        tint = BlazeColors.warning,
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Text(
+                        text = strings.statusSummary.snailMode("${state.snailSpeedKbps} KB/s"),
+                        style = BlazeTypography.statusBar,
+                        color = BlazeColors.warning,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        },
+    )
+}
+
+/** The overlays drawn above the frame: the background-tasks popup and the About dialog, each gated by shell state. */
+@Composable
+private fun MainOverlayDialogs(
+    shell: MainState,
+    running: List<Download>,
+    onPause: (String) -> Unit,
+    onCancel: (String) -> Unit,
+    onOpenDetails: (String) -> Unit,
+    onDismissTasks: () -> Unit,
+    onDismissAbout: () -> Unit,
+) {
+    if (shell.tasksPopupExpanded) {
+        BackgroundTasksPopup(
+            running = running,
+            onPause = onPause,
+            onCancel = onCancel,
+            onOpenDetails = onOpenDetails,
+            onDismiss = onDismissTasks,
+        )
+    }
+    if (shell.aboutVisible) {
+        AboutDialog(onDismiss = onDismissAbout)
+    }
+}
+
+// ── status-bar projections ──────────────────────────────────────────────────────
 
 private fun List<Download>.toStatusSummary(strings: BlazeStrings): String {
     val list = this

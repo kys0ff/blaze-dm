@@ -43,7 +43,39 @@ data class ExtensionUiRow(
     val options: List<ResolverOption>,
     val resolver: LoadedResolver,
     val iconBytes: ByteArray? = null,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as ExtensionUiRow
+
+        if (enabled != other.enabled) return false
+        if (isPlugin != other.isPlugin) return false
+        if (priority != other.priority) return false
+        if (id != other.id) return false
+        if (displayName != other.displayName) return false
+        if (description != other.description) return false
+        if (options != other.options) return false
+        if (resolver != other.resolver) return false
+        if (!iconBytes.contentEquals(other.iconBytes)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = enabled.hashCode()
+        result = 31 * result + isPlugin.hashCode()
+        result = 31 * result + priority
+        result = 31 * result + id.hashCode()
+        result = 31 * result + displayName.hashCode()
+        result = 31 * result + description.hashCode()
+        result = 31 * result + options.hashCode()
+        result = 31 * result + resolver.hashCode()
+        result = 31 * result + (iconBytes?.contentHashCode() ?: 0)
+        return result
+    }
+}
 
 /**
  * Folds the handler list and the persisted settings into the rows the panel renders. Kept as a
