@@ -3,14 +3,15 @@ package org.blaze.presentation.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,16 +54,12 @@ fun BaseDialog(
     val focusRequester = remember { FocusRequester() }
     val density = LocalDensity.current
 
-    var height by remember { mutableStateOf(230.dp) }
+    var contentHeight by remember { mutableStateOf(0.dp) }
+
     val state = rememberDialogState(
         position = WindowPosition(Alignment.Center),
-        width = width,
-        height = height,
+        size = DpSize(width, 230.dp),
     )
-
-    LaunchedEffect(width, height) {
-        state.size = DpSize(width, height)
-    }
 
     if (requestFocus) {
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -76,11 +73,16 @@ fun BaseDialog(
     ) {
         preventDialogMinimize()
 
-        Column(
-            modifier = modifier
-                .width(width)
-                .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                .onSizeChanged { height = with(density) { it.height.toDp() + 20.dp } }
+        LaunchedEffect(width, contentHeight) {
+            if (contentHeight > 0.dp) {
+                val decorations = (window.insets.top + window.insets.bottom).dp
+                state.size = DpSize(width, contentHeight + decorations)
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
                 .background(JewelTheme.globalColors.panelBackground)
                 .focusRequester(focusRequester)
                 .onPreviewKeyEvent { event ->
@@ -91,14 +93,24 @@ fun BaseDialog(
                         false
                     }
                 }
-                .focusable()
-                .padding(
-                    horizontal = BlazeLayout.DialogPaddingHorizontal,
-                    vertical = BlazeLayout.DialogPaddingVertical,
-                ),
-            verticalArrangement = verticalArrangement,
-            content = content
-        )
+                .focusable(),
+        ) {
+            Column(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                    .onSizeChanged { size ->
+                        val newHeight = with(density) { size.height.toDp() }
+                        if (newHeight != contentHeight) contentHeight = newHeight
+                    }
+                    .padding(
+                        horizontal = BlazeLayout.DialogPaddingHorizontal,
+                        vertical = BlazeLayout.DialogPaddingVertical,
+                    ),
+                verticalArrangement = verticalArrangement,
+                content = content,
+            )
+        }
     }
 }
 
