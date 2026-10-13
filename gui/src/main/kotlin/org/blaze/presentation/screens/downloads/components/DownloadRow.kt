@@ -62,9 +62,6 @@ internal val CellEndPadding = 10.dp
  */
 val OptionsGutterWidth = 28.dp
 
-/** OpenType feature that gives fixed-width digits, so numbers line up down a numeric column. */
-internal const val TabularFigures = "tnum" // TODO: make use of this internal const val
-
 /**
  * Resolves a column's share of the table width. Every cell in the header and in a row reads this,
  * so columns stay perfectly aligned; using the dp value as a weight lets the row always fill the

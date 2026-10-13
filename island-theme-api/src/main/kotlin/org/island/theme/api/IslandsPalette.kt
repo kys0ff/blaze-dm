@@ -56,5 +56,5 @@ fun IslandsPalette.withFallback(other: IslandsPalette): IslandsPalette = Islands
 )
 
 /** Complete every unset token from the stock [IslandsDefaults] for [dark]. */
-fun IslandsPalette.filledWithIslandsDefaults(dark: Boolean): IslandsPalette = // TODO: make use of this fun
+fun IslandsPalette.filledWithIslandsDefaults(dark: Boolean): IslandsPalette =
     withFallback(IslandsDefaults.forMode(dark))

@@ -12,7 +12,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import org.island.theme.ui.islandAmbientFrame
-import org.island.ui.menu.MenuEntry
 import org.island.ui.menu.rememberMenuAnchor
 import org.island.ui.menu.trackingModifier
 import org.jetbrains.jewel.window.DecoratedWindowScope
@@ -159,7 +158,6 @@ private fun IslandAppIconButton(
                                 }
 
                                 PointerEventType.Exit -> {
-                                    validClick = false // TODO: warning: Assigned value is never read
                                     pressed = false
                                     break
                                 }
@@ -186,14 +184,3 @@ private fun IslandAppIconButton(
         }
     }
 }
-
-/**
- * Convenience factory for a category so hosts can build the list from their own enum without
- * importing [MenuEntry] at each call site. The [entries] closure is passed the shell's fold-away
- * handler as its single `onExecuted` argument.
- */
-fun islandMenuCategoryOf(
-    // TODO: make use of this fun
-    label: String,
-    entries: (onExecuted: () -> Unit) -> List<MenuEntry>,
-): IslandMenuCategory = IslandMenuCategory(label = label, entries = entries)

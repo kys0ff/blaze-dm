@@ -82,11 +82,9 @@ data class ThemeOption(
 
 /** Convenience constructors so descriptors read without naming the carrier type. */
 fun themeTextOption(key: String, label: String, description: String? = null, default: String = "") =
-    // TODO: make use of this fun
     ThemeOption(key, label, description, ThemeOptionType.Text, default)
 
 fun themeBooleanOption(
-    // TODO: make use of this fun
     key: String,
     label: String,
     description: String? = null,
@@ -94,7 +92,6 @@ fun themeBooleanOption(
 ) = ThemeOption(key, label, description, ThemeOptionType.Boolean, default.toString())
 
 fun themeIntegerOption(
-    // TODO: make use of this fun
     key: String,
     label: String,
     description: String? = null,
@@ -106,7 +103,6 @@ fun themeIntegerOption(
 )
 
 fun themeSelectOption(
-    // TODO: make use of this fun
     key: String,
     label: String,
     description: String? = null,
@@ -224,7 +220,7 @@ data class ThemeConfig(
         intValue(key, default.toLong(), range).toInt()
 
     /** The stored choice, or [default] when the value is absent or no longer offered. */
-    fun selectValue(key: String, choices: List<String>, default: String): String = // TODO: make use of this fun
+    fun selectValue(key: String, choices: List<String>, default: String): String =
         values[key]?.takeIf { it in choices } ?: default
 
     /**

@@ -240,10 +240,6 @@ class ThemeRegistry(
     private fun defaultPalette(dark: Boolean): ThemePalette =
         builtIns.firstOrNull { it.id == DEFAULT_THEME_ID }?.provide(dark) ?: ThemePalette.Empty
 
-    /** Complete every unset Islands chrome token from the stock design-system values. */
-    private fun IslandsPalette.filledWithIslandsDefaults(dark: Boolean): IslandsPalette =
-        withFallback(IslandsDefaults.forMode(dark))
-
     companion object {
         /** Id of the built-in theme that overrides nothing (the app's stock look). */
         const val DEFAULT_THEME_ID = "default"

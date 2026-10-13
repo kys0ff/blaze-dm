@@ -74,27 +74,6 @@ class SearchController(private val commandBus: AppCommandBus) {
      */
     var pendingSettingFocus by mutableStateOf<String?>(null)
 
-    // ── Result navigation (delegated; the island popup publishes and the keyboard walks through it) ─
-
-    /** The currently ranked results, in the order they are shown; the keyboard walks this list. */
-    val hits: List<SearchHit> get() = island.hits
-
-    /** The index into [hits] the keyboard/hover currently points at. */
-    val highlighted: Int get() = island.highlighted // TODO: make use of this val
-
-    fun moveDown() = island.moveDown() // TODO: make use of this fun
-
-    fun moveUp() = island.moveUp() // TODO: make use of this fun
-
-    /** Steps the highlight by a page (positive down, negative up), clamped rather than wrapping. */
-    fun page(delta: Int) = island.page(delta)
-
-    /** Sets the highlight directly (a pointer hover). */
-    fun highlight(index: Int) = island.highlight(index) // TODO: make use of this fun
-
-    /** Activates the highlighted result, if any. */
-    fun activateSelected() = island.activateSelected() // TODO: make use of this fun
-
     /** Publishes the current download list into the controller (called from the downloads screen). */
     fun submitDownloads(downloads: List<Download>) {
         this.downloads = downloads
@@ -126,14 +105,6 @@ class SearchController(private val commandBus: AppCommandBus) {
     fun close() = island.close()
 
     fun updateQuery(value: String) = island.updateQuery(value)
-
-    fun selectTab(value: SearchTab) = island.selectTab(value.tabId) // TODO: make use of this fun
-
-    /** Steps the tab forward or back, wrapping at the ends (Tab / Shift+Tab, Ctrl+Down / Ctrl+Up). */
-    fun cycleTab(delta: Int) = island.cycleTab(delta) // TODO: make use of this fun
-
-    /** Runs the chosen result through its provider, then closes the popup. */
-    fun activate(hit: SearchHit) = island.activate(hit) // TODO: make use of this fun
 
     // ── Providers ──────────────────────────────────────────────────────────────────────────────────
 

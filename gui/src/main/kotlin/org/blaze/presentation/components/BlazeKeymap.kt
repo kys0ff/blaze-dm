@@ -86,9 +86,6 @@ object BlazeKeymap {
     fun isAcceptable(binding: IslandKeyBinding): Boolean = isAcceptableIslandBinding(binding)
 }
 
-/** Keeps the historical unqualified spelling alive inside the package: `Binding(Key.A)` etc. */
-typealias Binding = IslandKeyBinding // TODO: make use of this typealias or remove it
-
 /**
  * Builds the bundle of shortcut strings the chrome reads from [org.island.theme.ui.LocalShortcutLabels],
  * from the one keymap rather than from per-screen literals. It reads live bindings through

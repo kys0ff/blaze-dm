@@ -5,7 +5,7 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.nativeKeyLocation
 import org.blaze.presentation.components.BlazeKeymap
-import org.island.ui.keymap.*
+import org.island.ui.keymap.IslandKeyBinding
 
 /**
  * The one bridge between the persisted keymap ([AppSettings.keyBindings] / [AppSettings.unboundShortcuts]),
@@ -13,7 +13,7 @@ import org.island.ui.keymap.*
  *
  * It exists so none of the three concerns leaks into the others: [AppSettings] stays pure primitives, the
  * presentation keymap stays free of persistence, and the Settings draft is resolved through the exact same
- * [Binding] shape the running app uses — so a draft chord a user records is guaranteed to mean the same key
+ * [IslandKeyBinding] shape the running app uses — so a draft chord a user records is guaranteed to mean the same key
  * once applied.
  */
 object KeymapPersistence {

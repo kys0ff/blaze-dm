@@ -42,22 +42,6 @@ object IslandAmbientGradient {
     val VerticalRadius = 280.dp
 
     /**
-     * Blend of the accent into the frame at the glow's peak, as the stock design reference reads
-     * it. The reference peak tint is `#26282c -> (+5 R, +25 G, +22 B)` at x=110, i.e. a luminance
-     * lift of ~19 units; Blaze's accent is the flame orange, so the same 19-unit lift needs a
-     * slightly larger share of a color that carries less green. 15% (the top of the brief's 10-15%
-     * band) is what lands the app's peak luminance delta on the reference's - see the gradient
-     * landmarks in `scripts/ui_delta_check.py`, which compare shape (Δluminance over the sampled
-     * base) rather than hue.
-     *
-     * These are only the *defaults*: the live strength is a theme token, read as
-     * [IslandChromeColors.ambientIntensity], so a plugin (or the user, through a theme's Options
-     * form) can dial the glow without touching this file.
-     */
-    const val DARK_ALPHA = 0.15f // TODO: make use of this const val
-    const val LIGHT_ALPHA = 0.08f // TODO: make use of this const val
-
-    /**
      * The accent color the glow is tinted with: a theme's declared glow color when it names one,
      * then the brand flame, then the theme accent.
      */
