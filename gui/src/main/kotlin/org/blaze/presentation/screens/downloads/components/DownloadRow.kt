@@ -1,41 +1,18 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.TooltipArea
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.isCtrlPressed
-import androidx.compose.ui.input.pointer.isMetaPressed
-import androidx.compose.ui.input.pointer.isPrimaryPressed
-import androidx.compose.ui.input.pointer.isSecondaryPressed
-import androidx.compose.ui.input.pointer.isShiftPressed
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -44,21 +21,21 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.DownloadsColumn
-import org.blaze.presentation.components.LocalWindowActive
-import org.blaze.presentation.components.rememberMenuAnchorAt
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.screens.downloads.isTorrentSource
 import org.blaze.presentation.screens.downloads.isUnresumableInProgress
 import org.blaze.presentation.screens.downloads.isWaitingForPeers
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
 import org.blaze.presentation.util.formatSpeed
 import org.blaze.presentation.util.toFriendlyMessage
+import org.island.theme.ui.IslandLayout
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.IslandTypography
+import org.island.theme.ui.LocalWindowActive
+import org.island.ui.menu.IslandMenu
+import org.island.ui.menu.rememberMenuAnchorAt
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.HorizontalProgressBar
@@ -204,7 +181,7 @@ private fun TableCellTooltip(text: String) {
 }
 
 /**
- * One download rendered as an IDE table row: a fixed [BlazeLayout.RowHeight] tall, single-line row
+ * One download rendered as an IDE table row: a fixed [IslandLayout.RowHeight] tall, single-line row
  * split into the six weighted columns so it aligns exactly with [DownloadsTableHeader]. Everything
  * the wide two-line row used to carry is preserved but relocated: the per-file breakdown and the
  * lifecycle advisories now surface in the Details pane, and the destructive-pause warning lives on
@@ -254,7 +231,7 @@ fun DownloadRow(
 
     val background = when {
         isSelected -> selectedBg
-        hovered -> BlazeColors.hover
+        hovered -> IslandSemanticColors.hover
         else -> Color.Transparent
     }
     val disabledText = JewelTheme.globalColors.text.disabled
@@ -286,7 +263,7 @@ fun DownloadRow(
 
     // The row's own context menu. This used to go through Compose's `ContextMenuArea`, whose Jewel
     // representation hangs the mouse inside any submenu (the reason Blaze draws its own menus — see
-    // BlazeMenu); taking the right-click here is also what hands the menu the cursor point it opens at.
+    // IslandMenu); taking the right-click here is also what hands the menu the cursor point it opens at.
     var menuPosition by remember { mutableStateOf<Offset?>(null) }
 
     Box(
@@ -297,7 +274,7 @@ fun DownloadRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(BlazeLayout.RowHeight)
+                .height(IslandLayout.RowHeight)
                 .clip(RowShape)
                 .background(background)
                 .hoverable(interaction)
@@ -340,7 +317,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = sizeText(download, strings),
-                            style = BlazeTypography.rowCell,
+                            style = IslandTypography.rowCell,
                             // The same secondary role as speed and ETA: every numeric readout in the row
                             // sits one step behind the name. Painting only the size in the row's primary
                             // color makes it read as a heavier face even though its resolved
@@ -357,7 +334,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = speedText(download, strings),
-                            style = BlazeTypography.rowCell,
+                            style = IslandTypography.rowCell,
                             color = secondary,
                             maxLines = 1,
                         )
@@ -369,7 +346,7 @@ fun DownloadRow(
                     ) {
                         Text(
                             text = etaText(download),
-                            style = BlazeTypography.rowCell,
+                            style = IslandTypography.rowCell,
                             color = secondary,
                             maxLines = 1,
                         )
@@ -403,7 +380,7 @@ fun DownloadRow(
 
         val point = menuPosition
         if (point != null) {
-            BlazeMenu(
+            IslandMenu(
                 entries = buildDownloadContextMenu(
                     download,
                     capabilities,
@@ -443,7 +420,7 @@ private fun NameCell(
             key = download.leadingIconKey(),
             contentDescription = download.state.label(strings),
             tint = iconTint,
-            modifier = Modifier.size(BlazeLayout.RowLeadingIconSize),
+            modifier = Modifier.size(IslandLayout.RowLeadingIconSize),
         )
         Text(
             text = download.name,
@@ -509,7 +486,7 @@ private fun ProgressCell(
         }
         Text(
             text = if (isIndeterminate) "\u2014" else "${(progress * 100).toInt()}%",
-            style = BlazeTypography.rowCell,
+            style = IslandTypography.rowCell,
             color = secondary,
             maxLines = 1,
         )
@@ -550,7 +527,7 @@ private fun StateCell(
             Text(
                 text = strings.downloads.advisories.waitingForPeers,
                 style = JewelTheme.typography.small,
-                color = if (primary != Color.Unspecified) primary else BlazeColors.warning,
+                color = if (primary != Color.Unspecified) primary else IslandSemanticColors.warning,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -562,7 +539,7 @@ private fun StateCell(
                 Text(
                     text = error.toFriendlyMessage(strings),
                     style = JewelTheme.typography.small,
-                    color = if (primary != Color.Unspecified) primary else BlazeColors.error,
+                    color = if (primary != Color.Unspecified) primary else IslandSemanticColors.error,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -573,7 +550,7 @@ private fun StateCell(
             Icon(
                 key = AllIconsKeys.General.Warning,
                 contentDescription = strings.downloads.advisories.cannotResume,
-                tint = BlazeColors.warning,
+                tint = IslandSemanticColors.warning,
                 modifier = Modifier.size(14.dp),
             )
         }

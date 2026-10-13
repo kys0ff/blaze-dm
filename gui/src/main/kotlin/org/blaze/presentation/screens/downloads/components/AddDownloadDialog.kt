@@ -3,13 +3,7 @@ package org.blaze.presentation.screens.downloads.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -19,31 +13,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.blaze.data.AppSettingsRepository
 import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.TorrentPreview
-import org.blaze.data.AppSettingsRepository
 import org.blaze.download.api.DownloadPriority
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.StandardDialogButtons
-import org.blaze.presentation.screens.downloads.components.add.AddDownloadInputView
-import org.blaze.presentation.screens.downloads.components.add.AddDownloadListView
-import org.blaze.presentation.screens.downloads.components.add.AddDownloadMetadataView
-import org.blaze.presentation.screens.downloads.components.add.AddDownloadState
-import org.blaze.presentation.screens.downloads.components.add.AddDownloadFetchOutcome
-import org.blaze.presentation.screens.downloads.components.add.ResolvedPick
-import org.blaze.presentation.screens.downloads.components.add.isHttpSource
-import org.blaze.presentation.screens.downloads.components.add.isHttpTorrentFileUrl
-import org.blaze.presentation.screens.downloads.components.add.loadSourceFile
-import org.blaze.presentation.screens.downloads.components.add.resolvedLinkToMetadata
-import org.blaze.presentation.screens.downloads.components.add.resolvedLinksToBatchItems
-import org.blaze.presentation.screens.downloads.components.add.resolveDestinationStatus
+import org.blaze.presentation.screens.downloads.components.add.*
 import org.blaze.resolver.api.ResolvedLink
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LinkResolverSettingsRepository
 import org.blaze.resolver.core.LoadedResolver
+import org.island.ui.dialog.IslandDialog
+import org.island.ui.dialog.StandardDialogButtons
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
@@ -388,7 +371,7 @@ fun AddDownloadDialog(
 
     // Focus stays on the source field (managed above), so the shell must not grab it.
     val dialogTitle = if (state.isBatch) dStrings.batchTitle else dStrings.addTitle
-    BaseDialog(onDismiss = onDismiss, requestFocus = false, title = dialogTitle) {
+    IslandDialog(onDismiss = onDismiss, requestFocus = false, title = dialogTitle) {
         when {
             state.step == 1 -> AddDownloadInputView(
                 state = state,

@@ -2,11 +2,8 @@ package org.blaze.data
 
 import androidx.compose.ui.input.key.Key
 import org.blaze.presentation.components.BlazeKeymap
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import org.island.ui.keymap.IslandKeyBinding
+import kotlin.test.*
 
 /**
  * [KeymapPersistence] is the single bridge between the persisted chord ([StoredKeyBinding]), the live
@@ -32,11 +29,11 @@ class KeymapPersistenceTest {
 
     /** The stored form of a real chord, so its key location matches what a capture would record. */
     private fun stored(key: Key, ctrl: Boolean = true, shift: Boolean = false, alt: Boolean = false) =
-        KeymapPersistence.fromBinding(BlazeKeymap.Binding(key, ctrl, shift, alt))
+        KeymapPersistence.fromBinding(IslandKeyBinding(key, ctrl, shift, alt))
 
     @Test
     fun `a binding survives a store round-trip`() {
-        val binding = BlazeKeymap.Binding(Key.N, ctrl = true, shift = true)
+        val binding = IslandKeyBinding(Key.N, ctrl = true, shift = true)
 
         val restored = KeymapPersistence.toBinding(KeymapPersistence.fromBinding(binding))
 
@@ -48,7 +45,7 @@ class KeymapPersistenceTest {
         val chord = stored(Key.J)
         KeymapPersistence.applyTo(bindings = mapOf(BlazeKeymap.Action.SelectAll.name to chord), unbound = emptyList())
 
-        assertEquals(BlazeKeymap.Binding(Key.J), BlazeKeymap.effectiveBinding(BlazeKeymap.Action.SelectAll))
+        assertEquals(IslandKeyBinding(Key.J), BlazeKeymap.effectiveBinding(BlazeKeymap.Action.SelectAll))
     }
 
     @Test
@@ -74,7 +71,10 @@ class KeymapPersistenceTest {
         val bindings = mapOf(BlazeKeymap.Action.SelectAll.name to stored(Key.B))
         val unbound = listOf(BlazeKeymap.Action.Remove.name)
 
-        assertEquals(BlazeKeymap.Binding(Key.B), KeymapPersistence.draftBinding(BlazeKeymap.Action.SelectAll, bindings, unbound))
+        assertEquals(
+            IslandKeyBinding(Key.B),
+            KeymapPersistence.draftBinding(BlazeKeymap.Action.SelectAll, bindings, unbound)
+        )
         assertEquals(
             BlazeKeymap.Action.TogglePause.defaultBinding,
             KeymapPersistence.draftBinding(BlazeKeymap.Action.TogglePause, bindings, unbound),

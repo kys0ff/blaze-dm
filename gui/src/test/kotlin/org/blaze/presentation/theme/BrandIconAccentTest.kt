@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import org.island.theme.ui.*
 
 /**
  * Exercises the brand-accent pipeline: the pure bytes -> dominant palette -> vivid accent path,

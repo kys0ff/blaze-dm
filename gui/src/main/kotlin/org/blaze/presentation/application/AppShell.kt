@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import org.blaze.data.AppSettingsRepository
 import org.blaze.download.api.DownloadsApi
 import org.blaze.tray.api.TrayService
+import org.island.shell.IslandWindowHost
 import org.koin.compose.koinInject
 
 /**
@@ -28,15 +29,15 @@ import org.koin.compose.koinInject
  * open, the title-bar menu) and it has to be torn down when the frame itself goes away.
  */
 class AppShell internal constructor(
-    val windowState: WindowState,
-    val windowVisible: MutableState<Boolean>,
-    val windowRaiseToken: MutableState<Long>,
+    override val windowState: WindowState,
+    override val windowVisible: MutableState<Boolean>,
+    override val windowRaiseToken: MutableState<Long>,
     val settingsOpen: MutableState<Boolean>,
     private val appSettingsRepository: AppSettingsRepository,
     private val trayService: TrayService,
     private val downloadsApi: DownloadsApi,
     private val exitApplication: () -> Unit,
-) {
+) : IslandWindowHost {
     /** Whether the app is in its real shutdown path (as opposed to hidden to the tray). */
     private var exiting = false
 
@@ -74,7 +75,7 @@ class AppShell internal constructor(
         get() = appSettingsRepository.settings.value
 
     /** Hide the window into the tray (or quit, when the tray can't hold the app). */
-    fun onCloseRequest() {
+    override fun onCloseRequest() {
         if (trayActive && appSettings.minimizeToTrayOnClose && !exiting) {
             hideToTray()
         } else {
@@ -83,21 +84,21 @@ class AppShell internal constructor(
     }
 
     /** Fold a title-bar minimize into the single hide-to-tray model. */
-    fun onMinimize() = hideToTray()
+    override fun onMinimize() = hideToTray()
 
     /**
      * Whether the frame currently fills the screen. Read through [WindowState.placement], which
      * Compose keeps in sync with the OS — so a maximize done by the window manager (or the title-bar
      * button) is visible to the window menu too, not just one done through this shell.
      */
-    fun isMaximized(): Boolean = windowState.placement == WindowPlacement.Maximized
+    override fun isMaximized(): Boolean = windowState.placement == WindowPlacement.Maximized
 
     /**
      * Maximize the frame, remembering the floating size [restoreWindow] goes back to. Compose
      * mirrors the maximized bounds into `windowState.size`, so the normal size has to be captured
      * while the window is still floating — exactly like the OS remembering its own restore bounds.
      */
-    fun maximizeWindow() {
+    override fun maximizeWindow() {
         if (isMaximized()) return
         normalSize = windowState.size
         windowState.placement = WindowPlacement.Maximized
@@ -108,7 +109,7 @@ class AppShell internal constructor(
      * happened outside this shell nothing was captured, and writing no size lets the window manager
      * restore its own pre-maximize bounds.
      */
-    fun restoreWindow() {
+    override fun restoreWindow() {
         if (!isMaximized()) return
         normalSize?.let { windowState.size = it }
         windowState.placement = WindowPlacement.Floating

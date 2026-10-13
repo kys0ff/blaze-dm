@@ -9,13 +9,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BlazeIcons
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.LocalShortcutLabels
-import org.blaze.presentation.components.ToolWindowHeader
-import org.blaze.presentation.components.ToolWindowSearchField
-import org.blaze.presentation.components.ToolbarIconButton
 import org.blaze.presentation.screens.downloads.DownloadsEvent
 import org.blaze.presentation.screens.downloads.SelectionActions
+import org.island.theme.ui.IslandLayout
+import org.island.theme.ui.LocalShortcutLabels
+import org.island.ui.toolbar.IslandToolbarIconButton
+import org.island.ui.toolwindow.ToolWindowHeader
+import org.island.ui.toolwindow.ToolWindowSearchField
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
@@ -91,26 +91,26 @@ fun DownloadsToolbar(
                 )
                 Divider(
                     Orientation.Vertical,
-                    modifier = Modifier.height(BlazeLayout.ToolbarSeparatorHeight).padding(horizontal = 4.dp)
+                    modifier = Modifier.height(IslandLayout.ToolbarSeparatorHeight).padding(horizontal = 4.dp)
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.General.Add,
                     tooltip = strings.downloads.toolbar.add,
                     onClick = onAddDownload,
                     shortcut = shortcuts.newDownload,
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.Download,
                     tooltip = strings.downloads.toolbar.importPortable,
                     onClick = onImportPortable
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.Resume,
                     tooltip = strings.downloads.toolbar.resumeAll,
                     enabled = hasPausedDownloads,
                     onClick = { onEvent(DownloadsEvent.ResumeAll) }
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.Pause,
                     tooltip = strings.downloads.toolbar.pauseAll,
                     enabled = hasActiveDownloads,
@@ -118,19 +118,19 @@ fun DownloadsToolbar(
                 )
                 Divider(
                     Orientation.Vertical,
-                    modifier = Modifier.height(BlazeLayout.ToolbarSeparatorHeight).padding(horizontal = 4.dp)
+                    modifier = Modifier.height(IslandLayout.ToolbarSeparatorHeight).padding(horizontal = 4.dp)
                 )
                 // The IDE spells "select all" with a button, not a hidden gesture: this takes the
                 // whole current filter, and while a selection is alive the bulk group swaps it for its
                 // mirror image, Deselect (see [BulkActions]).
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.Selectall,
                     tooltip = strings.downloads.selection.selectAll,
                     shortcut = shortcuts.selectAll,
                     enabled = hasVisibleRows,
                     onClick = onSelectAll,
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.GC,
                     tooltip = strings.downloads.toolbar.clearCompleted,
                     enabled = hasCompletedDownloads,
@@ -146,7 +146,7 @@ fun DownloadsToolbar(
                     onValueChange = { onEvent(DownloadsEvent.ToggleSnailMode(it)) },
                     tooltip = { Text(strings.downloads.toolbar.snailMode) }
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.General.ShowInfos,
                     tooltip = if (detailsVisible) strings.downloads.detailsPane.hide else strings.downloads.detailsPane.show,
                     shortcut = shortcuts.toggleDetails,
@@ -172,19 +172,19 @@ private fun BulkActions(
     // A command lights up only when some selected row would obey it, and its tooltip names that many
     // rows ("Pause 3 downloads"), so the button's enabled state, tooltip and effect always agree. A
     // finished download in the selection cannot light up "resume", and the count simply omits it.
-    ToolbarIconButton(
+    IslandToolbarIconButton(
         key = AllIconsKeys.Actions.Pause,
         tooltip = if (actions.canPause) s.pauseSelected(actions.pauseCount) else s.pause,
         enabled = actions.canPause,
         onClick = onBulkPause,
     )
-    ToolbarIconButton(
+    IslandToolbarIconButton(
         key = AllIconsKeys.Actions.Resume,
         tooltip = if (actions.canResume) s.resumeSelected(actions.resumeCount) else s.resume,
         enabled = actions.canResume,
         onClick = onBulkResume,
     )
-    ToolbarIconButton(
+    IslandToolbarIconButton(
         // Stopping running transfers is the IDE's "Stop", and it draws as the plain red square (see
         // [BlazeIcons.Stop]); the generic New UI cross this used to borrow said "close", not "abort".
         key = BlazeIcons.Stop,
@@ -192,7 +192,7 @@ private fun BulkActions(
         enabled = actions.canCancel,
         onClick = onBulkCancel,
     )
-    ToolbarIconButton(
+    IslandToolbarIconButton(
         key = AllIconsKeys.Actions.GC,
         tooltip = if (actions.canRemove) s.removeSelected(actions.removeCount) else s.remove,
         enabled = actions.canRemove,
@@ -200,7 +200,7 @@ private fun BulkActions(
     )
     // The mirror of the toolbar's Select All: same Ctrl/Cmd+A, same glyph family, and it drops the
     // whole selection instead of clearing a single row.
-    ToolbarIconButton(
+    IslandToolbarIconButton(
         key = AllIconsKeys.Actions.Unselectall,
         tooltip = s.deselect,
         shortcut = shortcuts.selectAll,

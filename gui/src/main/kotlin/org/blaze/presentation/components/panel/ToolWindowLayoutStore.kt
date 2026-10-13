@@ -1,21 +1,17 @@
 package org.blaze.presentation.components.panel
 
 import org.blaze.data.AppSettingsRepository
+import org.island.ui.toolwindow.ToolWindowLayout
+import org.island.ui.toolwindow.ToolWindowLayoutStore
+import org.island.ui.toolwindow.toolWindowMoveToFromName
+import org.island.ui.toolwindow.toolWindowViewModeFromName
 
 /**
- * The persistence seam every dockable tool window shares: it turns a pane's [ToolWindowLayout] to and
- * from wherever it is stored. Injecting this instead of letting each window model reach into
- * [AppSettingsRepository] and hand-copy its own `xxxVisible`/`xxxViewMode`/… fields keeps the layout
- * rules in one place and leaves a model holding a single, meaningful collaborator rather than the whole
- * app-settings shape.
+ * Blaze's concrete [ToolWindowLayoutStore]s: each dockable tool window's layout persisted in its own
+ * `xxx*` fields of [AppSettings] through the app-settings repository. The layout *rules* live in the
+ * island layer; these are the storage adapters the screen models are constructed with (Koin wiring in
+ * `di/ScreenModelModule`).
  */
-interface ToolWindowLayoutStore {
-    /** The layout to seed the pane with, read from persisted settings (falling back to defaults). */
-    fun load(): ToolWindowLayout
-
-    /** Write the whole layout back. */
-    suspend fun save(layout: ToolWindowLayout)
-}
 
 /** The Details pane's layout, persisted in the `details*` fields of [AppSettings]. */
 class DetailsLayoutStore(private val repository: AppSettingsRepository) : ToolWindowLayoutStore {

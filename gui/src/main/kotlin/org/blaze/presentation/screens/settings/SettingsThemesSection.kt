@@ -1,15 +1,7 @@
 package org.blaze.presentation.screens.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
@@ -19,7 +11,7 @@ import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.components.ThemeOptionsDialog
 import org.blaze.presentation.screens.settings.state.SettingsState
 import org.blaze.presentation.screens.settings.state.ThemeUiState
-import org.blaze.theming.core.ThemeRegistry
+import org.island.theme.core.ThemeRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.CheckboxRow

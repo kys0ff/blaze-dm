@@ -8,15 +8,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.milliseconds
 import org.blaze.presentation.components.panel.DetailsLayoutStore
-import org.blaze.presentation.components.panel.MAX_SPLIT_FRACTION
-import org.blaze.presentation.components.panel.MIN_SPLIT_FRACTION
-import org.blaze.presentation.components.panel.ToolWindowLayout
-import org.blaze.presentation.components.panel.ToolWindowMoveTo
-import org.blaze.presentation.components.panel.ToolWindowResize
 import org.blaze.presentation.components.panel.ToolWindowScreenModel
-import org.blaze.presentation.components.panel.ToolWindowViewMode
+import org.island.ui.toolwindow.MAX_SPLIT_FRACTION
+import org.island.ui.toolwindow.MIN_SPLIT_FRACTION
+import org.island.ui.toolwindow.ToolWindowLayout
+import org.island.ui.toolwindow.ToolWindowMoveTo
+import org.island.ui.toolwindow.ToolWindowResize
+import org.island.ui.toolwindow.ToolWindowViewMode
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The Details tool window's own view state: its docked layout (inherited from [ToolWindowScreenModel])

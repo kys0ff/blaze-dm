@@ -14,6 +14,12 @@ repositories {
 }
 
 dependencies {
+    // Shared Islands/Jewel foundation: OS switch, DWM caption styler, dialog-chrome registry.
+    implementation(project(":island-foundation"))
+    // Shared Islands theme bridge: layout metrics, chrome colors, theme composables.
+    implementation(project(":island-theme-ui"))
+    // Reusable Islands components (menus, dialogs, toolbar buttons).
+    implementation(project(":island-ui"))
     implementation(project(":i18n"))
 
     implementation(compose.desktop.currentOs) {

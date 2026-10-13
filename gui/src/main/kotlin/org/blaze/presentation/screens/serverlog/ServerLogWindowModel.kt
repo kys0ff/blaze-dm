@@ -9,15 +9,10 @@ import org.blaze.logging.LogEntry
 import org.blaze.logging.ServerLogRepository
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
-import org.blaze.presentation.components.panel.MIN_SPLIT_FRACTION
 import org.blaze.presentation.components.panel.ServerLogLayoutStore
-import org.blaze.presentation.components.panel.ToolWindowLayout
-import org.blaze.presentation.components.panel.ToolWindowLayoutAction
-import org.blaze.presentation.components.panel.ToolWindowMoveTo
-import org.blaze.presentation.components.panel.ToolWindowResize
 import org.blaze.presentation.components.panel.ToolWindowScreenModel
-import org.blaze.presentation.components.panel.ToolWindowViewMode
 import org.blaze.server.ServerStatus
+import org.island.ui.toolwindow.*
 import java.nio.file.Path
 
 /**

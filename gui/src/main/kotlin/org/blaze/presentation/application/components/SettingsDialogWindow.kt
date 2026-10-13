@@ -8,10 +8,10 @@ import androidx.compose.ui.window.DialogState
 import androidx.compose.ui.window.DialogWindow
 import cafe.adriel.voyager.navigator.Navigator
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.applyWindowsTitleBarTheme
-import org.blaze.presentation.components.preventDialogMinimize
 import org.blaze.presentation.screens.settings.LocalSettingsDialogDismiss
 import org.blaze.presentation.screens.settings.SettingsScreen
+import org.island.ui.dialog.preventDialogMinimize
+import org.island.ui.window.applyWindowsTitleBarTheme
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import java.awt.Dimension
 

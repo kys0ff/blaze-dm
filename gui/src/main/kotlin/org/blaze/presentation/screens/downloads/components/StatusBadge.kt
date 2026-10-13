@@ -1,11 +1,7 @@
 package org.blaze.presentation.screens.downloads.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -18,20 +14,20 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeTypography
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.IslandTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 
 @Composable
 internal fun DownloadState.indicatorColor(): Color = when (this) {
     DownloadState.QUEUED -> JewelTheme.globalColors.text.info
-    DownloadState.DOWNLOADING -> BlazeColors.accent
-    DownloadState.PAUSED -> BlazeColors.warning
-    DownloadState.COMPLETED -> BlazeColors.success
-    DownloadState.FAILED -> BlazeColors.error
+    DownloadState.DOWNLOADING -> IslandSemanticColors.accent
+    DownloadState.PAUSED -> IslandSemanticColors.warning
+    DownloadState.COMPLETED -> IslandSemanticColors.success
+    DownloadState.FAILED -> IslandSemanticColors.error
     DownloadState.REMOVING -> JewelTheme.globalColors.text.disabled
-    DownloadState.SEEDING -> BlazeColors.warning
+    DownloadState.SEEDING -> IslandSemanticColors.warning
 }
 
 /** Localized status text for a download state, shared by the badge and the details' dialog. */
@@ -65,7 +61,7 @@ fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier, dimmed: Boo
         Text(
             text = text,
             color = if (dimmed) JewelTheme.globalColors.text.disabled else Color.Unspecified,
-            style = BlazeTypography.badge
+            style = IslandTypography.badge
         )
     }
 }
@@ -79,15 +75,15 @@ fun StatusBadge(state: DownloadState, modifier: Modifier = Modifier, dimmed: Boo
 fun PriorityChip(priority: DownloadPriority, modifier: Modifier = Modifier) {
     val strings = blazeStrings
     val color = when (priority) {
-        DownloadPriority.HIGH -> BlazeColors.success
-        DownloadPriority.LOW -> BlazeColors.warning
+        DownloadPriority.HIGH -> IslandSemanticColors.success
+        DownloadPriority.LOW -> IslandSemanticColors.warning
         DownloadPriority.IDLE -> JewelTheme.globalColors.text.disabled
         DownloadPriority.NORMAL -> JewelTheme.globalColors.text.info
     }
     Text(
         text = priority.label(strings.downloads.priority),
         color = color,
-        style = BlazeTypography.badge,
+        style = IslandTypography.badge,
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
             .background(color.copy(alpha = 0.14f))

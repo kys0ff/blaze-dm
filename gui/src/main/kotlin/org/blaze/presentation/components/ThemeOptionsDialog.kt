@@ -12,10 +12,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.theme.toColor
-import org.blaze.theming.api.ThemeConfig
-import org.blaze.theming.api.ThemeOption
-import org.blaze.theming.api.ThemeOptionType
+import org.island.theme.api.ThemeConfig
+import org.island.theme.api.ThemeOption
+import org.island.theme.api.ThemeOptionType
+import org.island.theme.ui.toColor
+import org.island.ui.dialog.IslandDialog
+import org.island.ui.dialog.StandardDialogButtons
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
@@ -24,7 +26,7 @@ import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 
 /**
- * Renders a [org.blaze.theming.api.ConfigurableBlazeThemeProvider]'s declared option descriptors as
+ * Renders a [org.island.theme.api.ConfigurableIslandThemeProvider]'s declared option descriptors as
  * a small editor form and hands the whole edited value map back on confirm — the theming twin of
  * [ResolverOptionsDialog], so neither runs plugin code to build the form: the descriptor alone picks
  * the control.
@@ -61,7 +63,7 @@ fun ThemeOptionsDialog(
         validateThemeOption(option, working[option.key] ?: option.defaultValue, msgs)
     val hasErrors = descriptors.any { errorOf(it) != null }
 
-    BaseDialog(onDismiss = onDismiss, title = title) {
+    IslandDialog(onDismiss = onDismiss, title = title) {
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)

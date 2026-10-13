@@ -1,25 +1,19 @@
 package org.blaze.presentation.screens.filepicker
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.StandardDialogButtons
 import org.blaze.presentation.screens.filepicker.components.FilePickerPathField
 import org.blaze.presentation.screens.filepicker.components.FilePickerToolbar
 import org.blaze.presentation.screens.filepicker.components.FilePickerTree
 import org.blaze.presentation.screens.filepicker.components.NewFolderDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
+import org.island.ui.dialog.IslandDialog
+import org.island.ui.dialog.StandardDialogButtons
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
@@ -107,7 +101,7 @@ fun FilePickerDialog(
         } ?: Path.of(System.getProperty("user.home"))
     }
 
-    BaseDialog(
+    IslandDialog(
         onDismiss = onDismiss,
         height = 520.dp,
         width = 620.dp,

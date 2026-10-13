@@ -8,22 +8,14 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.blaze.data.AppSettingsRepository
 import org.blaze.presentation.components.panel.ExtensionsLayoutStore
-import org.blaze.presentation.components.panel.MIN_SPLIT_FRACTION
-import org.blaze.presentation.components.panel.ToolWindowLayoutAction
-import org.blaze.presentation.components.panel.ToolWindowMoveTo
-import org.blaze.presentation.components.panel.ToolWindowResize
 import org.blaze.presentation.components.panel.ToolWindowScreenModel
-import org.blaze.presentation.components.panel.ToolWindowViewMode
 import org.blaze.resolver.api.ResolverIcon
 import org.blaze.resolver.api.ResolverOption
-import org.blaze.resolver.core.LinkResolverRegistry
-import org.blaze.resolver.core.LinkResolverSettingsRepository
-import org.blaze.resolver.core.LoadedResolver
-import org.blaze.resolver.core.ResolverSettings
-import org.blaze.resolver.core.ResolverSource
+import org.blaze.resolver.core.*
 import org.blaze.security.ConsentService
 import org.blaze.security.ConsentSubjectKind
 import org.blaze.service.security.ConsentDecision
+import org.island.ui.toolwindow.*
 import java.nio.file.Path
 
 /**

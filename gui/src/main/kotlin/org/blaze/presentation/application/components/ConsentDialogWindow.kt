@@ -16,12 +16,13 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.applyWindowsTitleBarTheme
-import org.blaze.presentation.components.preventDialogMinimize
+import org.blaze.presentation.components.AppMetrics
 import org.blaze.security.ConsentRequest
 import org.blaze.security.ConsentSubjectKind
 import org.blaze.service.security.ConsentDecision
+import org.island.theme.ui.IslandLayout
+import org.island.ui.dialog.preventDialogMinimize
+import org.island.ui.window.applyWindowsTitleBarTheme
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.OutlinedButton
@@ -69,11 +70,11 @@ fun ConsentDialogWindow(
     var height by remember { mutableStateOf(260.dp) }
     val state = rememberDialogState(
         position = WindowPosition(Alignment.Center),
-        width = BlazeLayout.ConsentDialogWidth,
+        width = AppMetrics.ConsentDialogWidth,
         height = height,
     )
     // rememberDialogState treats its args as initial values only, so push updates in manually.
-    LaunchedEffect(height) { state.size = DpSize(BlazeLayout.ConsentDialogWidth, height) }
+    LaunchedEffect(height) { state.size = DpSize(AppMetrics.ConsentDialogWidth, height) }
 
     DialogWindow(
         onCloseRequest = { },
@@ -102,7 +103,7 @@ fun ConsentDialogWindow(
         // Compose forbids - that crashed the whole composition with an IllegalStateException.
         Column(
             modifier = Modifier
-                .width(BlazeLayout.ConsentDialogWidth)
+                .width(AppMetrics.ConsentDialogWidth)
                 .height(height)
                 .background(JewelTheme.globalColors.panelBackground)
                 .verticalScroll(rememberScrollState()),
@@ -112,8 +113,8 @@ fun ConsentDialogWindow(
                     .fillMaxWidth()
                     .onSizeChanged { height = (with(density) { it.height.toDp() } + 20.dp).coerceAtMost(480.dp) }
                     .padding(
-                        horizontal = BlazeLayout.DialogPaddingHorizontal,
-                        vertical = BlazeLayout.DialogPaddingVertical,
+                        horizontal = IslandLayout.DialogPaddingHorizontal,
+                        vertical = IslandLayout.DialogPaddingVertical,
                     ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {

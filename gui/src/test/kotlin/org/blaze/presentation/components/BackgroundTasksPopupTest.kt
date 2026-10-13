@@ -8,7 +8,7 @@ import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.EnStrings
-import org.blaze.presentation.theme.BlazeTheme
+import org.island.theme.ui.IslandTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -54,7 +54,7 @@ class BackgroundTasksPopupTest {
             var opened: String? = null
 
             setContent {
-                BlazeTheme(isDark = true) {
+                IslandTheme(isDark = true) {
                     BackgroundTasksPopup(
                         running = running,
                         onPause = {},
@@ -84,7 +84,7 @@ class BackgroundTasksPopupTest {
     fun `an empty running list shows the empty message`() =
         runDesktopComposeUiTest(width = 560, height = 420) {
             setContent {
-                BlazeTheme(isDark = true) {
+                IslandTheme(isDark = true) {
                     BackgroundTasksPopup(
                         running = emptyList(),
                         onPause = {},

@@ -5,10 +5,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.StandardDialogButtons
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
+import org.island.ui.dialog.*
 
 /**
  * The rows a pending "clear completed" confirmation covers, captured the moment the button is
@@ -39,7 +38,7 @@ fun ClearCompletedDialog(
     val strings = blazeStrings
     val cStrings = strings.downloads.dialogs.clearCompleted
 
-    BaseDialog(onDismiss = onDismiss, width = 440.dp, title = cStrings.title) {
+    IslandDialog(onDismiss = onDismiss, width = 440.dp, title = cStrings.title) {
         Text(
             text = cStrings.message(scope.total),
             maxLines = 3,

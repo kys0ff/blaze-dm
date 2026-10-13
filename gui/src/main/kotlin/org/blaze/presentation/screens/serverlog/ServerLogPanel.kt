@@ -2,32 +2,17 @@ package org.blaze.presentation.screens.serverlog
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -35,14 +20,16 @@ import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.logging.LogEntry
 import org.blaze.presentation.components.BlazeKeymap
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.LocalShortcutLabels
-import org.blaze.presentation.components.ToolWindowHeader
-import org.blaze.presentation.components.ToolWindowOptionsButton
-import org.blaze.presentation.components.ToolWindowSearchField
-import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.components.panel.ToolWindowLayoutAction
-import org.blaze.presentation.theme.BlazeColors
+import org.island.theme.ui.IslandLayout
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.LocalShortcutLabels
+import org.island.ui.keymap.IslandKeyBinding
+import org.island.ui.keymap.matches
+import org.island.ui.toolbar.IslandToolbarIconButton
+import org.island.ui.toolwindow.ToolWindowHeader
+import org.island.ui.toolwindow.ToolWindowLayoutAction
+import org.island.ui.toolwindow.ToolWindowOptionsButton
+import org.island.ui.toolwindow.ToolWindowSearchField
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
@@ -69,7 +56,6 @@ fun ServerLogPanel(
 ) {
     val strings = blazeStrings
     val log = strings.serverLog
-    val options = strings.downloads.detailsPane.options
     val shortcuts = LocalShortcutLabels.current
     val state by model.state.collectAsState()
     val entries by model.entries.collectAsState()
@@ -111,7 +97,7 @@ fun ServerLogPanel(
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                val findChord = with(BlazeKeymap) { BlazeKeymap.Binding(Key.F).matches(event) }
+                val findChord = with(BlazeKeymap) { IslandKeyBinding(Key.F).matches(event) }
                 when {
                     findChord -> { model.toggleFind(); true }
                     state.findBarOpen && event.key == Key.Enter -> {
@@ -132,52 +118,51 @@ fun ServerLogPanel(
                 Text(
                     text = if (running) log.running else log.stopped,
                     style = JewelTheme.typography.small,
-                    color = if (running) BlazeColors.accent else JewelTheme.globalColors.text.info,
+                    color = if (running) IslandSemanticColors.accent else JewelTheme.globalColors.text.info,
                     modifier = Modifier.padding(end = 6.dp),
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.Execute,
                     tooltip = log.startAction,
                     enabled = !running,
                     onClick = { model.startServer() },
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Run.Stop,
                     tooltip = log.stopAction,
                     enabled = running,
                     onClick = { model.stopServer() },
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.Restart,
                     tooltip = log.restartAction,
                     enabled = running,
                     onClick = { model.restartServer() },
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.Copy,
                     tooltip = log.endpoint,
                     onClick = { model.copyEndpoint() },
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.General.Delete,
                     tooltip = log.clearAction,
                     onClick = { model.clearLog() },
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.Actions.Find,
                     tooltip = log.findTooltip,
                     shortcut = shortcuts.search,
                     onClick = { model.toggleFind() },
                 )
                 ToolWindowOptionsButton(
-                    options = options,
                     viewMode = state.viewMode,
                     moveTo = state.moveTo,
                     onViewMode = { model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
                     onMoveTo = { model.onLayoutEvent(ToolWindowLayoutAction.SetMoveTo(it)) },
                     onResize = model::resize,
                 )
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.General.HideToolWindow,
                     tooltip = log.hide,
                     onClick = onHide,
@@ -240,7 +225,7 @@ private fun FindBar(
             placeholder = log.findPlaceholder,
             clearDescription = log.clearSearch,
             onQueryChange = model::setFindQuery,
-            fieldWidth = BlazeLayout.SearchFieldWidth,
+            fieldWidth = IslandLayout.SearchFieldWidth,
             focusRequester = focusRequester,
         )
         Text(
@@ -250,22 +235,22 @@ private fun FindBar(
                 else -> log.matchCount(state.currentMatch + 1, state.matchCount)
             },
             style = JewelTheme.typography.small,
-            color = if (state.findQuery.isNotBlank() && state.matchCount == 0) BlazeColors.error else JewelTheme.globalColors.text.info,
+            color = if (state.findQuery.isNotBlank() && state.matchCount == 0) IslandSemanticColors.error else JewelTheme.globalColors.text.info,
             modifier = Modifier.widthIn(min = 56.dp).padding(horizontal = 6.dp),
         )
-        ToolbarIconButton(
+        IslandToolbarIconButton(
             key = AllIconsKeys.Actions.FindAndShowPrevMatches,
             tooltip = log.previousMatch,
             enabled = state.matchCount > 0,
             onClick = { model.previousMatch() },
         )
-        ToolbarIconButton(
+        IslandToolbarIconButton(
             key = AllIconsKeys.Actions.FindAndShowNextMatches,
             tooltip = log.nextMatch,
             enabled = state.matchCount > 0,
             onClick = { model.nextMatch() },
         )
-        ToolbarIconButton(
+        IslandToolbarIconButton(
             key = AllIconsKeys.General.Delete,
             tooltip = log.closeFind,
             onClick = { model.closeFind() },
@@ -279,13 +264,13 @@ private fun LogLine(entry: LogEntry, ranges: List<IntRange>, focusedRange: IntRa
     val text = entry.render()
     val defaultColor = JewelTheme.globalColors.text.normal
     val levelColor = when (entry.level.uppercase()) {
-        "ERROR" -> BlazeColors.error
-        "WARN", "WARNING" -> BlazeColors.warning
+        "ERROR" -> IslandSemanticColors.error
+        "WARN", "WARNING" -> IslandSemanticColors.warning
         else -> defaultColor
     }
     // The current-match span rides on top of the all-matches span, so the focused hit reads in full
     // accent while every other occurrence keeps its translucent wash.
-    val accent = BlazeColors.accent
+    val accent = IslandSemanticColors.accent
     val annotated = buildAnnotatedString {
         withStyle(SpanStyle(color = levelColor)) { append(text) }
         ranges.forEach { addStyle(SpanStyle(background = accent.copy(alpha = 0.30f)), it.first, it.last + 1) }

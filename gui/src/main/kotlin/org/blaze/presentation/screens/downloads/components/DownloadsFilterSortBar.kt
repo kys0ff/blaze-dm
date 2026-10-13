@@ -1,17 +1,12 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,12 +18,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BlazeLayout
 import org.blaze.presentation.screens.downloads.DownloadCounts
 import org.blaze.presentation.screens.downloads.DownloadFilter
 import org.blaze.presentation.screens.downloads.DownloadsEvent
-import org.blaze.presentation.theme.BlazeIslandColors
-import org.blaze.presentation.theme.BlazeTypography
+import org.island.theme.ui.IslandChromeColors
+import org.island.theme.ui.IslandLayout
+import org.island.theme.ui.IslandTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Text
 
@@ -51,7 +46,7 @@ fun DownloadsFilterSortBar(
     val scroll = rememberScrollState()
     Row(
         modifier = modifier
-            .height(BlazeLayout.FilterSortBarHeight)
+            .height(IslandLayout.FilterSortBarHeight)
             .horizontalScroll(scroll)
             .padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -89,8 +84,8 @@ private fun FilterChip(
     // the same token family as the selected stripe button, so "selected" reads identically wherever
     // the user meets it.
     val background = when {
-        selected -> BlazeIslandColors.stripeSelected
-        hovered -> BlazeIslandColors.stripeHover
+        selected -> IslandChromeColors.stripeSelected
+        hovered -> IslandChromeColors.stripeHover
         else -> Color.Transparent
     }
     Row(
@@ -101,8 +96,8 @@ private fun FilterChip(
             // fill it reads as a lighter edge in dark and a darker one in light, which is exactly
             // what the reference's selected tab shows.
             .border(
-                BlazeLayout.IslandBorderWidth,
-                if (selected) BlazeIslandColors.stripeHover else Color.Transparent,
+                IslandLayout.IslandBorderWidth,
+                if (selected) IslandChromeColors.stripeHover else Color.Transparent,
                 ChipShape,
             )
             .hoverable(interaction)
@@ -113,7 +108,7 @@ private fun FilterChip(
     ) {
         Text(
             text = label,
-            style = BlazeTypography.chip,
+            style = IslandTypography.chip,
             color = JewelTheme.globalColors.text.normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -122,7 +117,7 @@ private fun FilterChip(
             // Counts are a readout, not part of the label: secondary in both states.
             Text(
                 text = count.toString(),
-                style = BlazeTypography.chip,
+                style = IslandTypography.chip,
                 color = JewelTheme.globalColors.text.info,
             )
         }

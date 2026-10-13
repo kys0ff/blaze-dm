@@ -8,11 +8,11 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.theme.BlazeColors
+import org.island.theme.ui.IslandSemanticColors
 
 /**
  * The live Settings search state, shared between the sidebar (which prunes categories) and the content
@@ -61,7 +61,7 @@ internal fun SettingRow(
 
     val flashId = LocalSettingsFlashId.current
     val tint = when {
-        flashId == id -> BlazeColors.hover
+        flashId == id -> IslandSemanticColors.hover
         filter.isActive -> SettingsMatchTint
         else -> Color.Transparent
     }

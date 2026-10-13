@@ -16,10 +16,10 @@ import org.blaze.resolver.core.ResolverSource
 import org.blaze.security.ConsentService
 import org.blaze.security.ConsentSubjectKind
 import org.blaze.service.security.ConsentDecision
-import org.blaze.theming.core.ThemeRegistry
-import org.blaze.theming.core.ThemeSettingsRepository
-import org.blaze.theming.core.ThemeSource
 import org.blaze.tray.api.TrayService
+import org.island.theme.core.ThemeRegistry
+import org.island.theme.core.ThemeSettingsRepository
+import org.island.theme.core.ThemeSource
 import java.nio.file.Path
 
 /**

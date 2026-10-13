@@ -13,9 +13,9 @@ import androidx.compose.ui.unit.sp
 import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.repository.PortableKind
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.StandardDialogButtons
 import org.blaze.presentation.util.formatSize
+import org.island.ui.dialog.IslandDialog
+import org.island.ui.dialog.StandardDialogButtons
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.DefaultButton
@@ -49,7 +49,7 @@ fun ImportPortableDialog(
         PortableKind.TORRENT -> p.kindTorrent(info.suggestedName)
     }
 
-    BaseDialog(onDismiss = onDismiss, width = 480.dp, title = p.dialogTitle) {
+    IslandDialog(onDismiss = onDismiss, width = 480.dp, title = p.dialogTitle) {
         Text(kindLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

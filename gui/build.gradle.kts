@@ -25,7 +25,16 @@ dependencies {
     // OS-integration layer: external-open parsing + single-instance IPC (never the engine directly).
     implementation(project(":os-integration"))
     implementation(project(":link-resolver"))
-    implementation(project(":theming"))
+    // Theme contract + registry now live in the reusable :island-theme-api module.
+    implementation(project(":island-theme-api"))
+    // The Jewel theme bridge (IslandTheme, chrome colors, layout metrics) lives in :island-theme-ui.
+    implementation(project(":island-theme-ui"))
+    // Reusable Islands components (menus, dialogs, toolbar buttons, keybindings).
+    implementation(project(":island-ui"))
+    // Shared Islands/Jewel foundation (OS switch, native chrome, dialog registry).
+    implementation(project(":island-foundation"))
+    // Island app-shell scaffolding (IslandWindow, title bar, system menu, drop target).
+    implementation(project(":island-shell"))
     implementation(project(":tray"))
     implementation(project(":platform"))
     implementation(project(":notifications"))

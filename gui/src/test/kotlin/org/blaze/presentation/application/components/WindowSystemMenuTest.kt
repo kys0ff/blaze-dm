@@ -15,36 +15,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import org.blaze.data.AppSettingsRepository
-import org.blaze.download.api.ApiCapabilities
-import org.blaze.download.api.AuthMode
-import org.blaze.download.api.BandwidthControlSupport
-import org.blaze.download.api.DownloadPriority
-import org.blaze.download.api.DownloadsApi
-import org.blaze.download.api.NewDownloadRequest
-import org.blaze.download.api.PrioritySupport
+import org.blaze.download.api.*
 import org.blaze.i18n.EnStrings
 import org.blaze.presentation.application.AppShell
-import org.blaze.presentation.components.BlazeMenu
-import org.blaze.presentation.components.MenuEntry
-import org.blaze.presentation.components.rememberMenuAnchorAt
-import org.blaze.presentation.theme.BlazeTheme
 import org.blaze.tray.api.TrayConfig
 import org.blaze.tray.api.TrayService
+import org.island.shell.islandWindowMenuEntries
+import org.island.theme.ui.IslandTheme
+import org.island.ui.menu.IslandMenu
+import org.island.ui.menu.MenuEntry
+import org.island.ui.menu.rememberMenuAnchorAt
 import java.nio.file.Files
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * The title-bar window menu: its rows, their enablement against real window state, and the wiring
  * from each row into [AppShell]'s window commands.
  *
  * Two halves, matching two layers of the feature:
- *  - the pure entry builder [windowMenuEntries] and the shell methods its rows call, exercised on a
- *    real [WindowState] and a real [AppShell] over fake collaborators;
- *  - the menu as rendered through [BlazeMenu] (square corners and all), where a disabled row must
+ *  - the pure entry builder [islandWindowMenuEntries] (island-shell) and the shell methods its rows
+ *    call, exercised on a real [WindowState] and a real [AppShell] over fake collaborators;
+ *  - the menu as rendered through [IslandMenu] (square corners and all), where a disabled row must
  *    survive a click and an enabled one must fire and dismiss, exactly like the IDE's system menu.
  */
 @OptIn(ExperimentalTestApi::class)
@@ -56,8 +47,11 @@ class WindowSystemMenuTest {
         isMaximized: Boolean,
         minimizeEnabled: Boolean = true,
         fired: MutableSet<String>? = null,
-    ) = windowMenuEntries(
-        strings = strings,
+    ) = islandWindowMenuEntries(
+        restoreLabel = strings.menu.windowRestore,
+        minimizeLabel = strings.menu.windowMinimize,
+        maximizeLabel = strings.menu.windowMaximize,
+        closeLabel = strings.menu.windowClose,
         isMaximized = isMaximized,
         minimizeEnabled = minimizeEnabled,
         onRestore = { fired?.add("Restore") },
@@ -184,11 +178,11 @@ class WindowSystemMenuTest {
             val open = mutableStateOf(true)
             val fired = linkedSetOf<String>()
             setContent {
-                BlazeTheme(isDark = true) {
+                IslandTheme(isDark = true) {
                     Box(Modifier.size(24.dp).padding(8.dp))
                     if (open.value) {
                         // The very surface the title-bar icon pops: square corners, own width.
-                        BlazeMenu(
+                        IslandMenu(
                             entries = entries(isMaximized = false, fired = fired),
                             anchor = rememberMenuAnchorAt(Offset(20f, 40f)),
                             onDismissRequest = { open.value = false },

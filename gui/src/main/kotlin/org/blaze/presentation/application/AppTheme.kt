@@ -8,13 +8,13 @@ import androidx.compose.runtime.remember
 import kotlinx.coroutines.flow.map
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.engine.settings.ThemeMode
-import org.blaze.presentation.theme.BlazeTheme
-import org.blaze.theming.core.ThemeRegistry
+import org.island.theme.ui.IslandTheme
+import org.island.theme.core.ThemeRegistry
 import org.koin.compose.koinInject
 
 /**
  * Application theme: resolves the configured [ThemeMode] (light/dark/system) and the
- * active color theme (built-in + plugin, via [ThemeRegistry]) into a [BlazeTheme].
+ * active color theme (built-in + plugin, via [ThemeRegistry]) into a [IslandTheme].
  *
  * Observing the settings and registry flows makes the palette recompute when the
  * selection changes or a theme jar is installed / removed.
@@ -42,5 +42,5 @@ fun AppTheme(content: @Composable () -> Unit) {
         themeRegistry.paletteFor(isDark)
     }
 
-    BlazeTheme(palette = palette, isDark = isDark, content = content)
+    IslandTheme(palette = palette, isDark = isDark, content = content)
 }

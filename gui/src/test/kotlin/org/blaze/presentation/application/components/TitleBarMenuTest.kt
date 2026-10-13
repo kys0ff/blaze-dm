@@ -2,8 +2,8 @@ package org.blaze.presentation.application.components
 
 import org.blaze.i18n.EnStrings
 import org.blaze.presentation.application.AppCommandBus
-import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.search.AppActions
+import org.island.ui.menu.MenuEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

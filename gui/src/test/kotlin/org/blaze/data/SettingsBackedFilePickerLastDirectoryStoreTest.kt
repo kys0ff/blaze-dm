@@ -1,20 +1,11 @@
 package org.blaze.data
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
+import kotlinx.serialization.json.Json
 import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.test.fail
+import kotlin.test.*
 
 /**
  * The durable half of the picker memory: one remembered directory per context, in `app.json`.
@@ -41,13 +32,28 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
     private fun store(repository: AppSettingsRepository) =
         SettingsBackedFilePickerLastDirectoryStore(repository, scope)
 
-    /** Waits for the launched write to land instead of guessing at a duration. */
-    private fun awaitOnDisk(repository: AppSettingsRepository, context: FilePickerContext, path: Path) {
+    /**
+     * Waits for the launched write to land on disk instead of guessing at a duration. Reading
+     * `app.json` itself (not `repository.persisted`) is deliberate: the in-memory snapshot is
+     * committed before the deferred write finishes, so only the file proves a restart would see it.
+     */
+    private fun awaitOnDisk(context: FilePickerContext, path: Path) {
         repeat(200) {
-            if (repository.persisted.filePickerLastDirectories[context.name] == path.toString()) return
+            if (settingsOnDisk()?.filePickerLastDirectories?.get(context.name) == path.toString()) return
             Thread.sleep(10)
         }
-        fail("The remembered directory never reached the persisted snapshot")
+        fail("The remembered directory never reached the disk")
+    }
+
+    private fun settingsOnDisk(): AppSettings? {
+        val file = tempDir.resolve("app.json").toFile()
+        if (!file.exists()) return null
+        // Saves move a temp file into place atomically, so a read never sees a half-written file.
+        return runCatching {
+            Json {
+                ignoreUnknownKeys = true
+            }.decodeFromString<AppSettings>(file.readText())
+        }.getOrNull()
     }
 
     @Test
@@ -74,7 +80,7 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
         val jars = Files.createDirectories(tempDir.resolve("jars"))
 
         store(repository).recordDirectory(FilePickerContext.ExtensionJar, jars)
-        awaitOnDisk(repository, FilePickerContext.ExtensionJar, jars)
+        awaitOnDisk(FilePickerContext.ExtensionJar, jars)
 
         // A fresh repository over the same directory is what a restart is.
         val afterRestart = store(AppSettingsRepository(tempDir))
@@ -88,7 +94,7 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
         val jars = Files.createDirectories(tempDir.resolve("jars"))
         val pickerStore = store(repository)
         pickerStore.recordDirectory(FilePickerContext.ExtensionJar, jars)
-        awaitOnDisk(repository, FilePickerContext.ExtensionJar, jars)
+        awaitOnDisk(FilePickerContext.ExtensionJar, jars)
 
         Files.delete(jars)
 
@@ -122,7 +128,7 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
 
         val jars = Files.createDirectories(tempDir.resolve("jars"))
         store(repository).recordDirectory(FilePickerContext.ExtensionJar, jars)
-        awaitOnDisk(repository, FilePickerContext.ExtensionJar, jars)
+        awaitOnDisk(FilePickerContext.ExtensionJar, jars)
 
         assertFalse(repository.persisted.runAtStartup, "an unrelated save must not accept somebody's draft")
         assertTrue(repository.settings.value.runAtStartup, "the draft stays live until the screen applies it")
@@ -139,7 +145,7 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
         val messy = Path.of(nested.toString(), "..", "jars")
 
         store(repository).recordDirectory(FilePickerContext.ExtensionJar, messy)
-        awaitOnDisk(repository, FilePickerContext.ExtensionJar, nested)
+        awaitOnDisk(FilePickerContext.ExtensionJar, nested)
 
         val stored = repository.settings.value.filePickerLastDirectories[FilePickerContext.ExtensionJar.name]
         assertEquals(nested, stored?.let { Path.of(it) })

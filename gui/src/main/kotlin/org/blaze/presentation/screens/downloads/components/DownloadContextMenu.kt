@@ -6,11 +6,11 @@ import org.blaze.download.api.DownloadPriority
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.components.BlazeIcons
 import org.blaze.presentation.components.BlazeKeymap
-import org.blaze.presentation.components.MenuEntry
 import org.blaze.presentation.screens.downloads.DownloadCapabilities
 import org.blaze.presentation.screens.downloads.canCancel
 import org.blaze.presentation.screens.downloads.canPause
 import org.blaze.presentation.screens.downloads.canResume
+import org.island.ui.menu.MenuEntry
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
@@ -24,7 +24,7 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
  * then source/clipboard helpers, then removal.
  *
  * The result is plain data rather than Jewel's `ContextMenuItem` list, because Blaze draws its own
- * menus ([org.blaze.presentation.components.BlazeMenu]) — Jewel's submenu state machine hangs the
+ * menus ([org.blaze.presentation.components.IslandMenu]) — Jewel's submenu state machine hangs the
  * pointer once a nested level is open. Being data is also what lets one row's menu, the header's
  * Table options and the tool-window "more" menus share a single renderer, and lets each row carry the
  * accelerator from the one [BlazeKeymap] that actually listens for it.

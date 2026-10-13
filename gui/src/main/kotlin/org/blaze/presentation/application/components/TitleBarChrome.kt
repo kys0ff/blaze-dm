@@ -5,27 +5,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.blaze.engine.settings.EngineSettingsRepository
@@ -34,17 +20,12 @@ import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.BlazeIcons
-import org.blaze.presentation.components.BlazeMenu
-import org.blaze.presentation.components.CurrentUiPlatform
-import org.blaze.presentation.components.LocalMenuWidthGroup
-import org.blaze.presentation.components.MenuEntry
-import org.blaze.presentation.components.MenuWidthPreloader
-import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.components.UiPlatform
-import org.blaze.presentation.components.rememberMenuAnchor
-import org.blaze.presentation.components.trackingModifier
 import org.blaze.presentation.search.AppActions
-import org.blaze.presentation.theme.BlazeColors
+import org.island.theme.ui.IslandSemanticColors
+import org.island.ui.menu.IslandMenu
+import org.island.ui.menu.MenuEntry
+import org.island.ui.menu.rememberMenuAnchor
+import org.island.ui.menu.trackingModifier
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -52,6 +33,12 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.typography
 import org.koin.compose.koinInject
 
+/**
+ * The five title-bar menu headers Blaze draws. Their rendering lives in the shell
+ * ([IslandMenuCategory] + [IslandHamburgerMenu][org.island.shell.IslandHamburgerMenu]); this enum
+ * exists only to bind each header to Blaze's own command list, so the shell never has to know Blaze
+ * commands or the shape of Blaze's i18n bundle.
+ */
 enum class TitleBarMenuCategory {
     File,
     Edit,
@@ -60,7 +47,7 @@ enum class TitleBarMenuCategory {
     Help,
 }
 
-private fun categoryLabel(category: TitleBarMenuCategory, strings: BlazeStrings): String = when (category) {
+internal fun categoryLabel(category: TitleBarMenuCategory, strings: BlazeStrings): String = when (category) {
     TitleBarMenuCategory.File -> strings.menu.file
     TitleBarMenuCategory.Edit -> strings.menu.edit
     TitleBarMenuCategory.View -> strings.menu.view
@@ -68,6 +55,11 @@ private fun categoryLabel(category: TitleBarMenuCategory, strings: BlazeStrings)
     TitleBarMenuCategory.Help -> strings.menu.help
 }
 
+/**
+ * Blaze's per-category menu rows. Pure: takes the state it needs (strings, command bus, server
+ * running flag) and returns the rows; the `onExecuted` closure is what the shell fires after any
+ * row's click so the popup folds back to the collapsed hamburger button.
+ */
 internal fun entriesForCategory(
     category: TitleBarMenuCategory,
     strings: BlazeStrings,
@@ -175,153 +167,13 @@ internal fun entriesForCategory(
 }
 
 /**
- * The leading hamburger button / title-bar menu headers. Windows and Linux get it (their
- * windows have no native application menu); macOS keeps using the native bar, so this is a no-op
- * there. Clicking the hamburger button hides it and reveals the title-bar menu headers
- * ("File", "Edit", "View", "Tools", "Help"). Hovering across headers switches the open menu;
- * clicking a menu command or clicking outside closes the title-bar menu items and restores
- * the hamburger button.
- *
- * Every header's popup draws at one width — the width of the widest menu in the bar — measured up
- * front by [MenuWidthPreloader] into the app-wide [LocalMenuWidthGroup], exactly like IntelliJ's
- * menu bar, where the popups never resize as you slide between headers.
- */
-@Composable
-fun HamburgerMenuButton(
-    commandBus: AppCommandBus,
-    onExpandChange:(Boolean)->Unit
-) {
-    if (CurrentUiPlatform == UiPlatform.MacOS) return
-    val strings = blazeStrings
-    // Whether the local API server is up drives the Tools submenu's enabled rows. Labels are static, so
-    // the value only affects the (state-reflecting) enabled flags - the measured menu width is unchanged.
-    val serverController = koinInject<org.blaze.server.DownloadServiceController>()
-    val serverStatus by serverController.status.collectAsState()
-    val serverRunning = serverStatus.running
-    var isExpanded by remember { mutableStateOf(false) }
-    var activeCategory by remember { mutableStateOf<TitleBarMenuCategory?>(null) }
-
-    // One width for the whole app. The lists are measured with no-op click handlers: only the drawn
-    // shape (labels, icons, accelerators) costs width, so the closures are irrelevant here. Seeding
-    // the app-wide group here is what lets every title-bar popup open at the settled width on its
-    // very first frame, before any menu has been hovered.
-    val menuWidthGroup = LocalMenuWidthGroup.current
-    val categoryMenus = remember(strings, commandBus, serverRunning) {
-        TitleBarMenuCategory.entries.map { entriesForCategory(it, strings, commandBus, serverRunning) {} }
-    }
-    MenuWidthPreloader(menus = categoryMenus, group = menuWidthGroup)
-
-    val fileAnchor = rememberMenuAnchor()
-    val editAnchor = rememberMenuAnchor()
-    val viewAnchor = rememberMenuAnchor()
-    val toolsAnchor = rememberMenuAnchor()
-    val helpAnchor = rememberMenuAnchor()
-
-    val categoryAnchors = remember(fileAnchor, editAnchor, viewAnchor, toolsAnchor, helpAnchor) {
-        mapOf(
-            TitleBarMenuCategory.File to fileAnchor,
-            TitleBarMenuCategory.Edit to editAnchor,
-            TitleBarMenuCategory.View to viewAnchor,
-            TitleBarMenuCategory.Tools to toolsAnchor,
-            TitleBarMenuCategory.Help to helpAnchor,
-        )
-    }
-    val headerBoundsMap = remember { mutableStateMapOf<TitleBarMenuCategory, Rect>() }
-
-    if (!isExpanded) {
-        val anchor = rememberMenuAnchor()
-        Box(modifier = anchor.trackingModifier) {
-            ToolbarIconButton(
-                key = AllIconsKeys.General.Menu,
-                tooltip = strings.menu.mainMenu,
-                onClick = {
-                    isExpanded = true
-                    activeCategory = TitleBarMenuCategory.File
-                    onExpandChange(isExpanded)
-                },
-            )
-        }
-    } else {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            for (category in TitleBarMenuCategory.entries) {
-                val anchor = categoryAnchors.getValue(category)
-                val isActive = activeCategory == category
-
-                Box(
-                    modifier = anchor.trackingModifier.onGloballyPositioned { coords ->
-                        headerBoundsMap[category] = coords.boundsInRoot()
-                    },
-                ) {
-                    val shape = RoundedCornerShape(4.dp)
-                    Box(
-                        modifier = Modifier
-                            .clip(shape)
-                            .background(if (isActive) BlazeColors.hover else Color.Transparent)
-                            .clickable {
-                                if (isActive) {
-                                    isExpanded = false
-                                    activeCategory = null
-                                    onExpandChange(isExpanded)
-                                } else {
-                                    activeCategory = category
-                                }
-                            }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            text = categoryLabel(category, strings),
-                            style = JewelTheme.typography.small,
-                            color = JewelTheme.globalColors.text.normal,
-                            maxLines = 1,
-                        )
-                    }
-
-                    if (isActive) {
-                        BlazeMenu(
-                            entries = entriesForCategory(category, strings, commandBus, serverRunning) {
-                                isExpanded = false
-                                activeCategory = null
-                                onExpandChange(isExpanded)
-                            },
-                            anchor = anchor,
-                            onDismissRequest = {
-                                isExpanded = false
-                                activeCategory = null
-                                onExpandChange(isExpanded)
-                            },
-                            headerBounds = headerBoundsMap,
-                            onHeaderHovered = { hoveredCat ->
-                                if (hoveredCat is TitleBarMenuCategory && activeCategory != hoveredCat) {
-                                    activeCategory = hoveredCat
-                                }
-                            },
-                            onHeaderClicked = { clickedCat ->
-                                if (clickedCat is TitleBarMenuCategory) {
-                                    if (activeCategory == clickedCat) {
-                                        isExpanded = false
-                                        activeCategory = null
-                                        onExpandChange(isExpanded)
-                                    } else {
-                                        activeCategory = clickedCat
-                                    }
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
  * One IDE-style title-bar widget: icon + text + chevron with a subtle hover fill and ~6dp radius.
  * It is backed by a real setting — Snail Mode (the engine's global speed throttle) — so toggling it
  * writes through [EngineSettingsRepository] exactly like the tray and settings screen do. The widget
  * simply reflects and flips that persisted flag; no unbacked fake control.
+ *
+ * Lives in the title bar's leading cluster; the shell hides it automatically while the hamburger
+ * is expanded (see [IslandTitleBar.leadingCollapsedContent]).
  */
 @Composable
 fun SpeedLimitWidget() {
@@ -341,7 +193,7 @@ fun SpeedLimitWidget() {
         Row(
             modifier = Modifier
                 .clip(shape)
-                .background(if (hovered) BlazeColors.hover else Color.Transparent)
+                .background(if (hovered) IslandSemanticColors.hover else Color.Transparent)
                 .hoverable(interaction)
                 .clickable { expanded = !expanded }
                 .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -369,8 +221,8 @@ fun SpeedLimitWidget() {
         }
         if (expanded) {
             // The two speed modes are one choice, so the active one is marked rather than merely
-            // listed — and the popup is the shared BlazeMenu, not a second hand-drawn menu surface.
-            BlazeMenu(
+            // listed — and the popup is the shared IslandMenu, not a second hand-drawn menu surface.
+            IslandMenu(
                 entries = listOf(
                     MenuEntry.Action(
                         label = menu.fullSpeed,

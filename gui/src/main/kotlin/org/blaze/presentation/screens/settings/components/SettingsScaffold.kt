@@ -18,14 +18,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.BlazeStrings
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.DialogButton
-import org.blaze.presentation.components.ToolWindowSearchField
-import org.blaze.presentation.components.dialogButtonOrder
+import org.island.theme.ui.IslandLayout
+import org.island.foundation.DialogButton
+import org.island.ui.toolwindow.ToolWindowSearchField
+import org.island.foundation.dialogButtonOrder
 import org.blaze.presentation.screens.settings.SettingsNavItem
 import org.blaze.presentation.screens.settings.SettingsRegistry
 import org.blaze.presentation.screens.settings.state.SettingsCategory
-import org.blaze.presentation.theme.BlazeColors
+import org.island.theme.ui.IslandSemanticColors
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -33,6 +33,7 @@ import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import org.blaze.presentation.components.AppMetrics
 
 /**
  * The Settings screen's reusable chrome: the category sidebar, its navigation list, the footer button
@@ -62,7 +63,7 @@ internal fun SettingsSidebar(
 ) {
     Column(
         modifier = Modifier
-            .width(BlazeLayout.SettingsNavWidth)
+            .width(AppMetrics.SettingsNavWidth)
             .fillMaxHeight()
             .background(JewelTheme.globalColors.panelBackground)
             .padding(vertical = 8.dp),
@@ -73,7 +74,7 @@ internal fun SettingsSidebar(
             placeholder = strings.settings.searchPlaceholder,
             clearDescription = strings.settings.clearSearch,
             onQueryChange = onQueryChange,
-            fieldWidth = BlazeLayout.SettingsNavWidth,
+            fieldWidth = AppMetrics.SettingsNavWidth,
         )
         Spacer(Modifier.height(6.dp))
 
@@ -120,7 +121,7 @@ internal fun NothingFoundPanel(strings: BlazeStrings, onClear: () -> Unit) {
         )
         Text(
             text = strings.settings.clearSearch,
-            color = BlazeColors.accent,
+            color = IslandSemanticColors.accent,
             modifier = Modifier
                 .clickable(onClick = onClear)
                 .semantics { testTag = "settings_clear_search" }

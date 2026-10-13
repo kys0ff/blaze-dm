@@ -1,14 +1,10 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.StandardDialogButtons
+import org.island.ui.dialog.IslandDialog
+import org.island.ui.dialog.StandardDialogButtons
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.Text
@@ -30,7 +26,7 @@ fun BulkRemoveDialog(
     val selection = strings.downloads.selection
     val dialogs = strings.downloads.dialogs
 
-    BaseDialog(onDismiss = onDismiss, width = 420.dp, title = selection.bulkRemoveTitle) {
+    IslandDialog(onDismiss = onDismiss, width = 420.dp, title = selection.bulkRemoveTitle) {
         Text(text = selection.bulkRemoveMessage(count))
 
         StandardDialogButtons(

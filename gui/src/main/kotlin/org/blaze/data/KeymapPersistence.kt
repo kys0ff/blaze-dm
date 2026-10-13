@@ -5,10 +5,11 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.nativeKeyLocation
 import org.blaze.presentation.components.BlazeKeymap
+import org.island.ui.keymap.*
 
 /**
  * The one bridge between the persisted keymap ([AppSettings.keyBindings] / [AppSettings.unboundShortcuts]),
- * the live [BlazeKeymap] the app acts on, and the [BlazeKeymap.Binding] a chord recorder captures.
+ * the live [BlazeKeymap] the app acts on, and the [IslandKeyBinding] a chord recorder captures.
  *
  * It exists so none of the three concerns leaks into the others: [AppSettings] stays pure primitives, the
  * presentation keymap stays free of persistence, and the Settings draft is resolved through the exact same
@@ -18,8 +19,8 @@ import org.blaze.presentation.components.BlazeKeymap
 object KeymapPersistence {
 
     /** Resolve a stored chord into a live binding. Unknown / non-letter keys round-trip through the raw code. */
-    fun toBinding(stored: StoredKeyBinding): BlazeKeymap.Binding =
-        BlazeKeymap.Binding(
+    fun toBinding(stored: StoredKeyBinding): IslandKeyBinding =
+        IslandKeyBinding(
             key = Key(stored.keyCode, stored.keyLocation),
             ctrl = stored.ctrl,
             shift = stored.shift,
@@ -27,7 +28,7 @@ object KeymapPersistence {
         )
 
     /** Write a binding back to disk form, capturing the physical key code + location so it round-trips. */
-    fun fromBinding(binding: BlazeKeymap.Binding): StoredKeyBinding =
+    fun fromBinding(binding: IslandKeyBinding): StoredKeyBinding =
         StoredKeyBinding(
             keyCode = binding.key.nativeKeyCode,
             keyLocation = binding.key.nativeKeyLocation,
@@ -66,7 +67,7 @@ object KeymapPersistence {
         action: BlazeKeymap.Action,
         bindings: Map<String, StoredKeyBinding>,
         unbound: List<String>,
-    ): BlazeKeymap.Binding? = when {
+    ): IslandKeyBinding? = when {
         action == BlazeKeymap.Action.None || action.name in unbound -> null
         else -> bindings[action.name]?.let(::toBinding) ?: action.defaultBinding
     }

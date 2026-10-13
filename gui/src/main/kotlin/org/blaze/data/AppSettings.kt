@@ -1,6 +1,7 @@
 package org.blaze.data
 
 import kotlinx.serialization.Serializable
+import org.island.ui.keymap.*
 
 /**
  * App-shell settings: how Blaze integrates with the desktop (tray, autostart, notifications).
@@ -85,9 +86,9 @@ data class AppSettings(
     val detailsSplitFraction: Float = 0.68f,
     /** Confirm before pausing a download whose progress would be discarded. On by default. */
     val warnBeforeDiscardingProgress: Boolean = true,
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowViewMode] the pane presents in. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowViewMode] the pane presents in. */
     val detailsViewMode: String = "DOCK_PINNED",
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowMoveTo] the pane docks to. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowMoveTo] the pane docks to. */
     val detailsMoveTo: String = "RIGHT_TOP",
     /** Whether the pane's tabs are grouped into one continuous view instead of a tab strip. */
     val groupDetailsTabs: Boolean = false,
@@ -105,9 +106,9 @@ data class AppSettings(
     val serverLogVisible: Boolean = false,
     /** Fraction of the content|log split given to the content, persisted across launches. */
     val serverLogSplitFraction: Float = 0.65f,
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowViewMode] the log window presents in. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowViewMode] the log window presents in. */
     val serverLogViewMode: String = "DOCK_PINNED",
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowMoveTo] the log window docks to. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowMoveTo] the log window docks to. */
     val serverLogMoveTo: String = "BOTTOM_RIGHT",
     val serverLogInnerSplitFraction: Float = 0.50f,
     val serverLogFloatingOffsetX: Float = 80f,
@@ -124,9 +125,9 @@ data class AppSettings(
     val extensionsVisible: Boolean = false,
     /** Fraction of the content|extensions split given to the content, persisted across launches. */
     val extensionsSplitFraction: Float = 0.65f,
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowViewMode] the window presents in. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowViewMode] the window presents in. */
     val extensionsViewMode: String = "DOCK_PINNED",
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowMoveTo] the window docks to. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowMoveTo] the window docks to. */
     val extensionsMoveTo: String = "LEFT_TOP",
     val extensionsInnerSplitFraction: Float = 0.50f,
     val extensionsFloatingOffsetX: Float = 120f,
@@ -193,7 +194,7 @@ data class AppSettings(
 /**
  * A keyboard chord as written to disk: a physical key ([keyCode]/[keyLocation] mirror `java.awt.event.KeyEvent`)
  * under the primary [ctrl] (Ctrl on Windows/Linux, Command on macOS), [shift] and [alt] modifiers.
- * [KeymapPersistence] converts to and from the presentation [org.blaze.presentation.components.BlazeKeymap.Binding].
+ * [KeymapPersistence] converts to and from the presentation [org.blaze.presentation.components.IslandKeyBinding].
  */
 @Serializable
 data class StoredKeyBinding(

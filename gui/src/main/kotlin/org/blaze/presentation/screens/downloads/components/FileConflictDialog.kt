@@ -3,18 +3,14 @@ package org.blaze.presentation.screens.downloads.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.StandardDialogButtons
+import org.island.ui.dialog.IslandDialog
+import org.island.ui.dialog.StandardDialogButtons
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.RadioButtonRow
 import org.jetbrains.jewel.ui.component.Text
@@ -32,7 +28,7 @@ fun FileConflictDialog(
     val dStrings = strings.downloads.dialogs
     val sStrings = strings.settings
 
-    BaseDialog(onDismiss = onDismiss, width = 440.dp, title = dStrings.conflictTitle) {
+    IslandDialog(onDismiss = onDismiss, width = 440.dp, title = dStrings.conflictTitle) {
         Text(
             text = dStrings.conflictMessage(fileName),
             maxLines = 3,

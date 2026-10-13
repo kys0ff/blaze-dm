@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.measureTime
+import org.island.ui.search.IslandSearchRanker
 
 /**
  * The fidelity/latency requirement for Search Everywhere at scale: ranking a query over tens of
@@ -36,7 +37,7 @@ class SearchBenchmarkTest {
             // The exact-ish prefix must win; a substring of a longer name must not outrank it.
             assertTrue(hits.isNotEmpty(), "the query must find downloads at 10k scale")
             assertTrue(hits.first().primary.contains("movie-part-500"), "best match leads")
-            assertTrue(hits.size <= SearchRanker.MAX_RESULTS, "the result set is capped")
+            assertTrue(hits.size <= IslandSearchRanker.MAX_RESULTS, "the result set is capped")
         }
         // A machine under test load can spike; the point is that a keystroke is O(n), not O(n^2).
         assertTrue(elapsed.inWholeMilliseconds < 3_000, "10k ranking took $elapsed")
@@ -47,6 +48,6 @@ class SearchBenchmarkTest {
         val strings = org.blaze.i18n.EnStrings
         val items = downloads(5_000)
         val hits = SearchSources.hits(SearchTab.All, "movie", items, strings)
-        assertEquals(SearchRanker.MAX_RESULTS, hits.size)
+        assertEquals(IslandSearchRanker.MAX_RESULTS, hits.size)
     }
 }

@@ -4,12 +4,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.blaze.security.ConsentService
 import org.blaze.security.ConsentSubjectKind
-import org.blaze.theming.builtin.DefaultThemeProvider
-import org.blaze.theming.builtin.MidnightThemeProvider
-import org.blaze.theming.builtin.TealThemeProvider
-import org.blaze.theming.core.ThemePluginLoader
-import org.blaze.theming.core.ThemeRegistry
-import org.blaze.theming.core.ThemeSettingsRepository
+import org.island.theme.builtin.DefaultThemeProvider
+import org.island.theme.builtin.MidnightThemeProvider
+import org.island.theme.builtin.TealThemeProvider
+import org.island.theme.core.ThemePluginLoader
+import org.island.theme.core.ThemeRegistry
+import org.island.theme.core.ThemeSettingsRepository
 import org.koin.dsl.module
 import java.util.concurrent.atomic.AtomicReference
 

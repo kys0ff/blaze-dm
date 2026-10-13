@@ -69,9 +69,9 @@
 # Blaze's own link-handler / theme extension points (loaded by PluginLoader and
 # ThemePluginLoader through java.util.ServiceLoader).
 -keep interface org.blaze.resolver.api.LinkResolver { *; }
--keep interface org.blaze.theming.api.BlazeThemeProvider { *; }
+-keep interface org.island.theme.api.IslandThemeProvider { *; }
 -keep class * implements org.blaze.resolver.api.LinkResolver { *; }
--keep class * implements org.blaze.theming.api.BlazeThemeProvider { *; }
+-keep class * implements org.island.theme.api.IslandThemeProvider { *; }
 
 # --- D-Bus desktop integration (taskbar progress / StatusNotifierItem) ------
 # dbus-java builds wire member names from reflective Method.getName() and

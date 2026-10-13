@@ -3,22 +3,17 @@ package org.blaze.presentation.screens.downloads
 import androidx.compose.foundation.LocalContextMenuRepresentation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.CrashSafeContextMenuRepresentation
-import org.blaze.presentation.components.notifications.LocalNotifications
-import org.blaze.presentation.components.notifications.NotificationType
-import org.blaze.presentation.components.notifications.NotificationsState
 import org.blaze.presentation.screens.downloads.components.DownloadsScreenContent
 import org.blaze.presentation.util.toFriendlyMessage
+import org.island.ui.CrashSafeContextMenuRepresentation
+import org.island.ui.notifications.LocalNotifications
+import org.island.ui.notifications.NotificationType
+import org.island.ui.notifications.NotificationsState
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 
 class DownloadsScreen : Screen {

@@ -6,22 +6,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,16 +17,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.BlazeKeymap
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.BlazeMenu
 import org.blaze.presentation.components.DownloadsColumn
-import org.blaze.presentation.components.MenuEntry
-import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.components.rememberMenuAnchor
-import org.blaze.presentation.components.trackingModifier
 import org.blaze.presentation.screens.downloads.DownloadSortField
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeTypography
+import org.island.theme.ui.IslandLayout
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.IslandTypography
+import org.island.ui.menu.IslandMenu
+import org.island.ui.menu.MenuEntry
+import org.island.ui.menu.rememberMenuAnchor
+import org.island.ui.menu.trackingModifier
+import org.island.ui.toolbar.IslandToolbarIconButton
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -104,7 +90,7 @@ fun DownloadsTableHeader(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(BlazeLayout.TableHeaderHeight),
+            modifier = Modifier.fillMaxWidth().height(IslandLayout.TableHeaderHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             columns.forEach { column ->
@@ -126,7 +112,7 @@ fun DownloadsTableHeader(
                 onResetColumnWidths = onResetColumnWidths,
             )
         }
-        Divider(Orientation.Horizontal, modifier = Modifier.height(BlazeLayout.HeaderBorderWidth))
+        Divider(Orientation.Horizontal, modifier = Modifier.height(IslandLayout.HeaderBorderWidth))
     }
 }
 
@@ -153,7 +139,7 @@ private fun RowScope.HeaderCell(
             .weight(weight)
             .fillMaxHeight()
             .hoverable(hoverInteraction)
-            .background(if (hovered) BlazeColors.hover else Color.Transparent)
+            .background(if (hovered) IslandSemanticColors.hover else Color.Transparent)
             .padding(start = CellStartPadding, end = CellEndPadding),
         contentAlignment = if (endAligned) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
@@ -170,7 +156,7 @@ private fun RowScope.HeaderCell(
         ) {
             Text(
                 text = column.headerLabel(),
-                style = BlazeTypography.tableHeader,
+                style = IslandTypography.tableHeader,
                 color = labelColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -215,7 +201,7 @@ private fun RowScope.HeaderCell(
  * The menu itself is the table's option surface: [Select All] (which flips to Deselect once the whole
  * current filter is selected, so it never looks dead), a Columns submenu that shows or hides each
  * column, and Reset column widths. A Compact Rows item is deliberately absent — the table already
- * renders at the IDE's compact row height ([BlazeLayout.RowHeight] = 24dp), and going below that
+ * renders at the IDE's compact row height ([IslandLayout.RowHeight] = 24dp), and going below that
  * clips the row's icon.
  */
 @Composable
@@ -237,7 +223,7 @@ private fun HeaderOptionsSlot( // The gutter is a fixed-width Box, so it needs n
         modifier = Modifier.width(OptionsGutterWidth).fillMaxHeight().then(anchor.trackingModifier),
         contentAlignment = Alignment.Center,
     ) {
-        ToolbarIconButton(
+        IslandToolbarIconButton(
             key = AllIconsKeys.Actions.More,
             tooltip = options.menuTooltip,
             onClick = { expanded = true },
@@ -245,7 +231,7 @@ private fun HeaderOptionsSlot( // The gutter is a fixed-width Box, so it needs n
         if (expanded) {
             // [alignRootToEnd] keeps the menu's right edge on the button that opened it, which is where
             // the header's options have always appeared; the row itself never hangs off the gutter.
-            BlazeMenu(
+            IslandMenu(
                 entries = buildList {
                     add(
                         MenuEntry.Action(

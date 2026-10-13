@@ -11,7 +11,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
-import org.blaze.presentation.theme.BlazeTheme
+import org.island.theme.ui.IslandTheme
+import org.island.ui.menu.*
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -19,7 +20,7 @@ import kotlin.test.assertTrue
  * The one-width contract of the IDE's menu bar, pinned for [MenuWidthGroup] and [LocalMenuWidthGroup].
  *
  * IntelliJ opens every popup — menu-bar or context — at one shared width, the widest menu's. Blaze
- * reaches that app-wide: [BlazeMenu] joins the [LocalMenuWidthGroup] by default, clamping its root
+ * reaches that app-wide: [IslandMenu] joins the [LocalMenuWidthGroup] by default, clamping its root
  * level to the group and reporting its own drawn width back so the group only grows; the title bar
  * additionally pre-measures its five menus with [MenuWidthPreloader] so their popups settle before
  * the first one is even shown.
@@ -41,7 +42,7 @@ class MenuWidthGroupTest {
     )
 
     /**
-     * Composes the app group over a [MenuWidthPreloader] of [menus] and one [BlazeMenu] of [menu],
+     * Composes the app group over a [MenuWidthPreloader] of [menus] and one [IslandMenu] of [menu],
      * unifying it unless [unifyWidth] is false; returns the popup's row width and the group width.
      */
     private fun ComposeUiTest.showPreloadedMenu(
@@ -51,13 +52,13 @@ class MenuWidthGroupTest {
     ): Pair<Float, Float> {
         var capturedGroup: MenuWidthGroup? = null
         setContent {
-            BlazeTheme(isDark = true) {
+            IslandTheme(isDark = true) {
                 val group = rememberMenuWidthGroup()
                 capturedGroup = group
                 CompositionLocalProvider(LocalMenuWidthGroup provides group) {
                     MenuWidthPreloader(menus = menus, group = group)
                     Box(Modifier.size(24.dp).padding(8.dp))
-                    BlazeMenu(
+                    IslandMenu(
                         entries = menu,
                         anchor = rememberMenuAnchorAt(Offset(20f, 40f)),
                         onDismissRequest = {},

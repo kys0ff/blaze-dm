@@ -16,10 +16,10 @@ import org.blaze.i18n.LocaleManager
 import org.blaze.i18n.isRtl
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.presentation.application.components.BlazeWindow
-import org.blaze.presentation.components.LocalMenuWidthGroup
-import org.blaze.presentation.components.rememberMenuWidthGroup
 import org.blaze.security.ConsentService
 import org.koin.compose.koinInject
+import org.island.theme.ui.*
+import org.island.ui.menu.*
 
 /**
  * Blaze's application root: a thin composition of the app-shell concerns, each
@@ -32,7 +32,7 @@ import org.koin.compose.koinInject
  * - [AppClipboardMonitor]   - optional clipboard watching that feeds the external-open inbox,
  * - [AppSystemNotifications] - desktop notifications for download lifecycle changes, gated
  *      to fire only while the window is out of sight,
- * - [AppTheme]              - theme-mode + palette resolution on top of `BlazeTheme`.
+ * - [AppTheme]              - theme-mode + palette resolution on top of `IslandTheme`.
  */
 @Composable
 fun ApplicationScope.BlazeApplication() {
@@ -103,7 +103,7 @@ fun ApplicationScope.BlazeApplication() {
     }
     val currentLocale by localeManager.currentLocale.collectAsState()
 
-    // One menu-width group for the whole app: every BlazeMenu popup — title-bar menus, row context
+    // One menu-width group for the whole app: every IslandMenu popup — title-bar menus, row context
     // menus, header and details menus — draws at the shared width the IDE gives all its popups,
     // across windows and dialogs, not just within one menu bar.
     val menuWidthGroup = rememberMenuWidthGroup()

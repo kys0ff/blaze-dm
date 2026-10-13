@@ -2,21 +2,14 @@ package org.blaze.presentation.search
 
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.test.ComposeUiTest
-import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.EnStrings
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
-import org.blaze.presentation.theme.BlazeTheme
+import org.island.theme.ui.IslandTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -63,7 +56,7 @@ class SearchEverywherePopupTest {
         received: MutableList<AppCommand>,
     ) {
         setContent {
-            BlazeTheme(isDark = true) {
+            IslandTheme(isDark = true) {
                 LaunchedEffect(bus, controller) {
                     bus.commands.collect { command ->
                         received += command

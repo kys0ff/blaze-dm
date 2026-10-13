@@ -5,16 +5,21 @@ import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.EnStrings
 import org.blaze.presentation.screens.settings.SettingsRegistry
 import org.blaze.presentation.screens.downloads.components.label
+import org.island.ui.search.IslandSearchRanker
+import org.island.ui.search.SearchCandidate
+import org.island.ui.search.SearchHit
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 /**
  * Turns the app's three real data families — the download list, the [AppActions] command registry and
- * the [SettingsRegistry] — into the ranked [SearchHit]s the Search Everywhere popup shows.
+ * the [SettingsRegistry] — into the ranked [SearchHit]s the Search Everywhere popup shows, feeding the
+ * generic island ranking engine ([IslandSearchRanker]) with [SearchCandidate]s tagged by
+ * [SearchKind.groupId].
  *
  * Everything here is pure and takes its inputs explicitly ([downloads], [strings]), so it can be unit
  * tested (and benchmarked at 10k downloads) without a composition. Nothing is invented: the Downloads
  * tab mirrors the on-screen list, the Actions tab mirrors the hamburger menu, and the Settings tab
- * mirrors the settings registry, all fed through the one [SearchRanker].
+ * mirrors the settings registry, all fed through the one ranker.
  *
  * Settings results search *both* the current-language label (shown and highlighted) and an English
  * alias plus curated keywords, so an Arabic UI still finds "proxy" under الشبكة, and vice versa.
@@ -28,7 +33,7 @@ object SearchSources {
         downloads.mapIndexed { index, download ->
             SearchCandidate(
                 id = download.id,
-                kind = SearchKind.Download,
+                groupKey = SearchKind.Download.groupId,
                 primary = download.name,
                 secondary = download.state.label(strings),
                 icon = download.state,
@@ -42,7 +47,7 @@ object SearchSources {
         AppActions.searchable.mapIndexed { index, action ->
             SearchCandidate(
                 id = action.command.name,
-                kind = SearchKind.Action,
+                groupKey = SearchKind.Action.groupId,
                 primary = action.label(strings),
                 secondary = null,
                 icon = action.icon,
@@ -63,7 +68,7 @@ object SearchSources {
                 .joinToString(separator = " ")
             SearchCandidate(
                 id = option.id,
-                kind = SearchKind.Setting,
+                groupKey = SearchKind.Setting.groupId,
                 primary = option.title(strings),
                 secondary = SettingsRegistry.categoryTitle(option.category, strings),
                 icon = AllIconsKeys.General.Settings,
@@ -94,7 +99,8 @@ object SearchSources {
             SearchTab.Actions -> actionCandidates(strings)
             SearchTab.Settings -> settingCandidates(strings)
         }
-        return SearchRanker.rank(candidates, query)
+        val ranked = IslandSearchRanker.rank(candidates, query)
+        return if (tab == SearchTab.All) orderForAllTab(ranked) else ranked
     }
 
     /** Every kind interleaved, for the All tab, each family keeping its own internal order. */
@@ -103,5 +109,13 @@ object SearchSources {
         val actionsPart = actionCandidates(strings).map { it.copy(tieBreakIndex = it.tieBreakIndex + 1_000_000) }
         val settingsPart = settingCandidates(strings).map { it.copy(tieBreakIndex = it.tieBreakIndex + 2_000_000) }
         return downloadsPart + actionsPart + settingsPart
+    }
+
+    /**
+     * Orders the ranked hits the way the All tab shows them: grouped by kind (Downloads, Actions,
+     * Settings) keeping the ranked order within a group, so Up/Down follows the visible list.
+     */
+    private fun orderForAllTab(hits: List<SearchHit>): List<SearchHit> = buildList {
+        SearchKind.entries.forEach { kind -> addAll(hits.filter { it.groupKey == kind.groupId }) }
     }
 }
