@@ -4,12 +4,11 @@ import androidx.compose.ui.input.key.Key
 import org.blaze.data.AppSettings
 import org.blaze.data.KeymapPersistence
 import org.blaze.data.StoredKeyBinding
-import org.blaze.presentation.components.BlazeKeymap
+import org.island.ui.keymap.IslandKeyBinding
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.island.ui.keymap.*
 
 /**
  * The Settings draft's keybinding validation, derived (not stored) from the buffered

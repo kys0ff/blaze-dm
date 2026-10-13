@@ -60,7 +60,7 @@ interface IslandUiStrings {
     // ── Window shell (used by the shell layer) ────────────────────────────────────────────────────
 
     /** Placeholder of an in-list search field. */
-    fun searchFieldPlaceholder(): String = "Search"
+    fun searchFieldPlaceholder(): String = "Search" // TODO: make use of this fun
 
     /** Accessibility label for the window's hamburger (system) menu button. */
     fun systemMenu(): String = "System menu"

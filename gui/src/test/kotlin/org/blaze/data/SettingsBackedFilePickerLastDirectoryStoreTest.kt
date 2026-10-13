@@ -23,6 +23,10 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
     // picked the folder is gone before the write reaches the file.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    private val json = Json {
+        ignoreUnknownKeys = true
+    }
+
     @AfterTest
     fun tearDown() {
         scope.cancel()
@@ -50,9 +54,7 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
         if (!file.exists()) return null
         // Saves move a temp file into place atomically, so a read never sees a half-written file.
         return runCatching {
-            Json {
-                ignoreUnknownKeys = true
-            }.decodeFromString<AppSettings>(file.readText())
+            json.decodeFromString<AppSettings>(file.readText())
         }.getOrNull()
     }
 

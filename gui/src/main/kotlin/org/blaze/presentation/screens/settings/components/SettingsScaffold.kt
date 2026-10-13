@@ -2,15 +2,7 @@ package org.blaze.presentation.screens.settings.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,22 +10,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.BlazeStrings
-import org.island.theme.ui.IslandLayout
-import org.island.foundation.DialogButton
-import org.island.ui.toolwindow.ToolWindowSearchField
-import org.island.foundation.dialogButtonOrder
+import org.blaze.presentation.components.AppMetrics
 import org.blaze.presentation.screens.settings.SettingsNavItem
 import org.blaze.presentation.screens.settings.SettingsRegistry
 import org.blaze.presentation.screens.settings.state.SettingsCategory
+import org.island.foundation.DialogButton
+import org.island.foundation.dialogButtonOrder
 import org.island.theme.ui.IslandSemanticColors
-import org.jetbrains.jewel.foundation.ExperimentalJewelApi
+import org.island.ui.toolwindow.ToolWindowSearchField
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
-import org.blaze.presentation.components.AppMetrics
 
 /**
  * The Settings screen's reusable chrome: the category sidebar, its navigation list, the footer button
@@ -51,7 +41,6 @@ import org.blaze.presentation.components.AppMetrics
  * in it. So the filter is [SettingsRegistry.categoryMatches] over the very same registry the content pane
  * hides rows with — the sidebar and the section can never disagree about what a query matches.
  */
-@OptIn(ExperimentalJewelApi::class)
 @Composable
 internal fun SettingsSidebar(
     selected: SettingsCategory,
@@ -139,7 +128,6 @@ internal fun NothingFoundPanel(strings: BlazeStrings, onClear: () -> Unit) {
  * pointer rests in. Only the button *kind* is fixed per action, so OK stays accent-filled wherever it
  * lands.
  */
-@OptIn(ExperimentalJewelApi::class)
 @Composable
 internal fun SettingsButtonBar(
     okEnabled: Boolean,

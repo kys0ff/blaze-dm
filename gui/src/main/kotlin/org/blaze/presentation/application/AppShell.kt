@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.rememberWindowState
@@ -141,7 +140,7 @@ class AppShell internal constructor(
  * Compose window state into it. The returned instance is stable across recompositions.
  */
 @Composable
-fun ApplicationScope.rememberAppShell(): AppShell {
+fun rememberAppShell(): AppShell {
     val windowState = rememberWindowState(
         size = DpSize(1100.dp, 720.dp),
     )

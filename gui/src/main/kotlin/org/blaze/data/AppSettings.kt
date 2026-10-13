@@ -1,7 +1,6 @@
 package org.blaze.data
 
 import kotlinx.serialization.Serializable
-import org.island.ui.keymap.*
 
 /**
  * App-shell settings: how Blaze integrates with the desktop (tray, autostart, notifications).
@@ -22,7 +21,7 @@ data class AppSettings(
     /** Register Blaze to start automatically when the user logs in. */
     val runAtStartup: Boolean = false,
     /**
-     * Open Blaze hidden in the tray instead of showing the window when it starts. Only honoured when
+     * Open Blaze hidden in the tray instead of showing the window when it starts. Only honored when
      * the tray is actually available ([trayEnabled] and a platform that offers a tray); otherwise the
      * window opens normally so the app is never left unreachable with no way back. Off by default.
      */

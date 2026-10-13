@@ -1,10 +1,6 @@
 package org.blaze.presentation.application
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.window.ApplicationScope
@@ -17,9 +13,9 @@ import org.blaze.i18n.isRtl
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.presentation.application.components.BlazeWindow
 import org.blaze.security.ConsentService
+import org.island.ui.menu.LocalMenuWidthGroup
+import org.island.ui.menu.rememberMenuWidthGroup
 import org.koin.compose.koinInject
-import org.island.theme.ui.*
-import org.island.ui.menu.*
 
 /**
  * Blaze's application root: a thin composition of the app-shell concerns, each

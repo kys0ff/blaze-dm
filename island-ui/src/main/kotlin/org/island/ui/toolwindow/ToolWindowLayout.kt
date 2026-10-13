@@ -60,11 +60,11 @@ enum class ToolWindowMoveTo {
     ;
 
     /** Left/Right split horizontally; the Bottom positions stack vertically under the content. */
-    val isHorizontal: Boolean
+    val isHorizontal: Boolean // TODO: make use of this val
         get() = this == LEFT_TOP || this == LEFT_BOTTOM || this == RIGHT_TOP || this == RIGHT_BOTTOM
 
     /** True when the pane sits before the content (left); false when it follows (right/bottom). */
-    val detailsFirst: Boolean get() = this == LEFT_TOP || this == LEFT_BOTTOM
+    val detailsFirst: Boolean get() = this == LEFT_TOP || this == LEFT_BOTTOM // TODO: make use of this val
 
     /** True when the pane is docked along the bottom rather than a vertical side. */
     val isBottom: Boolean get() = this == BOTTOM_LEFT || this == BOTTOM_RIGHT

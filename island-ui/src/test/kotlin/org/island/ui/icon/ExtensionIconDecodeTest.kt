@@ -1,12 +1,10 @@
 package org.island.ui.icon
 
-import javax.imageio.ImageIO
+import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import javax.imageio.ImageIO
+import kotlin.test.*
+import java.awt.Color as AwtColor
 
 /**
  * Headless smoke tests for the extension-icon decode pipeline: the JSVG rasterizer must turn
@@ -22,9 +20,9 @@ class ExtensionIconDecodeTest {
     """.trimIndent()
 
     private fun pngBytes(size: Int): ByteArray {
-        val image = java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        val image = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
         image.graphics.apply {
-            color = java.awt.Color(0, 255, 0)
+            color = AwtColor(0, 255, 0)
             fillRect(0, 0, size, size)
             dispose()
         }

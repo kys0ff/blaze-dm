@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
@@ -57,7 +56,7 @@ fun main() = application {
 }
 
 @Composable
-private fun ApplicationScope.IslandDemoApplication() {
+private fun IslandDemoApplication() {
     val windowState = remember { WindowState(size = DpSize(900.dp, 620.dp)) }
     val visible = remember { mutableStateOf(true) }
     val raiseToken = remember { mutableStateOf(0L) }

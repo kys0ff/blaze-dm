@@ -36,7 +36,6 @@ import org.island.theme.ui.IslandTypography
 import org.island.theme.ui.LocalWindowActive
 import org.island.ui.menu.IslandMenu
 import org.island.ui.menu.rememberMenuAnchorAt
-import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.HorizontalProgressBar
 import org.jetbrains.jewel.ui.component.Icon
@@ -64,7 +63,7 @@ internal val CellEndPadding = 10.dp
 val OptionsGutterWidth = 28.dp
 
 /** OpenType feature that gives fixed-width digits, so numbers line up down a numeric column. */
-internal const val TabularFigures = "tnum"
+internal const val TabularFigures = "tnum" // TODO: make use of this internal const val
 
 /**
  * Resolves a column's share of the table width. Every cell in the header and in a row reads this,
@@ -187,7 +186,6 @@ private fun TableCellTooltip(text: String) {
  * lifecycle advisories now surface in the Details pane, and the destructive-pause warning lives on
  * the Pause affordance's tooltip - see the row element -> location mapping.
  */
-@OptIn(ExperimentalJewelApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DownloadRow(
     download: Download,

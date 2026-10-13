@@ -1,22 +1,11 @@
 package org.island.shell
 
 import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -26,7 +15,6 @@ import org.island.theme.ui.islandAmbientFrame
 import org.island.ui.menu.MenuEntry
 import org.island.ui.menu.rememberMenuAnchor
 import org.island.ui.menu.trackingModifier
-import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.window.DecoratedWindowScope
 import org.jetbrains.jewel.window.TitleBar
 import org.jetbrains.jewel.window.TitleBarScope
@@ -50,7 +38,6 @@ import org.jetbrains.jewel.window.utils.clientRegion
  * All Blaze-specific behavior (search toggle, settings gear, speed-limit widget) stays in the host
  * app and is handed to the shell through these slots.
  */
-@OptIn(ExperimentalJewelApi::class)
 @Composable
 fun DecoratedWindowScope.IslandTitleBar(
     host: IslandWindowHost,

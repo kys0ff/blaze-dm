@@ -87,7 +87,7 @@ object BlazeKeymap {
 }
 
 /** Keeps the historical unqualified spelling alive inside the package: `Binding(Key.A)` etc. */
-typealias Binding = IslandKeyBinding
+typealias Binding = IslandKeyBinding // TODO: make use of this typealias or remove it
 
 /**
  * Builds the bundle of shortcut strings the chrome reads from [org.island.theme.ui.LocalShortcutLabels],

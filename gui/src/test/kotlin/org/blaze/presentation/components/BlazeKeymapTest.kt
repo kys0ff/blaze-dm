@@ -95,7 +95,7 @@ class BlazeKeymapTest {
         val shifted = IslandKeyBinding(Key.A, shift = true)
 
         assertEquals(a.signature, b.signature)
-        assertFalse(a.signature == c.signature)
-        assertFalse(a.signature == shifted.signature)
+        assertNotEquals(a.signature, c.signature)
+        assertNotEquals(a.signature, shifted.signature)
     }
 }

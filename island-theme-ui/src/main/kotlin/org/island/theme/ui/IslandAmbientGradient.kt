@@ -54,8 +54,8 @@ object IslandAmbientGradient {
      * [IslandChromeColors.ambientIntensity], so a plugin (or the user, through a theme's Options
      * form) can dial the glow without touching this file.
      */
-    const val DarkAlpha = 0.15f
-    const val LightAlpha = 0.08f
+    const val DARK_ALPHA = 0.15f // TODO: make use of this const val
+    const val LIGHT_ALPHA = 0.08f // TODO: make use of this const val
 
     /**
      * The accent color the glow is tinted with: a theme's declared glow color when it names one,
