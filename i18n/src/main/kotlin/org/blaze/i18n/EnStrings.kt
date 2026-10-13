@@ -629,6 +629,20 @@ object EnStrings : BlazeStrings {
         override val themeSystemOption = "Follow system"
         override val themeLightOption = "Light"
         override val themeDarkOption = "Dark"
+        override val typographyHeader = "Typography"
+        override val uiFontLabel = "Interface font"
+        override val uiFontDesc =
+            "Restyles every label in Blaze on Apply/OK. Inter is the design's own font; JetBrains Mono gives the whole shell the IDE's coding-font look."
+        override val monoFontLabel = "Monospace font"
+        override val monoFontDesc =
+            "Used by the Server Logs pane and other fixed-width text. JetBrains Mono is the default."
+        override val uiTextScaleLabel = "Interface text size"
+        override val uiTextScaleDesc =
+            "Every text in the app scales as a percentage of its design size (60%–160%); layout sizes stay unchanged."
+        override val fontSystemOption = "System default"
+        override val fontSystemMonoOption = "System monospace"
+        override val textScaleDecreaseAction = "−"
+        override val textScaleIncreaseAction = "+"
         override val startupHeader = "Startup & Queue Behavior"
         override val resumeOnStartupLabel = "Resume downloads automatically on application startup"
         override val startQueuedOnStartupLabel = "Start queued downloads automatically on application startup"

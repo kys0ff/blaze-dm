@@ -743,11 +743,14 @@ interface BlazeStrings {
         val typeToSearch: String
         /** Shown when a non-empty query matches nothing. */
         val nothingFound: String
-        /** Section header over the download group in the All tab. */
+
+        /** Section header over the download group in the 'All' tab. */
         val sectionDownloads: String
-        /** Section header over the action group in the All tab. */
+
+        /** Section header over the action group in the 'All' tab. */
         val sectionActions: String
-        /** Section header over the settings group in the All tab. */
+
+        /** Section header over the settings group in the 'All' tab. */
         val sectionSettings: String
     }
 
@@ -830,6 +833,25 @@ interface BlazeStrings {
         val themeSystemOption: String
         val themeLightOption: String
         val themeDarkOption: String
+
+        /** Typography group: interface font, monospace font and interface text size. */
+        val typographyHeader: String
+        val uiFontLabel: String
+        val uiFontDesc: String
+        val monoFontLabel: String
+        val monoFontDesc: String
+        val uiTextScaleLabel: String
+        val uiTextScaleDesc: String
+
+        /** "System default" option in the interface-font radio group (family names stay untranslated). */
+        val fontSystemOption: String
+
+        /** "System monospace" option in the monospace-font radio group. */
+        val fontSystemMonoOption: String
+
+        /** Stepper button labels around the current text-size percentage. */
+        val textScaleDecreaseAction: String
+        val textScaleIncreaseAction: String
         val startupHeader: String
         val resumeOnStartupLabel: String
         val startQueuedOnStartupLabel: String

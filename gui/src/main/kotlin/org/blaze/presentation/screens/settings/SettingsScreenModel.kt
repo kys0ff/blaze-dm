@@ -3,17 +3,12 @@ package org.blaze.presentation.screens.settings
 import androidx.compose.ui.text.input.TextFieldValue
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.screens.settings.state.SettingsState
+import org.island.theme.ui.IslandFontFamilies
 
 /**
  * The Settings draft's state machine. It owns only presentation concerns - buffering the user's edits
@@ -250,6 +245,23 @@ class SettingsScreenModel(
             it.copy(appSettings = it.appSettings.copy(languageCode = event.code))
         }
 
+        is SettingsEvent.UpdateUiFontFamily -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(uiFontFamilyId = event.id))
+        }
+
+        is SettingsEvent.UpdateMonoFontFamily -> _state.update {
+            it.copy(appSettings = it.appSettings.copy(monoFontFamilyId = event.id))
+        }
+
+        is SettingsEvent.UpdateUiTextScalePercent -> _state.update {
+            // Clamped through the catalogue so even a scripted event can't buffer an unreadable size.
+            it.copy(
+                appSettings = it.appSettings.copy(
+                    uiTextScalePercent = IslandFontFamilies.normalizeTextScalePercent(event.percent)
+                )
+            )
+        }
+
         is SettingsEvent.UpdateAmbientGlowEnabled -> _state.update {
             it.copy(appSettings = it.appSettings.copy(ambientGlowEnabled = event.enabled))
         }
@@ -276,7 +288,7 @@ class SettingsScreenModel(
             it.copy(
                 appSettings = it.appSettings.copy(
                     runAtStartup = event.enabled,
-                    startMinimizedInTray = if (event.enabled) it.appSettings.startMinimizedInTray else false,
+                    startMinimizedInTray = event.enabled && it.appSettings.startMinimizedInTray,
                 )
             )
         }

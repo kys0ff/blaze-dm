@@ -632,6 +632,20 @@ object ArStrings : BlazeStrings {
         override val themeSystemOption = "متابعة النظام"
         override val themeLightOption = "فاتحة"
         override val themeDarkOption = "داكنة"
+        override val typographyHeader = "الخطوط"
+        override val uiFontLabel = "خط الواجهة"
+        override val uiFontDesc =
+            "يُعيد تنسيق كل نص في Blaze عند التطبيق؛ خط Inter هو خط التصميم نفسه، بينما يمنح JetBrains Mono الواجهة مظهر خط الأكواد في محرر IntelliJ."
+        override val monoFontLabel = "خط العرض الثابت"
+        override val monoFontDesc =
+            "المستخدم في لوحة سجلات الخادم والنصوص ثابتة العرض الأخرى؛ JetBrains Mono هو الافتراضي."
+        override val uiTextScaleLabel = "حجم نص الواجهة"
+        override val uiTextScaleDesc =
+            "يتغير كل نص في التطبيق كنسبة مئوية من حجمه التصميمي (60%–160%) دون أي تغيير في أحجام التخطيط."
+        override val fontSystemOption = "افتراضي النظام"
+        override val fontSystemMonoOption = "ثابت العرض الافتراضي للنظام"
+        override val textScaleDecreaseAction = "−"
+        override val textScaleIncreaseAction = "+"
         override val startupHeader = "سلوك بدء التشغيل وقائمة الانتظار"
         override val resumeOnStartupLabel = "استئناف التنزيلات تلقائيًا عند بدء تشغيل التطبيق"
         override val startQueuedOnStartupLabel = "بدء التنزيلات المنتظرة تلقائيًا عند بدء تشغيل التطبيق"

@@ -36,6 +36,7 @@ object SettingsRegistry {
     /** Section (group-header) titles, keyed by [SettingsOption.groupKey]. */
     private val groups: Map<String, (BlazeStrings) -> String> = mapOf(
         "appearance" to { it.settings.appearanceHeader },
+        "typography" to { it.settings.typographyHeader },
         "systemIntegration" to { it.settings.systemIntegrationHeader },
         "security" to { it.settings.securityHeader },
         "startup" to { it.settings.startupHeader },
@@ -67,6 +68,21 @@ object SettingsRegistry {
         SettingsOption(
             id = "general.theme", category = SettingsCategory.GENERAL, groupKey = "appearance",
             title = { it.settings.themeLabel }, keywords = listOf("dark", "light", "appearance", "mode", "follow system"),
+        ),
+        SettingsOption(
+            id = "general.uiFont", category = SettingsCategory.GENERAL, groupKey = "typography",
+            title = { it.settings.uiFontLabel }, description = { it.settings.uiFontDesc },
+            keywords = listOf("font", "typeface", "family", "inter", "jetbrains", "mono", "text"),
+        ),
+        SettingsOption(
+            id = "general.monoFont", category = SettingsCategory.GENERAL, groupKey = "typography",
+            title = { it.settings.monoFontLabel }, description = { it.settings.monoFontDesc },
+            keywords = listOf("font", "monospace", "fixed width", "jetbrains mono", "code", "console", "logs"),
+        ),
+        SettingsOption(
+            id = "general.uiTextScale", category = SettingsCategory.GENERAL, groupKey = "typography",
+            title = { it.settings.uiTextScaleLabel }, description = { it.settings.uiTextScaleDesc },
+            keywords = listOf("font size", "text size", "zoom", "scale", "bigger", "smaller", "percent"),
         ),
         SettingsOption(
             id = "general.trayEnabled", category = SettingsCategory.GENERAL, groupKey = "systemIntegration",

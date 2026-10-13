@@ -134,6 +134,24 @@ data class AppSettings(
     val extensionsFloatingWidthDp: Float = 420f,
     val extensionsFloatingHeightDp: Float = 480f,
 
+    // ── Typography ─────────────────────────────────────────────────────────────
+    // Font choices are persisted as catalogue id strings (see org.island.theme.ui.IslandFontFamilies),
+    // keeping this file's "primitives only" rule; an unknown id falls back to the default at render.
+
+    /**
+     * Interface font family id ("system", "inter", "jetbrains_mono"). Defaults to Inter — the
+     * family the New UI is designed around; JetBrains Mono gives the whole shell the IDE's
+     * coding-font look.
+     */
+    val uiFontFamilyId: String = "inter",
+    /** Monospace family id ("system", "inter", "jetbrains_mono") used by Server Logs and console text. */
+    val monoFontFamilyId: String = "jetbrains_mono",
+    /**
+     * Interface text size as a percentage of the design default (clamped to 60..160). Scales every
+     * sp-driven text through the UI density's font scale without touching dp layout.
+     */
+    val uiTextScalePercent: Int = 100,
+
     // ── Chrome ─────────────────────────────────────────────────────────────────
     /**
      * The IDE's soft accent-colored glow at the top-left of the window frame (behind the title bar,

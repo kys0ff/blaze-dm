@@ -1,10 +1,6 @@
 package org.blaze.presentation.screens.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -14,12 +10,10 @@ import org.blaze.engine.settings.ThemeMode
 import org.blaze.i18n.BlazeLocale
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.screens.settings.state.SettingsState
+import org.island.theme.ui.IslandFontFamilies
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.ui.component.CheckboxRow
-import org.jetbrains.jewel.ui.component.Link
-import org.jetbrains.jewel.ui.component.RadioButtonRow
-import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.*
 
 /**
  * General category: appearance, system integration (tray, autostart, clipboard monitoring) and
@@ -74,6 +68,84 @@ internal fun GeneralSection(
                     )
                 }
             }
+        }
+    }
+
+    SettingsGroup("typography", strings) {
+        // Family names are proper nouns (Inter, JetBrains Mono), shown as endonyms like the language
+        // row above; only the "system" option's label needs translating.
+        SettingRow("general.uiFont") {
+            Text(text = strings.settings.uiFontLabel)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    IslandFontFamilies.SYSTEM to strings.settings.fontSystemOption,
+                    IslandFontFamilies.INTER to "Inter",
+                    IslandFontFamilies.JETBRAINS_MONO to "JetBrains Mono",
+                ).forEach { (id, label) ->
+                    RadioButtonRow(
+                        text = label,
+                        selected = state.appSettings.uiFontFamilyId == id,
+                        onClick = { onEvent(SettingsEvent.UpdateUiFontFamily(id)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            Text(
+                text = strings.settings.uiFontDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+            )
+        }
+
+        SettingRow("general.monoFont") {
+            Text(text = strings.settings.monoFontLabel)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    IslandFontFamilies.JETBRAINS_MONO to "JetBrains Mono",
+                    IslandFontFamilies.SYSTEM to strings.settings.fontSystemMonoOption,
+                    IslandFontFamilies.INTER to "Inter",
+                ).forEach { (id, label) ->
+                    RadioButtonRow(
+                        text = label,
+                        selected = state.appSettings.monoFontFamilyId == id,
+                        onClick = { onEvent(SettingsEvent.UpdateMonoFontFamily(id)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            Text(
+                text = strings.settings.monoFontDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+            )
+        }
+
+        SettingRow("general.uiTextScale") {
+            Text(text = strings.settings.uiTextScaleLabel)
+            val percent = state.appSettings.uiTextScalePercent
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { onEvent(SettingsEvent.UpdateUiTextScalePercent(percent - 5)) },
+                    enabled = percent > IslandFontFamilies.MinTextScalePercent,
+                ) {
+                    Text(strings.settings.textScaleDecreaseAction)
+                }
+                Text(text = "$percent%", style = JewelTheme.defaultTextStyle)
+                OutlinedButton(
+                    onClick = { onEvent(SettingsEvent.UpdateUiTextScalePercent(percent + 5)) },
+                    enabled = percent < IslandFontFamilies.MaxTextScalePercent,
+                ) {
+                    Text(strings.settings.textScaleIncreaseAction)
+                }
+            }
+            Text(
+                text = strings.settings.uiTextScaleDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+            )
         }
     }
 

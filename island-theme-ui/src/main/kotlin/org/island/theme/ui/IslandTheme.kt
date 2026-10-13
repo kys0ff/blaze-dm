@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import org.island.theme.api.IslandsDefaults
 import org.island.theme.api.ThemePalette
 import org.island.theme.api.withFallback
@@ -15,6 +17,7 @@ import org.jetbrains.jewel.intui.window.decoratedWindow
 import org.jetbrains.jewel.intui.window.styling.dark
 import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
 import org.jetbrains.jewel.ui.ComponentStyling
+import org.jetbrains.jewel.ui.LocalTypography
 import org.jetbrains.jewel.ui.component.styling.LocalScrollbarStyle
 import org.jetbrains.jewel.window.styling.TitleBarColors
 import org.jetbrains.jewel.window.styling.TitleBarStyle
@@ -33,11 +36,20 @@ import org.jetbrains.jewel.window.styling.TitleBarStyle
  *
  * Passing an empty palette reproduces the stock Islands look, because resolution always ends by
  * filling unset tokens from the design system — a theme can never leave the chrome unpainted.
+ *
+ * The typography parameters carry the user's font customizations: [uiFontFamilyId] and
+ * [monoFontFamilyId] index the [IslandFontFamilies] catalogue (interface and monospace families),
+ * and [uiTextScalePercent] scales every sp-driven text through the density's font scale. Their
+ * defaults are Jewel's own stock families at 100%, so a caller that never customizes renders
+ * exactly as before.
  */
 @Composable
 fun IslandTheme(
     palette: ThemePalette = ThemePalette.Empty,
     isDark: Boolean = isSystemInDarkTheme(),
+    uiFontFamilyId: String = IslandFontFamilies.DefaultUiFontId,
+    monoFontFamilyId: String = IslandFontFamilies.DefaultMonoFontId,
+    uiTextScalePercent: Int = IslandFontFamilies.DefaultTextScalePercent,
     content: @Composable () -> Unit,
 ) {
     // The chrome the whole window renders with: the theme's Islands overrides, completed from the
@@ -46,17 +58,49 @@ fun IslandTheme(
         palette.islands.withFallback(IslandsDefaults.forMode(isDark))
     }
 
-    val themeDefinition = remember(isDark, palette, islands) {
+    // The user's font choices, resolved through the catalogue. The stock ids (Inter for the UI,
+    // JetBrains Mono for the mono slot) deliberately switch nothing off: the theme then keeps
+    // Jewel's own text styles and typography, so default settings stay bit-identical to plain Jewel.
+    val uiFont = remember(uiFontFamilyId) { IslandFontFamilies.uiFontFor(uiFontFamilyId) }
+    val monoFont = remember(monoFontFamilyId) { IslandFontFamilies.monoFontFor(monoFontFamilyId) }
+    val substituteUi = uiFont.id != IslandFontFamilies.INTER
+    val substituteMono = monoFont.id != IslandFontFamilies.JETBRAINS_MONO
+
+    val themeDefinition = remember(isDark, palette, islands, uiFontFamilyId, monoFontFamilyId) {
         val globalColors = buildJewelGlobalColors(isDark, palette, islands)
+        // The definition's text styles feed LocalTextStyle and JewelTheme.defaultTextStyle — the
+        // two hooks every Jewel and Blaze label ultimately reads. A substituted bundled family
+        // also gets its line height recomputed from its own vertical metrics (see the catalogue).
+        val defaultTextStyle = if (substituteUi) {
+            IslandFontFamilies.substituteInto(
+                JewelTheme.createDefaultTextStyle(fontFamily = uiFont.family),
+                uiFont,
+            )
+        } else {
+            JewelTheme.createDefaultTextStyle()
+        }
+        val editorTextStyle = if (substituteMono) {
+            IslandFontFamilies.substituteInto(
+                JewelTheme.createEditorTextStyle(fontFamily = monoFont.family),
+                monoFont,
+                IslandFontFamilies.MonoLineHeightMultiplier,
+            )
+        } else {
+            JewelTheme.createEditorTextStyle()
+        }
         if (isDark) {
             JewelTheme.darkThemeDefinition(
                 colors = globalColors,
                 disabledAppearanceValues = DisabledAppearanceValues.dark(),
+                defaultTextStyle = defaultTextStyle,
+                editorTextStyle = editorTextStyle,
             )
         } else {
             JewelTheme.lightThemeDefinition(
                 colors = globalColors,
                 disabledAppearanceValues = DisabledAppearanceValues.light(),
+                defaultTextStyle = defaultTextStyle,
+                editorTextStyle = editorTextStyle,
             )
         }
     }
@@ -68,6 +112,15 @@ fun IslandTheme(
 
     // The bar's own background, in the theme's luminance: see the explanation at the call site.
     val invisibleBar = remember(islands) { islands.frameArgb.toInvisibleColor() }
+
+    // UI text size as a density font scale: every sp in the app — Jewel's hardcoded 13.sp ramps
+    // included — multiplies through it, which is the one mechanism that reaches all text at once.
+    // dp layout is untouched, so only the type grows, not the chrome around it.
+    val baseDensity = LocalDensity.current
+    val textScale = IslandFontFamilies.normalizeTextScalePercent(uiTextScalePercent) / 100f
+    val density = remember(baseDensity, textScale) {
+        if (textScale == 1f) baseDensity else Density(baseDensity.density, baseDensity.fontScale * textScale)
+    }
 
     CompositionLocalProvider(
         LocalThemePalette provides palette,
@@ -111,7 +164,23 @@ fun IslandTheme(
                 // Jewel scroll container in the app — lists, trees, panels, dialogs — on the IDE's
                 // hover-only track without any call site opting in.
                 val scrollbarStyle = islandOverlayScrollbarStyle()
-                CompositionLocalProvider(LocalScrollbarStyle provides scrollbarStyle, content = content)
+                // The typography override shadows the IntUiTypography IntUiTheme just installed:
+                // JewelTheme.typography reads LocalTypography, and Blaze's chrome styles and the
+                // console panes all derive from it, so the chosen families propagate everywhere.
+                val baseTypography = LocalTypography.current
+                val typography = remember(baseTypography, uiFontFamilyId, monoFontFamilyId) {
+                    if (!substituteUi && !substituteMono) {
+                        baseTypography
+                    } else {
+                        FontSubstitutingTypography(baseTypography, uiFont, monoFont, substituteUi, substituteMono)
+                    }
+                }
+                CompositionLocalProvider(
+                    LocalTypography provides typography,
+                    LocalDensity provides density,
+                    LocalScrollbarStyle provides scrollbarStyle,
+                    content = content,
+                )
             },
         )
     }
