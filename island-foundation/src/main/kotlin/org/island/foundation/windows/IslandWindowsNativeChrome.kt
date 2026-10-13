@@ -109,8 +109,7 @@ object IslandWindowsNativeChrome {
      * Jewel applies internally to select light vs. dark window-control glyphs.
      */
     private fun Color.isDarkAwtColor(): Boolean {
-        // Y = 0.299R + 0.587G + 0.114B; threshold at 50 %.
-        val luma = 0.299f * red + 0.587f * green + 0.114f * blue
+        val luma = (0.299f * red + 0.587f * green + 0.114f * blue) / 255f
         return luma < 0.5f
     }
 

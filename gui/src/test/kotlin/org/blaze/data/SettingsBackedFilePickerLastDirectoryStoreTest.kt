@@ -41,7 +41,10 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
      * `app.json` itself (not `repository.persisted`) is deliberate: the in-memory snapshot is
      * committed before the deferred write finishes, so only the file proves a restart would see it.
      */
-    private fun awaitOnDisk(context: FilePickerContext, path: Path) {
+    private fun awaitOnDisk(
+        context: FilePickerContext,
+        path: Path
+    ) { // TODO: warning: Value of parameter 'context' is always 'FilePickerContext.ExtensionJar'
         repeat(200) {
             if (settingsOnDisk()?.filePickerLastDirectories?.get(context.name) == path.toString()) return
             Thread.sleep(10)

@@ -159,7 +159,7 @@ private fun IslandAppIconButton(
                                 }
 
                                 PointerEventType.Exit -> {
-                                    validClick = false
+                                    validClick = false // TODO: warning: Assigned value is never read
                                     pressed = false
                                     break
                                 }
@@ -193,6 +193,7 @@ private fun IslandAppIconButton(
  * handler as its single `onExecuted` argument.
  */
 fun islandMenuCategoryOf(
+    // TODO: make use of this fun
     label: String,
     entries: (onExecuted: () -> Unit) -> List<MenuEntry>,
 ): IslandMenuCategory = IslandMenuCategory(label = label, entries = entries)

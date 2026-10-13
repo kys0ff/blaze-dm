@@ -19,7 +19,7 @@ class ExtensionIconDecodeTest {
         </svg>
     """.trimIndent()
 
-    private fun pngBytes(size: Int): ByteArray {
+    private fun pngBytes(size: Int): ByteArray { // TODO: warning: Value of parameter 'size' is always '16'
         val image = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
         image.graphics.apply {
             color = AwtColor(0, 255, 0)
