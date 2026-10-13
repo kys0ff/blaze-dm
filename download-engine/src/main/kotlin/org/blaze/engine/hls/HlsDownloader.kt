@@ -27,11 +27,15 @@ import javax.crypto.spec.SecretKeySpec
  * into a single output file.
  *
  * It is deliberately honest about what it can and cannot do. Ordinary HLS AES-128 encryption is decrypted
- * with the JDK's own crypto; DRM (SAMPLE-AES, FairPlay/Widevine) is *detected and refused* — never worked
- * around — and an acknowledged-but-still-protected stream fails with the real technical reason. Reliable
- * assembly by simple concatenation is only claimed for MPEG-TS streams; fragmented-MP4 and any other
- * container that needs remuxing is reported as unsupported rather than concatenated into a file that only
- * looks done. Temporary segment files are always cleaned up, on success, failure or cancellation.
+ * with the JDK's own crypto. A *suspected* DRM stream is a warning, not a block: Blaze asks the user to
+ * acknowledge before fetching anything, and an acknowledged stream still runs on the ordinary download path
+ * — it is only ever stopped when the concrete evidence says so (segments encrypted with a scheme Blaze does
+ * not decrypt, or a container that needs remuxing), never merely because the detector labelled it "DRM".
+ * Blaze never works around protection or extracts DRM keys, and never writes a file it would present as a
+ * processed video when the essence cannot actually be decrypted. Reliable assembly by simple concatenation
+ * is only claimed for MPEG-TS streams; fragmented-MP4 and any other container that needs remuxing is
+ * reported as unsupported rather than concatenated into a file that only looks done. Temporary segment
+ * files are always cleaned up, on success, failure or cancellation.
  */
 class HlsDownloader(
     private val client: HttpNetworkClient,
@@ -48,7 +52,7 @@ class HlsDownloader(
         /** The stream looks DRM-protected and the user has not yet chosen to continue. */
         data class NeedsDrmConsent(val playlist: HlsPlaylist) : Outcome
 
-        /** Recognised but not producible by Blaze (DRM after consent, or an unsupported container). */
+        /** Recognised but not producible on the ordinary path (an undecryptable scheme, or an unsupported container). */
         data class Unsupported(val reason: String) : Outcome
         data class Failed(val error: DownloadError) : Outcome
     }
@@ -58,8 +62,11 @@ class HlsDownloader(
      *
      * @param variantIndex the master-playlist variant to select; -1 means "highest available bandwidth".
      * @param headers request headers (auth, referer) preserved for every playlist/segment/key request.
-     * @param drmAcknowledged whether the user already accepted a DRM warning; without it a protected
-     *   stream yields [Outcome.NeededDrmConsent] instead of being fetched.
+     * @param drmAcknowledged whether the user already accepted a potential-DRM warning. Without it a
+     *   protected-looking stream yields [Outcome.NeedsDrmConsent] and nothing is fetched; with it the
+     *   ordinary download attempt proceeds — the acknowledgement unlocks the attempt, never a way around
+     *   protection, and a stream is only refused afterwards on concrete evidence (an undecryptable key
+     *   scheme or an unsupported container), not on the detector's label alone.
      */
     suspend fun download(
         playlistUrl: String,
@@ -82,17 +89,15 @@ class HlsDownloader(
             return Outcome.Failed(e.toHlsError())
         } ?: return Outcome.Failed(DownloadError.NotFound)
 
-        // DRM gating happens before a single segment is fetched, and consent never unlocks circumvention:
-        // an acknowledged SAMPLE-AES stream is still refused, only with the plain technical reason.
-        when (media.protection) {
-            HlsProtection.DrmSuspected, HlsProtection.Uncertain ->
-                return if (!drmAcknowledged) {
-                    Outcome.NeedsDrmConsent(media)
-                } else {
-                    Outcome.Unsupported(drmRefusalReason(media))
-                }
-
-            else -> Unit
+        // DRM is a WARNING, not a block. An unacknowledged protected-looking stream asks for consent
+        // before a single segment is fetched; acknowledging never unlocks circumvention. Crucially a
+        // "DRM"/"uncertain" classification is NOT itself a reason to refuse: the attempt below runs the
+        // ordinary download path, and whether the media is genuinely recoverable is decided by the
+        // concrete key method and the real segment bytes, never by the detector's label alone.
+        if (!drmAcknowledged &&
+            (media.protection == HlsProtection.DrmSuspected || media.protection == HlsProtection.Uncertain)
+        ) {
+            return Outcome.NeedsDrmConsent(media)
         }
 
         if (media.isLive) {
@@ -112,6 +117,18 @@ class HlsDownloader(
             }
             // Decide the container from real downloaded bytes, not a filename guess.
             val container = detectContainer(tempDir, segments.size, media)
+            // Only a scheme Blaze genuinely cannot decrypt stops assembly — never the warning label.
+            // SAMPLE-AES leaves the TS packet headers in the clear, so a sync-byte sniff cannot certify
+            // the essence as playable and it is refused on the method itself; an unrecognized method is
+            // refused only when the real bytes also fail to look like a container Blaze can concatenate,
+            // so a stream that a mere DRM advertisement mislabelled but which is actually clear still
+            // downloads and succeeds. Either way Blaze decrypts nothing it has no key for.
+            val cannotDecrypt = media.keyMethod == HlsKeyMethod.SampleAes ||
+                    (media.keyMethod == HlsKeyMethod.Unknown && container != HlsContainer.MpegTs)
+            if (cannotDecrypt) {
+                cleanup(tempDir)
+                return Outcome.Unsupported(undecryptableReason(media))
+            }
             if (container != HlsContainer.MpegTs) {
                 cleanup(tempDir)
                 return Outcome.Unsupported(
@@ -361,14 +378,30 @@ class HlsDownloader(
         }
     }
 
-    private fun drmRefusalReason(media: HlsPlaylist): String {
+    /**
+     * The concrete reason an acknowledged stream still cannot be turned into a playable file: its segments
+     * are encrypted with a scheme Blaze does not decrypt. This names the actual technical limitation (the
+     * key method, plus any protection tags that revealed it) rather than refusing on the detector's warning
+     * label, and states plainly that Blaze neither bypasses protection nor extracts protected keys. The
+     * accessible segment bytes were still retrieved; only a decrypted, playable output could not be made.
+     */
+    private fun undecryptableReason(media: HlsPlaylist): String {
+        val scheme = when (media.keyMethod) {
+            HlsKeyMethod.SampleAes -> "SAMPLE-AES"
+            HlsKeyMethod.Unknown -> "an unrecognized key method"
+            else -> "an unsupported key method"
+        }
         val indicators = media.drmIndicators
         return buildString {
-            append("this stream appears to be DRM/content-protected")
-            if (indicators.isNotEmpty()) append(" (")
-                .append(indicators.joinToString(", "))
-                .append(")")
-            append("; Blaze does not bypass DRM or extract protected keys")
+            append("media segments are encrypted with ")
+                .append(scheme)
+                .append(" that Blaze does not decrypt, so no playable file can be produced")
+            if (indicators.isNotEmpty()) {
+                append(" (protection detected from: ")
+                    .append(indicators.joinToString(", "))
+                    .append(")")
+            }
+            append("; the accessible segment bytes were retrieved, but Blaze does not bypass DRM or extract protected keys")
         }
     }
 

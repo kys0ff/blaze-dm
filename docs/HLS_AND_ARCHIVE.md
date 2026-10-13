@@ -36,12 +36,12 @@ yields the best quality the stream offers.
 
 ### What "HLS" covers here
 
-| Supported                                                                      | Not supported (fails with a clear reason, never a half-baked file) |
-|--------------------------------------------------------------------------------|--------------------------------------------------------------------|
-| VOD (finite) media & master playlists                                          | **Live / event** playlists (`#EXT-X-ENDLIST` absent)               |
-| Relative playlist & segment URL resolution                                     | Fragmented-MP4 / raw-AC-3 / other containers needing **remuxing**  |
-| Multiple-variant master playlists                                              | Muxing audio+video into a new container                            |
-| Ordinary `AES-128` segment encryption (key from the playlist `#EXT-X-KEY URI`) | `SAMPLE-AES`, FairPlay, Widevine, PlayReady (**DRM — refused**)    |
+| Supported                                                                      | Not supported (fails with a clear reason, never a half-baked file)                                                                            |
+|--------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| VOD (finite) media & master playlists                                          | **Live / event** playlists (`#EXT-X-ENDLIST` absent)                                                                                          |
+| Relative playlist & segment URL resolution                                     | Fragmented-MP4 / raw-AC-3 / other containers needing **remuxing**                                                                             |
+| Multiple-variant master playlists                                              | Muxing audio+video into a new container                                                                                                       |
+| Ordinary `AES-128` segment encryption (key from the playlist `#EXT-X-KEY URI`) | `SAMPLE-AES`, FairPlay, Widevine, PlayReady (**DRM — warned; downloaded on the ordinary path, then refused only if genuinely undecryptable**) |
 
 Blaze only claims single-file assembly for **MPEG-TS** containers. A stream whose segments are not
 MPEG-TS is reported as unsupported rather than concatenated into something that merely *looks* done —
@@ -66,13 +66,21 @@ Blaze *classifies* these — `None`, `OrdinaryEncryption`, `DrmSuspected`, `Unce
 is **DrmSuspected** or **Uncertain**, `inspectHls` returns **NeedsDrmConsent** and the Add-Download dialog
 raises a *"Potential DRM Protection Detected"* warning **before a single segment is fetched**.
 
-The dialog is a **choice, not a block**, and its rules are strict:
+The dialog is a **warning, not a block**, and its rules are strict:
 
-* **Continue** records your acknowledgement and proceeds *only with the normal, supported download
-  workflow*. Acknowledging never unlocks DRM circumvention, never defeats an access control, and never
-  extracts protected keys — it changes **only what gets reported**, not what Blaze is able to do. A
-  stream that is genuinely DRM-protected still fails, with the honest technical reason, after you continue.
+* **Continue** records your acknowledgement and proceeds with the **normal HLS download workflow** — the
+  ordinary path fetches the accessible playlist and segments. Acknowledging never unlocks DRM
+  circumvention, never defeats an access control, and never extracts protected keys. Detection is **not**
+  treated as proof that every part of the stream is inaccessible: a stream flagged only by a
+  `#EXT-X-SESSION-KEY` advertisement whose actual segments are served in the clear downloads and assembles
+  successfully. Blaze refuses only on **concrete** evidence — segments encrypted with a scheme it does not
+  decrypt (e.g. `SAMPLE-AES`), or a container needing remuxing — and reports that actual technical
+  limitation rather than a blanket "DRM" refusal.
 * **Cancel** stays on the input step and starts nothing.
+
+When a stream is refused on those concrete grounds, Blaze does **not** write a file it would present as a
+successfully processed video — the accessible segment bytes may be fetched, but no mislabelled output is
+produced.
 
 Blaze offers no link to a provider's terms from this dialog: the playlist alone cannot reliably identify
 who is serving the stream, so the dialog instead points you to the provider's own documentation.
@@ -228,9 +236,11 @@ Honest boundaries of this first implementation:
   segment assembly, no selection) and has **no inspect endpoint** to call. Wiring those sources and probes
   onto the HTTP surface is straightforward follow-up work, deliberately left out to keep this change set
   reviewable.
-* **HLS** supports **VOD MPEG-TS** streams only: live/event playlists and any container needing remuxing (fragmented
-  MP4, etc.) are refused with a clear reason. DRM (`SAMPLE-AES`/FairPlay/Widevine/…) is **detected and refused**, never
-  worked around; ordinary AES-128 is decrypted.
+* **HLS** supports **VOD MPEG-TS** streams: live/event playlists and any container needing remuxing (fragmented
+  MP4, etc.) are refused with a clear reason. DRM (`SAMPLE-AES`/FairPlay/Widevine/…) is **detected and warned
+  about, never worked around**: after acknowledgement the download runs on the ordinary path and is refused only
+  when the segments use a scheme Blaze cannot decrypt — never solely because the detector labelled it DRM. Ordinary
+  AES-128 is decrypted.
 * **Remote ZIP** selective retrieval needs **server byte-range support**; without it Blaze offers only a
   user-confirmed whole-archive download. Encrypted entries, unsupported methods and multi-disk/split
   archives are reported, not extracted.

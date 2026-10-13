@@ -90,24 +90,89 @@ class HlsDownloaderIntegrationTest {
     }
 
     @Test
-    fun `SAMPLE-AES stream asks for consent before fetching and refuses after acknowledgement`(): Unit = runBlocking {
+    fun `SAMPLE-AES stream asks for consent before any segment is fetched`(): Unit = runBlocking {
         val media = plainMedia("#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"key\"\n")
         TestStaticServer(
             mapOf("/media.m3u8" to media, "/seg0.ts" to seg0Plain, "/seg1.ts" to seg1Plain)
         ).use { server ->
             val dest = Files.createTempFile("hls-drm", ".ts")
-            val hls = downloader(server)
             try {
-                val unacknowledged = hls.download(server.url("/media.m3u8"), dest, -1, emptyMap(), false)
+                val unacknowledged = downloader(server).download(server.url("/media.m3u8"), dest, -1, emptyMap(), false)
                 assertIs<HlsDownloader.Outcome.NeedsDrmConsent>(unacknowledged)
-                // Consent must not unlock anything: an acknowledged protected stream is still refused,
-                // and no segment was ever requested.
-                val acknowledged = hls.download(server.url("/media.m3u8"), dest, -1, emptyMap(), true)
-                assertIs<HlsDownloader.Outcome.Unsupported>(acknowledged)
+                // The warning gates fetching: nothing is requested until the user chooses to continue.
                 assertTrue(
                     server.pathRequests.none { it.endsWith(".ts") },
-                    "no segment may be fetched for a protected stream"
+                    "no segment may be fetched before the user acknowledges the warning"
                 )
+            } finally {
+                Files.deleteIfExists(dest)
+            }
+        }
+    }
+
+    @Test
+    fun `acknowledging proceeds to fetch accessible segments but never bypasses SAMPLE-AES`(): Unit = runBlocking {
+        val media = plainMedia("#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"key\"\n")
+        TestStaticServer(
+            mapOf("/media.m3u8" to media, "/seg0.ts" to seg0Plain, "/seg1.ts" to seg1Plain)
+        ).use { server ->
+            val dest = Files.createTempFile("hls-drm", ".ts")
+            try {
+                val acknowledged = downloader(server).download(server.url("/media.m3u8"), dest, -1, emptyMap(), true)
+                // The classification alone no longer blocks: the ordinary path ran and pulled the
+                // accessible segments...
+                assertTrue(
+                    server.pathRequests.any { it.endsWith(".ts") },
+                    "an acknowledged stream must be attempted on the ordinary download path"
+                )
+                // ...but Blaze refused to fake a playable file from essence it cannot decrypt, naming the
+                // actual scheme rather than the warning, and it never requested the protected key.
+                assertIs<HlsDownloader.Outcome.Unsupported>(
+                    acknowledged,
+                    "expected an honest limitation, got $acknowledged"
+                )
+                assertTrue(
+                    acknowledged.reason.contains("SAMPLE-AES", ignoreCase = true),
+                    "the reason must name the real scheme, not just the warning: ${acknowledged.reason}"
+                )
+                assertTrue(
+                    server.pathRequests.none { it.endsWith("/key") },
+                    "Blaze must not fetch a protected DRM key"
+                )
+            } finally {
+                Files.deleteIfExists(dest)
+            }
+        }
+    }
+
+    @Test
+    fun `a stream flagged only by a session-key advertisement still downloads when its segments are clear`(): Unit =
+        runBlocking {
+            // The detector labels this DrmSuspected (a #EXT-X-SESSION-KEY names FairPlay), yet the variant's own
+            // segments carry no EXT-X-KEY and are served in the clear - exactly the case where a "DRM" label
+            // must NOT, by itself, block the download. After acknowledging, the ordinary path assembles a
+            // playable MPEG-TS file, proving detection is treated as a warning rather than proof of inaccessibility.
+            val media = (
+                    "#EXTM3U\n" +
+                            "#EXT-X-TARGETDURATION:10\n" +
+                            "#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES,URI=\"https://drm.example/key\",KEYFORMAT=\"com.apple.streamingkeydelivery\"\n" +
+                            "#EXTINF:10,\n" +
+                            "seg0.ts\n" +
+                            "#EXTINF:10,\n" +
+                            "seg1.ts\n" +
+                            "#EXT-X-ENDLIST\n"
+                    ).toByteArray()
+            TestStaticServer(
+                mapOf("/media.m3u8" to media, "/seg0.ts" to seg0Plain, "/seg1.ts" to seg1Plain)
+            ).use { server ->
+                val dest = Files.createTempFile("hls-sessionkey", ".ts")
+                try {
+                    val hls = downloader(server)
+                    val inspection = hls.inspect(server.url("/media.m3u8"), -1, emptyMap())
+                    assertEquals(HlsProtection.DrmSuspected, inspection.playlist.protection)
+                    val outcome = hls.download(server.url("/media.m3u8"), dest, -1, emptyMap(), true)
+                    assertIs<HlsDownloader.Outcome.Success>(outcome, "expected success, got $outcome")
+                    assertContentEquals(seg0Plain + seg1Plain, Files.readAllBytes(dest))
             } finally {
                 Files.deleteIfExists(dest)
             }

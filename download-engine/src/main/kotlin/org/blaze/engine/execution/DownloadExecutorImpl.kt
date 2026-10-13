@@ -289,6 +289,9 @@ class DownloadExecutorImpl(
                 }
 
                 is HlsDownloader.Outcome.NeedsDrmConsent ->
+                    // Only reached if a protected-looking stream is executed without the user's
+                    // acknowledgement. The GUI records the choice before creating the task, so this is a
+                    // safety net, not a DRM-based refusal: it asks for the confirmation that was missing.
                     send(
                         updateTask(
                             task = labelled,
@@ -296,7 +299,10 @@ class DownloadExecutorImpl(
                             state = DownloadState.Failed,
                             totalBytes = null,
                             downloadedBytes = 0,
-                            error = DownloadError.Unknown("stream appears DRM-protected; Blaze does not bypass DRM")
+                            error = DownloadError.Unknown(
+                                "this stream may be content-protected; confirm the warning to download " +
+                                        "what is legitimately accessible (Blaze never bypasses DRM)"
+                            )
                         )
                     )
 

@@ -14,13 +14,16 @@ import org.blaze.service.mapping.toApiError
 import org.blaze.service.security.ClientConsentGate
 import org.blaze.service.security.ClientIdentity
 import org.blaze.service.security.ConsentDecision
+import org.blaze.service.security.PathValidator
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
+import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -51,17 +54,17 @@ class LocalApiServer(
     private val tokenStore: ApiTokenStore,
     private val scope: CoroutineScope,
     private val consentGate: ClientConsentGate = ClientConsentGate.ALLOW_ALL,
-    private val destinationValidator: org.blaze.service.security.PathValidator =
-        org.blaze.service.security.PathValidator(
+    private val destinationValidator: PathValidator =
+        PathValidator(
             settings.allowedDownloadRoots.takeIf { it.isNotEmpty() }
-                ?.map { java.nio.file.Paths.get(it).toAbsolutePath().normalize() },
+                ?.map { Paths.get(it).toAbsolutePath().normalize() },
         ),
 ) {
     private val logger = LoggerFactory.getLogger(LocalApiServer::class.java)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     private var server: HttpServer? = null
-    private val running = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val running = AtomicBoolean(false)
     private val activeStreams = ConcurrentHashMap.newKeySet<Job>()
     private val rate = SlidingWindowRateLimiter(windowMillis = 60_000, maxPerWindow = 240)
 
@@ -221,6 +224,7 @@ class LocalApiServer(
                 }
                 writeJson(exchange, 200, OkHttp(), OkHttp.serializer())
             }
+
             else -> writeError(exchange, ApiErrorBody(ApiErrorCode.INVALID_REQUEST, "unsupported method/path"), 405)
         }
     }
