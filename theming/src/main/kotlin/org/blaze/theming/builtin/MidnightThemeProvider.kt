@@ -1,13 +1,6 @@
 package org.blaze.theming.builtin
 
-import org.blaze.theming.api.ConfigurableBlazeThemeProvider
-import org.blaze.theming.api.IslandsDefaults
-import org.blaze.theming.api.IslandsPalette
-import org.blaze.theming.api.ThemeColorTarget
-import org.blaze.theming.api.ThemeOption
-import org.blaze.theming.api.ThemePalette
-import org.blaze.theming.api.themeAmbientIntensityOption
-import org.blaze.theming.api.themeColorOption
+import org.blaze.theming.api.*
 
 /**
  * A complete, cool-toned theme shipped as a built-in so the picker demonstrates that a theme can
@@ -26,20 +19,29 @@ class MidnightThemeProvider : ConfigurableBlazeThemeProvider {
     override val version: String = "2.0.0"
 
     override val optionDescriptors: List<ThemeOption> = listOf(
-        themeColorOption("accent", "Accent colour", ThemeColorTarget.ACCENT, defaultArgb = DARK_ACCENT),
-        themeColorOption("error", "Error colour", ThemeColorTarget.ERROR, defaultArgb = DARK_ERROR),
+        themeColorOption(
+            "accent", "Accent colour", ThemeColorTarget.ACCENT,
+            defaultArgb = DARK_ACCENT, defaultLightArgb = LIGHT_ACCENT,
+        ),
+        themeColorOption(
+            "error", "Error colour", ThemeColorTarget.ERROR,
+            defaultArgb = DARK_ERROR, defaultLightArgb = LIGHT_ERROR,
+        ),
         themeColorOption(
             "island", "Island surface", ThemeColorTarget.ISLANDS_SURFACE,
             description = "The panel body every download row and tool window sits on.",
-            defaultArgb = DARK_ISLAND,
+            defaultArgb = DARK_ISLAND, defaultLightArgb = LIGHT_ISLAND,
         ),
         themeColorOption(
             "frame", "Window frame", ThemeColorTarget.ISLANDS_FRAME,
             description = "Title bar, tool-window stripe and the gaps between islands.",
-            defaultArgb = DARK_FRAME,
+            defaultArgb = DARK_FRAME, defaultLightArgb = LIGHT_FRAME,
         ),
-        themeColorOption("border", "Island rim", ThemeColorTarget.ISLANDS_BORDER, defaultArgb = DARK_BORDER),
-        themeAmbientIntensityOption("glow", "Ambient glow strength", defaultPercent = 18),
+        themeColorOption(
+            "border", "Island rim", ThemeColorTarget.ISLANDS_BORDER,
+            defaultArgb = DARK_BORDER, defaultLightArgb = LIGHT_BORDER,
+        ),
+        themeAmbientIntensityOption("glow", "Ambient glow strength", defaultPercent = 18, defaultLightPercent = 10),
     )
 
     override fun provide(dark: Boolean): ThemePalette = if (dark) {
@@ -55,14 +57,14 @@ class MidnightThemeProvider : ConfigurableBlazeThemeProvider {
         )
     } else {
         ThemePalette(
-            accentArgb = 0xFF2E6FD8,
+            accentArgb = LIGHT_ACCENT,
             successArgb = 0xFF208A3C,
             warningArgb = 0xFFB8791E,
-            errorArgb = 0xFFC0392B,
-            panelBackgroundArgb = 0xFFF1F4F9,
-            borderArgb = 0xFFD3DAE4,
+            errorArgb = LIGHT_ERROR,
+            panelBackgroundArgb = LIGHT_ISLAND,
+            borderArgb = LIGHT_BORDER,
             infoTextArgb = 0xFF5A6472,
-            islands = IslandsPaletteOf(0xFFEDF0F6, 0xFFF1F4F9, 0xFFD3DAE4, IslandsDefaults.STRIPE_HOVER_LIGHT),
+            islands = IslandsPaletteOf(LIGHT_FRAME, LIGHT_ISLAND, LIGHT_BORDER, IslandsDefaults.STRIPE_HOVER_LIGHT),
         )
     }
 
@@ -72,6 +74,14 @@ class MidnightThemeProvider : ConfigurableBlazeThemeProvider {
         const val DARK_ISLAND = 0xFF262B33L
         const val DARK_FRAME = 0xFF1B1F26L
         const val DARK_BORDER = 0xFF3A424FL
+
+        // Day-mode counterparts, so an untouched option resolves to the light palette instead of
+        // stretching the dark token over light chrome.
+        const val LIGHT_ACCENT = 0xFF2E6FD8L
+        const val LIGHT_ERROR = 0xFFC0392BL
+        const val LIGHT_ISLAND = 0xFFF1F4F9L
+        const val LIGHT_FRAME = 0xFFEDF0F6L
+        const val LIGHT_BORDER = 0xFFD3DAE4L
     }
 }
 

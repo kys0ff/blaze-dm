@@ -1,26 +1,15 @@
 package org.blaze.theming
 
 import kotlinx.coroutines.test.runTest
-import org.blaze.theming.api.BlazeThemeProvider
-import org.blaze.theming.api.ConfigurableBlazeThemeProvider
-import org.blaze.theming.api.IslandsDefaults
-import org.blaze.theming.api.ThemeAppearanceMode
-import org.blaze.theming.api.ThemeColorTarget
-import org.blaze.theming.api.ThemeConfig
-import org.blaze.theming.api.ThemeOption
-import org.blaze.theming.api.ThemePalette
-import org.blaze.theming.api.mergedWith
-import org.blaze.theming.api.themeAmbientIntensityOption
-import org.blaze.theming.api.themeColorOption
+import org.blaze.theming.api.*
+import org.blaze.theming.builtin.DefaultThemeProvider
+import org.blaze.theming.builtin.MidnightThemeProvider
+import org.blaze.theming.builtin.TealThemeProvider
 import org.blaze.theming.core.ThemePluginLoader
 import org.blaze.theming.core.ThemeRegistry
 import org.blaze.theming.core.ThemeSettingsRepository
 import java.nio.file.Files
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * Covers the v2 theme contract: the Islands chrome overlay, per-theme configurable options
@@ -80,7 +69,7 @@ class ThemeContractV2Test {
             PlainTheme(ThemeRegistry.DEFAULT_THEME_ID),
             PlainTheme(
                 "custom",
-                ThemePalette(islands = org.blaze.theming.api.IslandsPalette(surfaceArgb = 0xFFABCDEF)),
+                ThemePalette(islands = IslandsPalette(surfaceArgb = 0xFFABCDEF)),
             ),
         )
         registry.selectInMemory("custom")
@@ -129,6 +118,81 @@ class ThemeContractV2Test {
     }
 
     // ---- mode support ----------------------------------------------------------------------
+
+    @Test
+    fun `an untouched color option resolves its own mode default, never the other mode's`() = runTest {
+        val registry = registryWith(
+            PlainTheme(ThemeRegistry.DEFAULT_THEME_ID),
+            ConfigurableTheme(
+                id = "two-tone",
+                optionDescriptors = listOf(
+                    themeColorOption(
+                        "accent", "Accent", applyTo = ThemeColorTarget.ACCENT,
+                        defaultArgb = 0xFF112233, defaultLightArgb = 0xFFEECCAA,
+                    ),
+                ),
+            ),
+        )
+        registry.select("two-tone")
+        // Untouched: dark shows the dark default, light shows the light default — the dark token no
+        // longer leaks over the day palette the way it did when only one default existed.
+        assertEquals(0xFF112233, registry.paletteFor(dark = true).accentArgb)
+        assertEquals(0xFFEECCAA, registry.paletteFor(dark = false).accentArgb)
+    }
+
+    @Test
+    fun `an explicit color override wins in both appearances`() = runTest {
+        val registry = registryWith(
+            PlainTheme(ThemeRegistry.DEFAULT_THEME_ID),
+            ConfigurableTheme(
+                id = "two-tone",
+                optionDescriptors = listOf(
+                    themeColorOption(
+                        "accent", "Accent", applyTo = ThemeColorTarget.ACCENT,
+                        defaultArgb = 0xFF112233, defaultLightArgb = 0xFFEECCAA,
+                    ),
+                ),
+            ),
+        )
+        registry.select("two-tone")
+        registry.setOptionValues("two-tone", mapOf("accent" to "#FF00FF00"))
+        assertEquals(0xFF00FF00, registry.paletteFor(dark = true).accentArgb)
+        assertEquals(0xFF00FF00, registry.paletteFor(dark = false).accentArgb)
+    }
+
+    @Test
+    fun `an untouched ambient option uses the mode default while an override wins both modes`() = runTest {
+        val registry = registryWith(
+            PlainTheme(ThemeRegistry.DEFAULT_THEME_ID),
+            ConfigurableTheme(
+                id = "glow-two",
+                optionDescriptors = listOf(
+                    themeAmbientIntensityOption("glow", "Glow", defaultPercent = 18, defaultLightPercent = 6),
+                ),
+            ),
+        )
+        registry.select("glow-two")
+        assertEquals(18, registry.paletteFor(dark = true).islands.ambientIntensityPercent)
+        assertEquals(6, registry.paletteFor(dark = false).islands.ambientIntensityPercent)
+        registry.setOptionValues("glow-two", mapOf("glow" to "40"))
+        assertEquals(40, registry.paletteFor(dark = true).islands.ambientIntensityPercent)
+        assertEquals(40, registry.paletteFor(dark = false).islands.ambientIntensityPercent)
+    }
+
+    @Test
+    fun `the built-in midnight and teal themes paint day palettes in light mode`() {
+        val midnight = registryWith(DefaultThemeProvider(), MidnightThemeProvider())
+        midnight.selectInMemory("midnight")
+        assertEquals(0xFF5B9DFF, midnight.paletteFor(dark = true).accentArgb)   // dark accent
+        assertEquals(0xFF2E6FD8, midnight.paletteFor(dark = false).accentArgb)  // day accent, not the dark one
+
+        val teal = registryWith(DefaultThemeProvider(), TealThemeProvider())
+        teal.selectInMemory("teal")
+        assertEquals(0xFF3FB6A8, teal.paletteFor(dark = true).accentArgb)
+        assertEquals(0xFF0F9D8C, teal.paletteFor(dark = false).accentArgb)
+        // Teal paints no chrome of its own, so the day frame is the stock light value, never the dark one.
+        assertEquals(IslandsDefaults.FRAME_LIGHT, teal.paletteFor(dark = false).islands.frameArgb)
+    }
 
     @Test
     fun `a dark-only theme contributes nothing in light mode`() {
@@ -203,7 +267,7 @@ class ThemeContractV2Test {
 
     @Test
     fun `ThemePalette withFallback completes islands per token`() {
-        val theme = ThemePalette(islands = org.blaze.theming.api.IslandsPalette(surfaceArgb = 0xFF101010))
+        val theme = ThemePalette(islands = IslandsPalette(surfaceArgb = 0xFF101010))
         val defaults = ThemePalette(
             accentArgb = 0xFFEEEEEE,
             islands = IslandsDefaults.forMode(dark = true),

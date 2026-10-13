@@ -2,6 +2,7 @@ package org.blaze.platform.files
 
 import org.slf4j.LoggerFactory
 import java.awt.Desktop
+import java.net.URI
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
@@ -19,7 +20,9 @@ internal object FileOpeners {
     /** Returns true/false when AWT Desktop handled [action], or null when it isn't usable. */
     fun tryDesktop(action: Desktop.Action, path: Path): Boolean? {
         if (!Desktop.isDesktopSupported()) return null
+
         val desktop = runCatching { Desktop.getDesktop() }.getOrNull() ?: return null
+
         if (!runCatching { desktop.isSupported(action) }.getOrDefault(false)) return null
         return runCatching {
             when (action) {
@@ -39,7 +42,7 @@ internal object FileOpeners {
         val desktop = runCatching { Desktop.getDesktop() }.getOrNull() ?: return null
         if (!runCatching { desktop.isSupported(Desktop.Action.BROWSE) }.getOrDefault(false)) return null
         return runCatching {
-            desktop.browse(java.net.URI(url))
+            desktop.browse(URI(url))
             true
         }.getOrElse {
             logger.debug("Desktop BROWSE failed for {}", url, it)
@@ -54,8 +57,8 @@ internal object FileOpeners {
      */
     fun launch(command: List<String>): Result<Unit> = runCatching {
         val process = ProcessBuilder(command).redirectErrorStream(true).start()
-        // Give the launcher a moment to fail fast (bad binary, no display) without blocking.
         val exited = process.waitFor(5, TimeUnit.SECONDS)
+
         if (exited && process.exitValue() != 0) {
             val output = process.inputStream.bufferedReader().readText().trim()
             error("Command failed (exit ${process.exitValue()}): $command ${output.take(200)}")

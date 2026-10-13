@@ -121,35 +121,53 @@ private interface IDwmApi : Library {
 // ── Composable extension ──────────────────────────────────────────────────────────────────────────
 
 /**
- * Composable effect that keeps the dialog window's native Windows title bar painted with the
- * active panel background color for as long as the dialog is in composition.
+ * Composable effect that keeps a native OS window's Windows title bar painted with the active theme
+ * color for as long as the window is in composition, and refreshes it the instant the theme changes.
  *
- * Call from inside the `DialogWindow { … }` lambda:
- * ```kotlin
- * DialogWindow(…) {
- *     applyWindowsTitleBarTheme(JewelTheme.globalColors.panelBackground)
- *     // … content …
- * }
- * ```
+ * This is the shared engine behind both chrome surfaces that ride a real Windows caption:
+ *  - every `DialogWindow` (via the [DialogWindowScope] overload below), and
+ *  - the app's main Jewel `DecoratedWindow`, whose OS window frame and border DWM still paints even
+ *    though Jewel draws the bar's contents.
  *
- * No-ops on non-Windows platforms (where Jewel's own chrome or the Linux WM handles decorations)
- * and on Windows builds older than 1809 where the DWM attributes are absent.
+ * The caption is re-pinned on every [backgroundColor] change through a keyed effect that does *not*
+ * reset in between — a reset would flash the system default before the new color lands, which is
+ * visible when the user flips light/dark or edits a theme's colors. The system caption is restored
+ * only once, when [window] leaves composition.
  *
- * Dark mode and text contrast are derived from [backgroundColor]'s luminance, so the app's own
- * theme override (light / dark / system) is always respected without passing an explicit flag.
+ * No-ops on non-Windows platforms (where Jewel's own chrome or the Linux WM handles decorations) and
+ * on Windows builds older than 1809 where the DWM attributes are absent.
  *
- * @param backgroundColor The color to apply to the caption — typically the dialog's own body
- *        background (`JewelTheme.globalColors.panelBackground`), so title bar and content read
- *        as a single themed surface.
+ * Dark mode and text contrast are derived from [backgroundColor]'s luminance, so the app's own theme
+ * override (light / dark / system) is always respected without passing an explicit flag.
+ *
+ * @param window the OS window to theme (a `DialogWindowScope.window` or the main frame's window).
+ * @param backgroundColor The color to apply to the caption — the dialog's own body background
+ *        (`JewelTheme.globalColors.panelBackground`) or the app window's Islands frame color, so
+ *        title bar and content read as a single themed surface.
  */
 @Composable
-fun DialogWindowScope.applyWindowsTitleBarTheme(backgroundColor: Color) {
+fun applyWindowsTitleBarTheme(window: Window, backgroundColor: Color) {
+    // Re-pin whenever the theme color changes; deliberately no reset on key change (see KDoc).
     DisposableEffect(window, backgroundColor) {
         WindowsDwmTitleBarStyler.applyTheme(window, backgroundColor)
+        onDispose { }
+    }
+    // Restore the system caption only when the window itself goes away.
+    DisposableEffect(window) {
         onDispose {
             WindowsDwmTitleBarStyler.resetTheme(window)
         }
     }
+}
+
+/**
+ * [DialogWindowScope] convenience for [applyWindowsTitleBarTheme], themed from the dialog's own
+ * panel background so the caption and body read as one surface. See the dialog-window call sites
+ * (`BaseDialog`, `SettingsDialogWindow`, `ConsentDialogWindow`).
+ */
+@Composable
+fun DialogWindowScope.applyWindowsTitleBarTheme(backgroundColor: Color) {
+    applyWindowsTitleBarTheme(window, backgroundColor)
 }
 
 // ── Color helpers ─────────────────────────────────────────────────────────────────────────────────

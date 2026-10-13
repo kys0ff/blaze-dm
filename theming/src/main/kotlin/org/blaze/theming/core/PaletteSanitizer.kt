@@ -1,12 +1,6 @@
 package org.blaze.theming.core
 
-import org.blaze.theming.api.IslandsPalette
-import org.blaze.theming.api.AMBIENT_INTENSITY_RANGE
-import org.blaze.theming.api.ThemeColorTarget
-import org.blaze.theming.api.ThemeConfig
-import org.blaze.theming.api.ThemeOption
-import org.blaze.theming.api.ThemeOptionType
-import org.blaze.theming.api.ThemePalette
+import org.blaze.theming.api.*
 
 /**
  * Turns raw, plugin-supplied palette data into values the GUI can render unconditionally.
@@ -72,20 +66,33 @@ internal fun IslandsPalette.sanitized(): IslandsPalette = IslandsPalette(
  * plugins without running their code in the render path. Values that fail validation
  * ([ThemeConfig.colorValue] returning null, or an unrenderable ARGB) are ignored so the theme's
  * own palette stands.
+ *
+ * [config] must hold only the values the user actually persisted — never merged defaults — while
+ * [dark] picks which mode's authored default an untouched option falls back to. That way a color a
+ * theme ships for the dark palette is not force-applied over the light one: an untouched option
+ * resolves to [dark]'s default ([ThemeOption.lightDefaultValue] for light, else
+ * [ThemeOption.defaultValue]), and an explicit pick wins in *both* modes.
  */
 internal fun applyColorOptions(
     palette: ThemePalette,
     options: List<ThemeOption>,
     config: ThemeConfig,
+    dark: Boolean,
 ): ThemePalette {
     var result = palette
     for (option in options) {
         if (option.type !is ThemeOptionType.Color) continue
         val target = option.colorTarget ?: continue
-        val argb = sanitizeArgb(config.colorValue(option.key)) ?: continue
-        result = result.applyColorTarget(target, argb)
+        val argb = config.colorValue(option.key) ?: option.defaultArgbForMode(dark)
+        result = sanitizeArgb(argb)?.let { result.applyColorTarget(target, it) } ?: result
     }
     return result
+}
+
+/** The ARGB an untouched color option falls back to for [dark], or null when it declares none. */
+private fun ThemeOption.defaultArgbForMode(dark: Boolean): Long? {
+    val hex = if (dark) defaultValue else lightDefaultValue ?: defaultValue
+    return ThemeConfig.parseArgbHex(hex)
 }
 
 /** Write [argb] into the palette slot named by [target]. */
@@ -116,15 +123,21 @@ private fun ThemePalette.applyColorTarget(target: ThemeColorTarget, argb: Long):
  * Fold any [themeAmbientIntensityOption][org.blaze.theming.api.themeAmbientIntensityOption]
  * the user answered into the Islands glow strength, clamped into the renderable range. The
  * first such option holding a parsable value wins, so a theme publishes at most one.
+ *
+ * As with [applyColorOptions], [config] carries only the user's persisted answers: an untouched
+ * option falls back to [dark]'s authored default rather than clobbering the opposite mode.
  */
 internal fun applyAmbientIntensity(
     palette: ThemePalette,
     options: List<ThemeOption>,
     config: ThemeConfig,
+    dark: Boolean,
 ): ThemePalette {
-    val key = options.firstOrNull { it.ambientIntensityKey }?.key ?: return palette
+    val option = options.firstOrNull { it.ambientIntensityKey } ?: return palette
+    val stored = config.values[option.key]?.toLongOrNull()
+    val defaultHex = if (dark) option.defaultValue else option.lightDefaultValue ?: option.defaultValue
     val percent = sanitizeIntensityPercent(
-        config.intKeyValue(key, default = 0, range = AMBIENT_INTENSITY_RANGE),
+        (stored ?: defaultHex.toLongOrNull())?.toInt(),
     ) ?: return palette
     return palette.copy(islands = palette.islands.copy(ambientIntensityPercent = percent))
 }

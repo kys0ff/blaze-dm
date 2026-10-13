@@ -66,6 +66,13 @@ data class ThemeOption(
      * [IslandsPalette.ambientIntensityPercent] with the user's (clamped) answer.
      */
     val ambientIntensityKey: Boolean = false,
+    /**
+     * The value this option falls back to in **light** ("day") mode when the user has never touched
+     * it. [defaultValue] is the dark-mode fallback. A theme that paints both appearances declares a
+     * distinct light default here so a color/ambient token authored for the dark palette is never
+     * stretched over light chrome; a mode-agnostic option leaves this null and reuses [defaultValue].
+     */
+    val lightDefaultValue: String? = null,
 )
 
 /** Convenience constructors so descriptors read without naming the carrier type. */
@@ -110,6 +117,12 @@ fun themeColorOption(
     applyTo: ThemeColorTarget,
     description: String? = null,
     defaultArgb: Long = 0xFF000000L,
+    /**
+     * The value used (and shown as the reset target) in light mode. Defaults to [defaultArgb] for a
+     * mode-agnostic color; a theme that renders a lighter variant of a token passes it here so the
+     * day palette keeps its own color instead of inheriting the dark one.
+     */
+    defaultLightArgb: Long? = null,
 ) = ThemeOption(
     key = key,
     label = label,
@@ -117,6 +130,7 @@ fun themeColorOption(
     type = ThemeOptionType.Color(),
     defaultValue = ThemeConfig.encodeArgb(defaultArgb),
     colorTarget = applyTo,
+    lightDefaultValue = defaultLightArgb?.let { ThemeConfig.encodeArgb(it) },
 )
 
 /**
@@ -130,16 +144,25 @@ fun themeAmbientIntensityOption(
     label: String,
     description: String? = null,
     defaultPercent: Int = 15,
+    /**
+     * The glow strength used in light mode when untouched. Defaults to [defaultPercent]; a theme
+     * whose day palette wants a subtler bleed passes a smaller number so light chrome keeps its own
+     * intensity rather than the dark one.
+     */
+    defaultLightPercent: Int? = null,
 ) = ThemeOption(
     key = key,
     label = label,
     description = description,
     type = ThemeOptionType.Integer(AMBIENT_INTENSITY_RANGE.first, AMBIENT_INTENSITY_RANGE.last),
-    defaultValue = defaultPercent
-        .coerceIn(AMBIENT_INTENSITY_RANGE.first.toInt(), AMBIENT_INTENSITY_RANGE.last.toInt())
-        .toString(),
+    defaultValue = clampPercent(defaultPercent),
     ambientIntensityKey = true,
+    lightDefaultValue = defaultLightPercent?.let { clampPercent(it) },
 )
+
+private fun clampPercent(percent: Int): String = percent
+    .coerceIn(AMBIENT_INTENSITY_RANGE.first.toInt(), AMBIENT_INTENSITY_RANGE.last.toInt())
+    .toString()
 
 /** The inclusive, documented range of the ambient glow's intensity, percent. */
 val AMBIENT_INTENSITY_RANGE: LongRange = 0L..100L

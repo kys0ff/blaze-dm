@@ -1,12 +1,6 @@
 package org.blaze.theming.builtin
 
-import org.blaze.theming.api.ConfigurableBlazeThemeProvider
-import org.blaze.theming.api.IslandsDefaults
-import org.blaze.theming.api.ThemeColorTarget
-import org.blaze.theming.api.ThemeOption
-import org.blaze.theming.api.ThemePalette
-import org.blaze.theming.api.themeAmbientIntensityOption
-import org.blaze.theming.api.themeColorOption
+import org.blaze.theming.api.*
 
 /**
  * A ready-to-use alternative accent, shipped as a built-in so the theme picker has more
@@ -26,18 +20,28 @@ class TealThemeProvider : ConfigurableBlazeThemeProvider {
     override val version: String = "2.0.0"
 
     override val optionDescriptors: List<ThemeOption> = listOf(
-        themeColorOption("accent", "Accent colour", ThemeColorTarget.ACCENT, defaultArgb = DARK_ACCENT),
-        themeColorOption("success", "Success colour", ThemeColorTarget.SUCCESS, defaultArgb = DARK_SUCCESS),
-        themeColorOption("warning", "Warning colour", ThemeColorTarget.WARNING, defaultArgb = DARK_WARNING),
+        themeColorOption(
+            "accent", "Accent colour", ThemeColorTarget.ACCENT,
+            defaultArgb = DARK_ACCENT, defaultLightArgb = LIGHT_ACCENT,
+        ),
+        themeColorOption(
+            "success", "Success colour", ThemeColorTarget.SUCCESS,
+            defaultArgb = DARK_SUCCESS, defaultLightArgb = LIGHT_SUCCESS,
+        ),
+        themeColorOption(
+            "warning", "Warning colour", ThemeColorTarget.WARNING,
+            defaultArgb = DARK_WARNING, defaultLightArgb = LIGHT_WARNING,
+        ),
         themeColorOption(
             "frame", "Window frame", ThemeColorTarget.ISLANDS_FRAME,
             description = "The chrome islands float on: title bar, stripes, gaps.",
-            defaultArgb = IslandsDefaults.FRAME_DARK,
+            defaultArgb = IslandsDefaults.FRAME_DARK, defaultLightArgb = IslandsDefaults.FRAME_LIGHT,
         ),
         themeAmbientIntensityOption(
             "glow", "Ambient glow strength",
             description = "How far the accent bleeds into the frame at the window's corner.",
             defaultPercent = IslandsDefaults.AMBIENT_INTENSITY_DARK_PERCENT,
+            defaultLightPercent = IslandsDefaults.AMBIENT_INTENSITY_LIGHT_PERCENT,
         ),
     )
 
@@ -49,9 +53,9 @@ class TealThemeProvider : ConfigurableBlazeThemeProvider {
         )
     } else {
         ThemePalette(
-            accentArgb = 0xFF0F9D8C,
-            successArgb = 0xFF208A3C,
-            warningArgb = 0xFFA46704,
+            accentArgb = LIGHT_ACCENT,
+            successArgb = LIGHT_SUCCESS,
+            warningArgb = LIGHT_WARNING,
         )
     }
 
@@ -59,5 +63,11 @@ class TealThemeProvider : ConfigurableBlazeThemeProvider {
         const val DARK_ACCENT = 0xFF3FB6A8L
         const val DARK_SUCCESS = 0xFF5FB865L
         const val DARK_WARNING = 0xFFF2C55CL
+
+        // Day-mode counterparts, so an untouched option resolves to the light palette instead of
+        // stretching the dark token over light chrome.
+        const val LIGHT_ACCENT = 0xFF0F9D8CL
+        const val LIGHT_SUCCESS = 0xFF208A3CL
+        const val LIGHT_WARNING = 0xFFA46704L
     }
 }

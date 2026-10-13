@@ -2,13 +2,7 @@ package org.blaze.presentation.application.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,16 +18,10 @@ import org.blaze.platform.tray.AppTrayIcon
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.application.AppShell
-import org.blaze.presentation.components.BlazeKeymap
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.DialogChromeGuard
-import org.blaze.presentation.components.LocalAmbientGlowEnabled
-import org.blaze.presentation.components.LocalShortcutLabels
-import org.blaze.presentation.components.LocalWindowActive
+import org.blaze.presentation.components.*
 import org.blaze.presentation.components.notifications.LocalNotifications
 import org.blaze.presentation.components.notifications.NotificationHost
 import org.blaze.presentation.components.notifications.NotificationsState
-import org.blaze.presentation.components.platformShortcutLabels
 import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.search.SearchEverywherePopup
 import org.blaze.presentation.theme.BlazeIslandColors
@@ -102,6 +90,12 @@ fun BlazeWindow(shell: AppShell) {
         // light line across the dark chrome. Pin the window's own background to the frame color so any
         // gap in the composition reads as chrome instead of a leaked light-theme token.
         val frameColor = BlazeIslandColors.frame
+        // DWM still owns the OS window frame (the 1px border and, on Windows 11, the rounded
+        // corners and drop shadow) even though Jewel paints the bar's contents. Pin those to the
+        // active Islands frame color so the app window's native chrome tracks the theme the same
+        // way its title-bar contents already do; the keyed effect re-applies the moment the theme
+        // (mode or a color edit) changes. A silent no-op everywhere but Windows.
+        applyWindowsTitleBarTheme(window, frameColor)
         LaunchedEffect(window, frameColor) {
             window.minimumSize = Dimension(760, 480)
             // No `.desktop` entry matches an IDE launch, so the taskbar reads the icon

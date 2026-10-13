@@ -6,16 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-import org.blaze.theming.api.BlazeThemeProvider
-import org.blaze.theming.api.ConfigurableBlazeThemeProvider
-import org.blaze.theming.api.IslandsDefaults
-import org.blaze.theming.api.IslandsPalette
-import org.blaze.theming.api.ThemeAppearanceMode
-import org.blaze.theming.api.ThemeConfigDefaults
-import org.blaze.theming.api.ThemeOption
-import org.blaze.theming.api.ThemePalette
-import org.blaze.theming.api.mergedWith
-import org.blaze.theming.api.withFallback
+import org.blaze.theming.api.*
 import org.slf4j.LoggerFactory
 import java.net.URLClassLoader
 import java.nio.file.Files
@@ -121,6 +112,14 @@ class ThemeRegistry(
     }
 
     /**
+     * Only the values the user actually persisted for a theme, with no defaults merged in. Palette
+     * resolution reads this so an option left untouched contributes nothing and the theme's own
+     * per-mode [BlazeThemeProvider.provide] value (or the mode's declared default) stands instead.
+     */
+    fun rawThemeConfig(id: String): ThemeConfig =
+        settingsRepository.settings.value.optionValues(id)
+
+    /**
      * Resolve the palette to apply for the given appearance mode: the active theme's tokens over
      * the built-in default, plus any validated colour the user picked in the theme's Options
      * form, finally completed from the stock Islands design-system values. A theme that does not
@@ -136,7 +135,8 @@ class ThemeRegistry(
         }
 
         // A configurable plugin adopts its persisted answers before painting, so non-color
-        // options (a shape toggle, a density select) can influence its own provide() result.
+        // options (a shape toggle, a density select) can influence its own provide() result. It
+        // reads the merged view (defaults + edits), which is what a plugin expects to see.
         val descriptors = (selected as? ConfigurableBlazeThemeProvider)?.optionDescriptors.orEmpty()
         val config = themeConfig(selected.id)
         if (selected is ConfigurableBlazeThemeProvider) {
@@ -150,11 +150,16 @@ class ThemeRegistry(
                 ThemePalette.Empty
             }
 
-        // Overlay chain: user's picked colours → theme → default theme → stock Islands tokens.
+        // Overlay chain: the user's *explicit* picks (raw, un-merged values) → theme → default
+        // theme → stock Islands tokens. Only keys the user actually touched are applied here; an
+        // untouched option resolves to [dark]'s authored default, so a dark-only color never
+        // overrides the light palette and vice versa.
+        val rawConfig = rawThemeConfig(selected.id)
         val overridden = applyAmbientIntensity(
-            applyColorOptions(provided, descriptors, config),
+            applyColorOptions(provided, descriptors, rawConfig, dark),
             descriptors,
-            config,
+            rawConfig,
+            dark,
         )
         return overridden
             .withFallback(defaultPalette(dark))
