@@ -37,6 +37,42 @@ interface DownloadRepository {
         /** Ephemeral auth headers for this transfer only; forwarded to the engine, never persisted. */
         credentials: Map<String, String> = emptyMap(),
     )
+
+    /**
+     * Inspects an HLS (`.m3u8`) playlist before adding it: lists variants and classifies protection without
+     * downloading any media. The Add Download dialog uses the verdict to raise a potential-DRM warning. [credentials]
+     * are ephemeral and never persisted. Acknowledging a warning never unlocks DRM circumvention.
+     */
+    suspend fun inspectHls(
+        url: String,
+        variantIndex: Int = -1,
+        credentials: Map<String, String> = emptyMap(),
+    ): org.blaze.download.api.HlsInspectionDto
+
+    /**
+     * Inspects a remote ZIP archive via byte ranges, returning its entry tree and whether selective
+     * retrieval is possible - without downloading the whole archive. [credentials] are ephemeral.
+     */
+    suspend fun inspectArchive(
+        url: String,
+        credentials: Map<String, String> = emptyMap(),
+    ): org.blaze.download.api.ArchiveInspectionDto
+
+    /**
+     * Queues a download described by an explicit [source] (an HLS playlist or a remote archive with a
+     * chosen entry selection), rather than inferring the handler from a bare URL. The typed source carries
+     * the variant/selection/DRM-choice the user made in the dialog; [credentials] reach only this transfer.
+     */
+    suspend fun addDownloadWithSource(
+        source: org.blaze.download.api.DownloadSource,
+        savePath: String,
+        name: String? = null,
+        totalSize: Long? = null,
+        scheduledAt: Long? = null,
+        priority: DownloadPriority? = null,
+        credentials: Map<String, String> = emptyMap(),
+    )
+
     suspend fun getDestinationPath(url: String, savePath: String, name: String? = null): String
     suspend fun pauseDownload(id: String)
     suspend fun resumeDownload(id: String)

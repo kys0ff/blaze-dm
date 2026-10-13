@@ -2,22 +2,12 @@ package org.blaze.service.transport
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import org.blaze.download.api.ApiErrorBody
-import org.blaze.download.api.ApiErrorCode
-import org.blaze.download.api.DownloadApiException
-import org.blaze.download.api.DownloadEvent
-import org.blaze.download.api.DownloadsApi
-import org.blaze.download.api.ApiHeaders
+import org.blaze.download.api.*
 import org.blaze.service.auth.ApiTokenStore
 import org.blaze.service.config.LocalApiSettings
 import org.blaze.service.mapping.toApiError
@@ -31,6 +21,7 @@ import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The loopback HTTP transport that exposes the public [DownloadsApi] to local clients.
@@ -97,7 +88,11 @@ class LocalApiServer(
         srv.start()
         server = srv
         running.set(true)
-        if (settings.apiLoggingEnabled) logger.info("Local download API listening on http://{}:{}", boundHost, boundPort)
+        if (settings.apiLoggingEnabled) logger.info(
+            "Local download API listening on http://{}:{}",
+            boundHost,
+            boundPort
+        )
     }
 
     fun stop() {
@@ -137,24 +132,24 @@ class LocalApiServer(
             return
         }
 
-        if (!path.startsWith(org.blaze.download.api.ApiVersion.BASE_PATH)) {
+        if (!path.startsWith(ApiVersion.BASE_PATH)) {
             return writeError(
                 exchange,
-                ApiErrorBody(ApiErrorCode.INVALID_REQUEST, "unknown API path; expected ${org.blaze.download.api.ApiVersion.BASE_PATH}/*"),
+                ApiErrorBody(ApiErrorCode.INVALID_REQUEST, "unknown API path; expected ${ApiVersion.BASE_PATH}/*"),
                 404,
             )
         }
-        val rel = path.removePrefix(org.blaze.download.api.ApiVersion.BASE_PATH).ifEmpty { "/" }
+        val rel = path.removePrefix(ApiVersion.BASE_PATH).ifEmpty { "/" }
 
         when {
             rel == "/health" && method == "GET" ->
-                writeJson(exchange, 200, HealthResponse(org.blaze.download.api.ApiVersion.CURRENT, "ok"), HealthResponse.serializer())
+                writeJson(exchange, 200, HealthResponse(ApiVersion.CURRENT, "ok"), HealthResponse.serializer())
 
             rel == "/capabilities" && method == "GET" ->
-                writeJson(exchange, 200, api.capabilities, org.blaze.download.api.ApiCapabilities.serializer())
+                writeJson(exchange, 200, api.capabilities, ApiCapabilities.serializer())
 
             rel == "/downloads" && method == "GET" -> withAuth(exchange) {
-                writeJson(exchange, 200, api.snapshot(), ListSerializer(org.blaze.download.api.DownloadDto.serializer()))
+                writeJson(exchange, 200, api.snapshot(), ListSerializer(DownloadDto.serializer()))
             }
 
             rel == "/downloads" && method == "POST" -> withAuth(exchange) {
@@ -174,12 +169,16 @@ class LocalApiServer(
                 val keyed = req.idempotencyKey?.let { req } ?: exchange.requestHeaders.getFirst("Idempotency-Key")
                     ?.let { req.copy(idempotencyKey = it) } ?: req
                 val created = runBlocking { api.create(keyed) }
-                writeJson(exchange, 201, created, org.blaze.download.api.DownloadDto.serializer())
+                writeJson(exchange, 201, created, DownloadDto.serializer())
             }
 
             rel == "/events" && method == "GET" -> withAuth(exchange) { streamEvents(exchange) }
 
-            rel.startsWith("/downloads/") -> handleById(exchange, method, rel.removePrefix("/downloads/").removePrefix("/"))
+            rel.startsWith("/downloads/") -> handleById(
+                exchange,
+                method,
+                rel.removePrefix("/downloads/").removePrefix("/")
+            )
 
             else -> writeError(exchange, ApiErrorBody(ApiErrorCode.INVALID_REQUEST, "no such endpoint: $rel"), 404)
         }
@@ -192,20 +191,24 @@ class LocalApiServer(
         }
         val id = segments[0]
         val action = segments.getOrNull(1)
-        when {
-            method == "GET" && action == null -> {
+        when (method) {
+            "GET" if action == null -> {
                 val dto = runBlocking { api.get(id) }
-                    ?: return@withAuth writeError(exchange, ApiErrorBody(ApiErrorCode.DOWNLOAD_NOT_FOUND, "no such download"), 404)
-                writeJson(exchange, 200, dto, org.blaze.download.api.DownloadDto.serializer())
+                    ?: return@withAuth writeError(
+                        exchange,
+                        ApiErrorBody(ApiErrorCode.DOWNLOAD_NOT_FOUND, "no such download"),
+                        404
+                    )
+                writeJson(exchange, 200, dto, DownloadDto.serializer())
             }
 
-            method == "DELETE" && action == null -> {
+            "DELETE" if action == null -> {
                 val deleteFiles = exchange.requestURI.query?.contains("deleteFiles=true") == true
                 runBlocking { api.remove(id, deleteFiles) }
                 writeJson(exchange, 200, OkHttp(), OkHttp.serializer())
             }
 
-            method == "POST" && action != null -> {
+            "POST" if action != null -> {
                 enforceRate(exchange)
                 runBlocking {
                     when (action) {
@@ -218,7 +221,6 @@ class LocalApiServer(
                 }
                 writeJson(exchange, 200, OkHttp(), OkHttp.serializer())
             }
-
             else -> writeError(exchange, ApiErrorBody(ApiErrorCode.INVALID_REQUEST, "unsupported method/path"), 405)
         }
     }
@@ -230,7 +232,7 @@ class LocalApiServer(
         if (hostHeader.isNullOrEmpty()) return false
         val bare = hostHeader.removeSurrounding("[", "]")
         return bare == "localhost" || bare == "127.0.0.1" || bare == "::1" ||
-            bare == boundHost || runCatching { InetAddress.getByName(bare).isLoopbackAddress }.getOrDefault(false)
+                bare == boundHost || runCatching { InetAddress.getByName(bare).isLoopbackAddress }.getOrDefault(false)
     }
 
     private fun validateOrigin(exchange: HttpExchange): Boolean {
@@ -277,7 +279,7 @@ class LocalApiServer(
         synchronized(lock) {
             if (sessionApproved.containsKey(client.id)) return true
             val decision = try {
-                runBlocking { withTimeoutOrNull(CONSENT_TIMEOUT_MS) { consentGate.decide(client) } }
+                runBlocking { withTimeoutOrNull(CONSENT_TIMEOUT_MS.milliseconds) { consentGate.decide(client) } }
             } catch (e: Exception) {
                 logger.warn("Client consent for {} failed; treating as a refusal", client.id, e)
                 null
@@ -306,7 +308,7 @@ class LocalApiServer(
     private fun clientIdentity(exchange: HttpExchange): ClientIdentity {
         val agent = sanitize(exchange.requestHeaders.getFirst("User-Agent"), max = 120)
         val id = sanitize(exchange.requestHeaders.getFirst(ApiHeaders.CLIENT_ID), max = 80)
-            ?: "agent:" + (agent ?: exchange.remoteAddress.address.hostAddress)
+            ?: ("agent:" + (agent ?: exchange.remoteAddress.address.hostAddress))
         val name = sanitize(exchange.requestHeaders.getFirst(ApiHeaders.CLIENT_NAME), max = 80)
             ?: agent
             ?: "Unknown client"
@@ -344,7 +346,7 @@ class LocalApiServer(
             val collect = launch { api.events().collect { channel.trySend(it) } }
             try {
                 while (isActive) {
-                    val ev = withTimeoutOrNull(HEARTBEAT_MS) { channel.receiveCatching().getOrNull() }
+                    val ev = withTimeoutOrNull(HEARTBEAT_MS.milliseconds) { channel.receiveCatching().getOrNull() }
                     val payload = if (ev != null) {
                         "data: ${json.encodeToString(DownloadEvent.serializer(), ev)}\n\n"
                     } else {
@@ -415,6 +417,7 @@ class LocalApiServer(
         ApiErrorCode.PERMISSION_DENIED -> 403
         ApiErrorCode.INVALID_REQUEST, ApiErrorCode.INVALID_URL, ApiErrorCode.INVALID_TORRENT,
         ApiErrorCode.UNSUPPORTED_SOURCE -> 400
+
         ApiErrorCode.CONFLICT, ApiErrorCode.ALREADY_EXISTS -> 409
         ApiErrorCode.RATE_LIMITED -> 429
         ApiErrorCode.PAYLOAD_TOO_LARGE -> 413
@@ -439,6 +442,7 @@ class LocalApiServer(
  */
 private class SlidingWindowRateLimiter(private val windowMillis: Long, private val maxPerWindow: Int) {
     private class Window(var startMs: Long, var count: Int)
+
     private val windows = ConcurrentHashMap<String, Window>()
 
     fun tryAcquire(key: String): Boolean {

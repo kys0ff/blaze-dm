@@ -57,6 +57,11 @@ The main window, the way it's meant to be seen. Drop your captures into the
 
 - **Multiprotocol** — plain HTTP(S) downloads alongside a native BitTorrent
   client, so one app covers both worlds.
+- **HLS streams** — a `.m3u8` playlist is inspected, a quality picked, and the
+  segments assembled into one playable file (VOD, with a DRM warning before any
+  protected stream).
+- **Remote archive browsing** — a `.zip` on a range-serving host is listed over
+  the network so you can pull just the files you want, no whole-archive download.
 - **Segmented & parallel** — big files get split into chunks and pulled with
   concurrent connections for maximum throughput.
 - **Resume & portability** — interrupted downloads pick up where they left off,
@@ -163,6 +168,12 @@ Settings → Themes / Link Handlers and it's live.
 
 Author guide — contracts, project setup, worked examples, sandboxing model and checklists — is documented in
 **[`docs/EXTENSIONS.md`](docs/EXTENSIONS.md)**.
+
+## Streaming & archive downloads
+
+Blaze can save an **HLS (`.m3u8`) stream** as a single file and **browse a remote ZIP archive** to fetch
+only selected members. Usage, capabilities, the DRM-warning behaviour, the ZIP-vs-ISO distinction and the
+architecture are documented in **[`docs/HLS_AND_ARCHIVE.md`](docs/HLS_AND_ARCHIVE.md)**.
 
 ## License
 

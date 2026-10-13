@@ -270,6 +270,8 @@ class WindowSystemMenuTest {
             override suspend fun setPriority(id: String, priority: DownloadPriority) = TODO()
             override suspend fun probe(request: NewDownloadRequest) = TODO()
             override suspend fun prepareTorrent(url: String, credentials: Map<String, String>) = TODO()
+            override suspend fun inspectHls(url: String, variantIndex: Int, credentials: Map<String, String>) = TODO()
+            override suspend fun inspectArchive(url: String, credentials: Map<String, String>) = TODO()
             override suspend fun detectPortable(path: String) = TODO()
             override suspend fun importPortable(artifactPath: String, destinationDir: String) = TODO()
             override suspend fun shutdown() {

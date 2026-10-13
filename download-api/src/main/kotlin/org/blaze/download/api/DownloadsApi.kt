@@ -71,6 +71,30 @@ interface DownloadsApi {
     suspend fun prepareTorrent(url: String, credentials: Map<String, String> = emptyMap()): TorrentPreviewDto?
 
     /**
+     * Read-only probe of an HLS (`.m3u8`) resource: resolves master->variant->media, lists the selectable
+     * variants and classifies protection *without* downloading any media segment. The Add Download flow uses
+     * the verdict to show a potential-DRM warning before it enqueues. [credentials] are ephemeral auth
+     * headers for this inspection only - never stored or echoed. Acknowledging a warning never unlocks DRM
+     * circumvention; it only records the user's choice to continue with a supported download.
+     */
+    suspend fun inspectHls(
+        url: String,
+        variantIndex: Int = -1,
+        credentials: Map<String, String> = emptyMap(),
+    ): HlsInspectionDto
+
+    /**
+     * Read-only probe of a remote ZIP archive via byte ranges: reads the central directory and returns its
+     * entry tree plus whether selective retrieval is possible, without downloading the whole archive. When
+     * ranges are unsupported the result says so the caller can offer a full-download fallback rather than
+     * fetch everything. [credentials] are ephemeral and never persisted.
+     */
+    suspend fun inspectArchive(
+        url: String,
+        credentials: Map<String, String> = emptyMap(),
+    ): ArchiveInspectionDto
+
+    /**
      * Reads a moved artifact at [path] as a candidate portable download and returns a display-only summary
      * (never any secret material), or null when it is not a Blaze portable artifact.
      */

@@ -38,4 +38,8 @@ data class ApiCapabilities(
     val prioritySupport: PrioritySupport,
     val authentication: AuthMode,
     val requiresLocalhost: Boolean,
+    /** The engine can download HLS (`.m3u8`) streams and inspect them for protection before starting. */
+    val supportsHls: Boolean = false,
+    /** The engine can inspect a remote ZIP via byte ranges and selectively retrieve entries. */
+    val supportsRemoteArchiveInspection: Boolean = false,
 )

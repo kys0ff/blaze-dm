@@ -17,7 +17,7 @@ import org.blaze.data.AppSettingsRepository
 import org.blaze.domain.repository.DownloadFile
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.TorrentPreview
-import org.blaze.download.api.DownloadPriority
+import org.blaze.download.api.*
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.screens.downloads.components.add.*
@@ -52,6 +52,18 @@ fun AddDownloadDialog(
     ) -> Unit,
     onFetchMetadata: suspend (url: String, credentials: Map<String, String>) -> DownloadMetadata?,
     onPrepareTorrent: suspend (url: String, credentials: Map<String, String>) -> TorrentPreview?,
+    onInspectHls: suspend (url: String, credentials: Map<String, String>) -> HlsInspectionDto? = { _, _ -> null },
+    onInspectArchive: suspend (url: String, credentials: Map<String, String>) -> ArchiveInspectionDto? = { _, _ -> null },
+    /** Queues a source the dialog validated by inspection (HLS variant / archive entry selection). */
+    onAddTyped: (
+        source: DownloadSource,
+        destination: String,
+        name: String?,
+        totalSize: Long?,
+        scheduledAt: Long?,
+        priority: DownloadPriority,
+        credentials: Map<String, String>,
+    ) -> Unit = { _, _, _, _, _, _, _ -> },
     initialSource: String? = null
 ) {
     val settingsRepository = koinInject<EngineSettingsRepository>()
@@ -235,6 +247,78 @@ fun AddDownloadDialog(
         }
     }
 
+    // Inspects an `.m3u8` link the user typed as an HLS stream. The engine's verdict — not the
+    // filename — decides what happens: a playable VOD goes to the quality review, a stream that looks
+    // DRM/uncertain-protected raises the warning first, and a live/non-stream/error is reported plainly.
+    // Nothing here downloads the playlist as a file; a failed probe keeps the user on the input step.
+    fun inspectHlsAndReview(source: String) {
+        state.isFetching = true
+        scope.launch {
+            val inspection = runCatching { onInspectHls(source, state.effectiveCredentials) }.getOrNull()
+            state.isFetching = false
+            if (inspection == null) {
+                state.fetchError = dStrings.hls.notAStream // transport could not reach the playlist
+                return@launch
+            }
+            state.hlsInspection = inspection
+            state.selectedHlsVariant = inspection.selectedVariantIndex
+            when (inspection.status) {
+                HlsInspectStatusDto.Playable -> {
+                    state.reviewedKind = AddDownloadState.ReviewedKind.HLS
+                    state.step = 2
+                }
+                // Credible DRM/uncertain protection: warn before anything starts. The warning stays up
+                // over the input step; only "Continue" advances, "Cancel" returns here without a download.
+                HlsInspectStatusDto.NeedsDrmConsent -> state.showDrmWarning = true
+                else -> {
+                    state.hlsInspection = null
+                    state.fetchError = inspection.message ?: dStrings.hls.notAStream
+                }
+            }
+        }
+    }
+
+    // Inspects a remote `.zip` link via byte ranges. A browsable, range-served archive opens the entry
+    // browser; one that parses but will not serve ranges (or is only readable in full) requires an
+    // explicit acknowledgement before the whole archive is fetched; a non-archive is reported plainly.
+    fun inspectArchiveAndReview(source: String) {
+        state.isFetching = true
+        scope.launch {
+            val inspection = runCatching { onInspectArchive(source, state.effectiveCredentials) }.getOrNull()
+            state.isFetching = false
+            if (inspection == null) {
+                state.fetchError = dStrings.archive.unavailable("")
+                return@launch
+            }
+            when (inspection) {
+                is ArchiveInspectionDto.Browsable -> {
+                    state.archiveInspection = inspection
+                    state.reviewedKind = AddDownloadState.ReviewedKind.ARCHIVE
+                    state.pendingArchiveFullDownloadReason =
+                        if (inspection.selectiveSupported) null else inspection.reasonIfUnsupported
+                    // Default to "everything selected" so the tree reads fully-checked, mirroring the
+                    // multi-file torrent review; deselecting narrows the retrieval.
+                    if (inspection.selectiveSupported) {
+                        state.selectedArchiveEntries =
+                            inspection.entries.filter { !it.isDirectory && it.extractable }.map { it.name }.toSet()
+                    }
+                    state.step = 2
+                }
+
+                is ArchiveInspectionDto.FullDownloadOnly -> {
+                    state.archiveInspection = inspection
+                    state.reviewedKind = AddDownloadState.ReviewedKind.ARCHIVE
+                    state.pendingArchiveFullDownloadReason = inspection.reason
+                    state.step = 2
+                }
+
+                is ArchiveInspectionDto.Unavailable -> {
+                    state.fetchError = dStrings.archive.unavailable(inspection.reason)
+                }
+            }
+        }
+    }
+
     fun fetch() {
         if (!state.canFetch || state.isFetching) return
         state.fetchError = null
@@ -274,6 +358,12 @@ fun AddDownloadDialog(
             // certainly didn't want — so the outcome is confirmed before a request is spent, and
             // only a "yes" turns it into the plain-page download they asked for.
             handlers.isEmpty() -> when {
+                // A playlist-shaped link is inspected as a stream before anything is queued; the engine's
+                // verdict (not the extension) decides playable / DRM-warning / unsupported.
+                isHlsPlaylistUrl(source) -> inspectHlsAndReview(source)
+                // A zip-shaped link is inspected through byte ranges so its entries can be browsed and
+                // picked without pulling the whole archive.
+                isRemoteArchiveUrl(source) -> inspectArchiveAndReview(source)
                 state.looksLikeWebPage -> state.pendingPlainPageSource = source
                 // A `.torrent` link with the preview switch on: download, review and add as a local torrent.
                 torrentFilePreviewEnabled && isHttpTorrentFileUrl(source) -> prepareTorrentAndReview(source)
@@ -312,6 +402,28 @@ fun AddDownloadDialog(
         val scheduledAt = if (delayMinutes != null && delayMinutes > 0) {
             System.currentTimeMillis() + delayMinutes * 60 * 1000
         } else null
+
+        // An inspected HLS stream or remote archive is queued as a typed source carrying the choices the
+        // user made in the review step (variant + DRM acknowledgement, or entry selection). This bypasses
+        // the bare-URL inference so the handler is the one the inspection validated, never a guess.
+        typedDownloadSource(state)?.let { source ->
+            val announcedBytes = when (state.reviewedKind) {
+                AddDownloadState.ReviewedKind.HLS -> state.hlsInspection?.estimatedTotalBytes
+                AddDownloadState.ReviewedKind.ARCHIVE -> state.archiveSelectedBytes
+                AddDownloadState.ReviewedKind.PLAIN -> null
+            }
+            onAddTyped(
+                source,
+                state.destination.text,
+                state.metadata?.name,
+                announcedBytes,
+                scheduledAt,
+                state.priority,
+                state.effectiveCredentials,
+            )
+            onDismiss()
+            return
+        }
 
         if (state.isBatch) {
             state.batchItems.filter { it.isSelected }.forEach { item ->
@@ -363,8 +475,19 @@ fun AddDownloadDialog(
     } else {
         val enabled = if (state.isBatch) {
             state.batchItems.any { it.isSelected }
-        } else {
-            state.metadata?.files == null || state.selectedFileIndices.isNotEmpty()
+        } else when (state.reviewedKind) {
+            // An archive must be either narrowed to a non-empty selection or explicitly acknowledged as
+            // a whole-archive fetch when ranges are unavailable - never a silent large download.
+            AddDownloadState.ReviewedKind.ARCHIVE ->
+                if (state.archiveCanSelect) state.selectedArchiveEntries.isNotEmpty()
+                else state.archiveDownloadAllAcknowledged
+
+            AddDownloadState.ReviewedKind.HLS ->
+                // A stream needs no file selection; it only needs a destination that can hold the estimate.
+                true
+
+            AddDownloadState.ReviewedKind.PLAIN ->
+                state.metadata?.files == null || state.selectedFileIndices.isNotEmpty()
         } && !state.destinationBlocked
         Triple(dStrings.addAction, ::submit, enabled)
     }
@@ -382,6 +505,12 @@ fun AddDownloadDialog(
             )
 
             state.isBatch -> AddDownloadListView(state = state)
+
+            state.reviewedKind == AddDownloadState.ReviewedKind.HLS ->
+                AddDownloadHlsReviewView(state = state)
+
+            state.reviewedKind == AddDownloadState.ReviewedKind.ARCHIVE ->
+                AddDownloadArchiveView(state = state)
 
             else -> AddDownloadMetadataView(state = state)
         }
@@ -438,6 +567,23 @@ fun AddDownloadDialog(
                 state.pendingPlainPageSource = null
                 probeDirectly(source)
             }
+        )
+    }
+
+    // Potential-DRM warning raised after an HLS inspection classified the stream as protected or of
+    // uncertain protection. Continuing records the acknowledgement and moves to the quality review so a
+    // normal, supported download can be attempted; cancelling leaves the add dialog on its input step and
+    // starts nothing. Acknowledging never unlocks any DRM circumvention.
+    if (state.showDrmWarning) {
+        DrmWarningDialog(
+            protection = state.hlsInspection?.protection,
+            onDismiss = { state.showDrmWarning = false },
+            onContinue = {
+                state.showDrmWarning = false
+                state.drmAcknowledged = true
+                state.reviewedKind = AddDownloadState.ReviewedKind.HLS
+                state.step = 2
+            },
         )
     }
 }

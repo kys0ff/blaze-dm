@@ -44,6 +44,8 @@ fun DownloadsScreenContent(
     onSetDetailsVisible: (Boolean) -> Unit,
     onFetchMetadata: suspend (String, Map<String, String>) -> DownloadMetadata?,
     onPrepareTorrent: suspend (String, Map<String, String>) -> TorrentPreview? = { _, _ -> null },
+    onInspectHls: suspend (String, Map<String, String>) -> org.blaze.download.api.HlsInspectionDto? = { _, _ -> null },
+    onInspectArchive: suspend (String, Map<String, String>) -> org.blaze.download.api.ArchiveInspectionDto? = { _, _ -> null },
     onResolveDestinationPath: suspend (String, String, String?) -> String,
     onDetectPortable: suspend (String) -> PortableInfo?,
     onImportPortable: suspend (String, String) -> Boolean,
@@ -346,7 +348,25 @@ fun DownloadsScreenContent(
                 }
             },
             onFetchMetadata = onFetchMetadata,
-            onPrepareTorrent = onPrepareTorrent
+            onPrepareTorrent = onPrepareTorrent,
+            onInspectHls = onInspectHls,
+            onInspectArchive = onInspectArchive,
+            // A source the dialog validated by inspection (HLS variant choice / archive entry
+            // selection) is queued as a typed download straight through the repository; the engine
+            // resolves output naming and collisions for its assembled file or entry folder.
+            onAddTyped = { source, destination, name, totalSize, scheduledAt, priority, credentials ->
+                onEvent(
+                    DownloadsEvent.AddDownloadTyped(
+                        source = source,
+                        savePath = destination,
+                        name = name,
+                        totalSize = totalSize,
+                        scheduledAt = scheduledAt,
+                        priority = priority,
+                        credentials = credentials,
+                    )
+                )
+            }
         )
     }
 

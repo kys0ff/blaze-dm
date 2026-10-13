@@ -76,6 +76,22 @@ class DownloadsScreen : Screen {
                     onSetDetailsVisible = detailsModel::setVisible,
                     onFetchMetadata = { url, credentials -> screenModel.fetchMetadata(url, credentials) },
                     onPrepareTorrent = { url, credentials -> screenModel.prepareTorrent(url, credentials) },
+                    onInspectHls = { url, credentials ->
+                        runCatching {
+                            screenModel.inspectHls(
+                                url,
+                                credentials = credentials
+                            )
+                        }.getOrNull()
+                    },
+                    onInspectArchive = { url, credentials ->
+                        runCatching {
+                            screenModel.inspectArchive(
+                                url,
+                                credentials
+                            )
+                        }.getOrNull()
+                    },
                     onResolveDestinationPath = { url, savePath, name -> screenModel.resolveDestinationPath(url, savePath, name) },
                     onDetectPortable = { path -> screenModel.detectPortable(path) },
                     onImportPortable = { artifact, dest -> screenModel.importPortable(artifact, dest) },

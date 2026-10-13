@@ -6,21 +6,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import org.blaze.download.api.ApiCapabilities
-import org.blaze.download.api.ApiErrorBody
-import org.blaze.download.api.ApiErrorCode
-import org.blaze.download.api.AuthMode
-import org.blaze.download.api.BandwidthControlSupport
-import org.blaze.download.api.DownloadDto
-import org.blaze.download.api.DownloadEvent
-import org.blaze.download.api.DownloadMetadataDto
-import org.blaze.download.api.DownloadPriority
-import org.blaze.download.api.DownloadState
-import org.blaze.download.api.DownloadsApi
-import org.blaze.download.api.NewDownloadRequest
-import org.blaze.download.api.PortableInfoDto
-import org.blaze.download.api.PrioritySupport
-import org.blaze.download.api.TorrentPreviewDto
+import org.blaze.download.api.*
 import org.blaze.engine.api.DownloadEngine
 import org.blaze.engine.api.DownloadId
 import org.blaze.engine.api.DownloadTask
@@ -64,7 +50,7 @@ class ApplicationDownloadService(
     private val logger = LoggerFactory.getLogger(ApplicationDownloadService::class.java)
 
     override val capabilities: ApiCapabilities = ApiCapabilities(
-        apiVersion = org.blaze.download.api.ApiVersion.CURRENT,
+        apiVersion = ApiVersion.CURRENT,
         supportsHttp = true,
         supportsHttps = true,
         supportsTorrent = true,
@@ -79,6 +65,8 @@ class ApplicationDownloadService(
         prioritySupport = PrioritySupport.EXPLICIT,
         authentication = authMode,
         requiresLocalhost = true,
+        supportsHls = true,
+        supportsRemoteArchiveInspection = true,
     )
 
     private val events = MutableSharedFlow<DownloadEvent>(
@@ -99,7 +87,7 @@ class ApplicationDownloadService(
         scope.launch { projectEvents() }
     }
 
-    override val apiVersion: Int get() = org.blaze.download.api.ApiVersion.CURRENT
+    override val apiVersion: Int get() = ApiVersion.CURRENT
 
     override fun snapshot(): List<DownloadDto> = engine.observeAllTasks().value.map { it.toDto() }
 
@@ -165,21 +153,26 @@ class ApplicationDownloadService(
             )
     }
 
-    private fun sourceInfoOf(source: org.blaze.download.api.DownloadSource): org.blaze.download.api.SourceInfo =
+    private fun sourceInfoOf(source: DownloadSource): SourceInfo =
         when (source) {
-            is org.blaze.download.api.DownloadSource.Url -> org.blaze.download.api.SourceInfo(
-                kind = if (source.url.startsWith("https", true)) org.blaze.download.api.SourceKind.HTTPS
-                else org.blaze.download.api.SourceKind.HTTP,
+            is DownloadSource.Url -> SourceInfo(
+                kind = if (source.url.startsWith("https", true)) SourceKind.HTTPS
+                else SourceKind.HTTP,
                 locator = source.url,
             )
-            is org.blaze.download.api.DownloadSource.Magnet ->
-                org.blaze.download.api.SourceInfo(org.blaze.download.api.SourceKind.MAGNET, source.uri)
-            is org.blaze.download.api.DownloadSource.TorrentFile ->
+            is DownloadSource.Magnet ->
+                SourceInfo(SourceKind.MAGNET, source.uri)
+            is DownloadSource.TorrentFile ->
                 if (source.path.startsWith("http://", true) || source.path.startsWith("https://", true)) {
-                    org.blaze.download.api.SourceInfo(org.blaze.download.api.SourceKind.TORRENT_URL, source.path)
+                    SourceInfo(SourceKind.TORRENT_URL, source.path)
                 } else {
-                    org.blaze.download.api.SourceInfo(org.blaze.download.api.SourceKind.TORRENT_FILE, source.path)
+                    SourceInfo(SourceKind.TORRENT_FILE, source.path)
                 }
+            is DownloadSource.Hls ->
+                SourceInfo(SourceKind.HLS, source.url)
+
+            is DownloadSource.RemoteArchive ->
+                SourceInfo(SourceKind.ZIP_ARCHIVE, source.url)
         }
 
     private fun findActiveDuplicate(engineRequest: org.blaze.engine.api.DownloadRequest): DownloadTask? {
@@ -206,6 +199,11 @@ class ApplicationDownloadService(
             }
             "torrent|$src|${request.destination}"
         }
+        is org.blaze.engine.api.DownloadRequest.Hls -> "hls|${request.playlistUrl}|${request.destination}"
+        is org.blaze.engine.api.DownloadRequest.Archive ->
+            "archive|${request.url}|${request.destination}|${
+                request.selectedEntries?.sorted()?.joinToString(",") ?: "*"
+            }"
     }
 
     override suspend fun start(id: String) = guard(id) { engine.start(DownloadId(id)) }
@@ -227,9 +225,9 @@ class ApplicationDownloadService(
      */
     private suspend fun guard(id: String, block: suspend () -> Unit) {
         if (engine.getTask(DownloadId(id)) == null) {
-            throw org.blaze.download.api.DownloadApiException(ApiErrorCode.DOWNLOAD_NOT_FOUND, "no such download: $id")
+            throw DownloadApiException(ApiErrorCode.DOWNLOAD_NOT_FOUND, "no such download: $id")
         }
-        runCatching { block() }.getOrElse { throw org.blaze.download.api.DownloadApiException(it.toApiError(), it) }
+        runCatching { block() }.getOrElse { throw DownloadApiException(it.toApiError(), it) }
     }
 
     override suspend fun shutdown() {
@@ -244,6 +242,19 @@ class ApplicationDownloadService(
 
     override suspend fun prepareTorrent(url: String, credentials: Map<String, String>): TorrentPreviewDto? =
         engine.fetchTorrentFile(url, credentials)?.toDto()
+
+    override suspend fun inspectHls(
+        url: String,
+        variantIndex: Int,
+        credentials: Map<String, String>,
+    ): HlsInspectionDto =
+        engine.inspectHls(url, variantIndex, credentials).toDto()
+
+    override suspend fun inspectArchive(
+        url: String,
+        credentials: Map<String, String>,
+    ): ArchiveInspectionDto =
+        engine.inspectArchive(url, credentials).toDto()
 
     override suspend fun detectPortable(path: String): PortableInfoDto? =
         engine.detectPortableDownload(java.nio.file.Path.of(path))?.toDto()

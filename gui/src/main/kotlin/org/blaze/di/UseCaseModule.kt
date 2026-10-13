@@ -9,6 +9,9 @@ val useCaseModule = module {
     factory { PrepareTorrentUseCase(get()) }
     factory { AddDownloadUseCase(get()) }
     factory { GetDestinationPathUseCase(get()) }
+    factory { InspectHlsUseCase(get()) }
+    factory { InspectArchiveUseCase(get()) }
+    factory { AddDownloadWithSourceUseCase(get()) }
     factory { PauseDownloadUseCase(get()) }
     factory { ResumeDownloadUseCase(get()) }
     factory { CancelDownloadUseCase(get()) }

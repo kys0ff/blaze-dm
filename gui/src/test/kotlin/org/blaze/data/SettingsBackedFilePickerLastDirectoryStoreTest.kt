@@ -44,7 +44,7 @@ class SettingsBackedFilePickerLastDirectoryStoreTest {
     private fun awaitOnDisk(
         context: FilePickerContext,
         path: Path
-    ) { // TODO: warning: Value of parameter 'context' is always 'FilePickerContext.ExtensionJar'
+    ) {
         repeat(200) {
             if (settingsOnDisk()?.filePickerLastDirectories?.get(context.name) == path.toString()) return
             Thread.sleep(10)

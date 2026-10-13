@@ -4,19 +4,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
-import org.blaze.engine.api.DownloadEngine
-import org.blaze.engine.api.DownloadFileMetadata
-import org.blaze.engine.api.DownloadId
-import org.blaze.engine.api.DownloadMetadata
-import org.blaze.engine.api.DownloadPriority
-import org.blaze.engine.api.DownloadRequest
-import org.blaze.engine.api.DownloadState
-import org.blaze.engine.api.DownloadTask
-import org.blaze.engine.api.PortableDownloadInfo
-import org.blaze.engine.api.TorrentFilePreview
-import java.time.Instant
+import org.blaze.engine.api.*
 import java.nio.file.Path
-import java.util.Collections
+import java.time.Instant
+import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -33,7 +24,17 @@ class FakeEngine(
     private val portableResult: PortableDownloadInfo? = null,
     private val importResult: DownloadId? = null,
     private val torrentFilePreview: TorrentFilePreview? = null,
+    private val hlsInspection: HlsInspection? = null,
+    private val archiveInspection: ArchiveInspection? = null,
 ) : DownloadEngine {
+
+    /** The last HLS (url, variantIndex, headers) handed to [inspectHls], so tests can assert forwarding. */
+    var lastHlsInspectionRequest: Triple<String, Int, Map<String, String>>? = null
+        private set
+
+    /** The last archive (url, headers) handed to [inspectArchive]. */
+    var lastArchiveInspectionRequest: Pair<String, Map<String, String>>? = null
+        private set
 
     /** The last (url, credentials) pair handed to [fetchTorrentFile], so tests can assert the forwarding. */
     var lastTorrentFileRequest: Pair<String, Map<String, String>>? = null
@@ -68,6 +69,20 @@ class FakeEngine(
     }
 
     override suspend fun detectPortableDownload(path: Path): PortableDownloadInfo? = portableResult
+
+    override suspend fun inspectHls(
+        url: String,
+        variantIndex: Int,
+        headers: Map<String, String>,
+    ): HlsInspection {
+        lastHlsInspectionRequest = Triple(url, variantIndex, headers)
+        return requireNotNull(hlsInspection) { "FakeEngine has no HLS inspection configured" }
+    }
+
+    override suspend fun inspectArchive(url: String, headers: Map<String, String>): ArchiveInspection {
+        lastArchiveInspectionRequest = url to headers
+        return requireNotNull(archiveInspection) { "FakeEngine has no archive inspection configured" }
+    }
 
     override suspend fun importPortableDownload(artifact: Path, destination: Path): DownloadId? = importResult
 

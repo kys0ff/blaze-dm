@@ -6,10 +6,10 @@ import org.blaze.download.api.SourceInfo
 import org.blaze.download.api.SourceKind
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadTask
-import org.blaze.engine.api.DownloadState as EngineState
+import org.blaze.engine.api.TorrentSource
 import org.blaze.download.api.DownloadPriority as ApiPriority
 import org.blaze.engine.api.DownloadPriority as EnginePriority
-import org.blaze.engine.api.TorrentSource
+import org.blaze.engine.api.DownloadState as EngineState
 
 /**
  * Converts an engine [DownloadTask] into the client-safe [DownloadDto].
@@ -92,6 +92,17 @@ private fun DownloadRequest.toSourceInfo(): SourceInfo = when (this) {
         }
         is TorrentSource.Url -> SourceInfo(SourceKind.TORRENT_URL, s.url)
     }
+    is DownloadRequest.Hls -> SourceInfo(
+        kind = SourceKind.HLS,
+        locator = playlistUrl,
+        mayRequireCredentials = headers.keys.any { it.equals("Authorization", true) || it.equals("Cookie", true) },
+    )
+
+    is DownloadRequest.Archive -> SourceInfo(
+        kind = SourceKind.ZIP_ARCHIVE,
+        locator = url,
+        mayRequireCredentials = headers.keys.any { it.equals("Authorization", true) || it.equals("Cookie", true) },
+    )
 }
 
 /** True when the task is in a terminal state, used by the event diff to decide completion emissions. */

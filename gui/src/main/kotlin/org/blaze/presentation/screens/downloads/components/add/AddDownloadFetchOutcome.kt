@@ -31,8 +31,28 @@ internal fun isHttpSource(source: String): Boolean =
  */
 internal fun isHttpTorrentFileUrl(source: String): Boolean {
     val trimmed = source.trim()
-    if (!isHttpSource(trimmed)) return false
-    return trimmed.substringBefore('?').endsWith(".torrent", ignoreCase = true)
+    return isHttpSource(trimmed) && trimmed.substringBefore('?').endsWith(".torrent", ignoreCase = true)
+}
+
+/**
+ * True when an http(s) link reads as an HLS playlist by its path ending. This is only a
+ * *pre-inspection hint* — the dialog still calls `inspectHls` and routes by the parsed verdict
+ * (master vs media, protection, VOD vs live), never by this ending alone, exactly as the `.torrent`
+ * hint above is confirmed by a real probe before it becomes a torrent download.
+ */
+internal fun isHlsPlaylistUrl(source: String): Boolean {
+    val trimmed = source.trim()
+    return isHttpSource(trimmed) && trimmed.substringBefore('?').endsWith(".m3u8", ignoreCase = true)
+}
+
+/**
+ * True when an http(s) link reads as a remote ZIP archive by its path ending. Like [isHlsPlaylistUrl]
+ * it only decides whether to *attempt* an archive inspection; [org.blaze.domain.repository.DownloadRepository.inspectArchive]
+ * then determines from the central directory whether the resource really is a browsable archive.
+ */
+internal fun isRemoteArchiveUrl(source: String): Boolean {
+    val trimmed = source.trim()
+    return isHttpSource(trimmed) && trimmed.substringBefore('?').endsWith(".zip", ignoreCase = true)
 }
 
 /**

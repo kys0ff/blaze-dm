@@ -8,6 +8,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.download.api.DownloadPriority
+import org.blaze.download.api.DownloadSource
 import org.blaze.i18n.BlazeStrings
 import org.blaze.osintegration.ExternalOpenParser
 import org.blaze.resolver.api.ResolvedLink
@@ -98,6 +99,53 @@ class AddDownloadState(
      */
     var detectedHandlers by mutableStateOf<List<LoadedResolver>>(emptyList())
 
+    // ── HLS / remote-archive inspection ────────────────────────────────────────
+    // These are only populated after a validated inspection (never by filename alone): the dialog
+    // probes an .m3u8 or .zip-shaped link, and the engine's verdict decides what step 2 renders and
+    // what typed [org.blaze.download.api.DownloadSource] submit() queues.
+
+    /** Which review body step 2 renders once inspection has classified the source. */
+    enum class ReviewedKind { PLAIN, HLS, ARCHIVE }
+
+    var reviewedKind by mutableStateOf(ReviewedKind.PLAIN)
+
+    /** The `.m3u8` inspection verdict, or null while nothing has been inspected (or it was rejected). */
+    var hlsInspection by mutableStateOf<org.blaze.download.api.HlsInspectionDto?>(null)
+
+    /** The master-playlist variant the user picked; -1 lets the engine choose the highest bandwidth. */
+    var selectedHlsVariant by mutableStateOf(-1)
+
+    /**
+     * Whether the user acknowledged the potential-DRM warning for this attempt. It gates only what
+     * gets reported back — acknowledging never unlocks DRM circumvention or key extraction.
+     */
+    var drmAcknowledged by mutableStateOf(false)
+
+    /** True while the potential-DRM warning is on screen, awaiting Continue or Cancel. */
+    var showDrmWarning by mutableStateOf(false)
+
+    /** The remote-ZIP inspection result, or null when nothing has been inspected (or it was rejected). */
+    var archiveInspection by mutableStateOf<org.blaze.download.api.ArchiveInspectionDto?>(null)
+
+    /** Names of the archive members the user chose to retrieve; empty means "the whole archive". */
+    var selectedArchiveEntries by mutableStateOf<Set<String>>(emptySet())
+
+    /**
+     * Explicit opt-in to download the whole archive, required when selective retrieval is impossible
+     * (the host will not serve byte ranges) so a large fetch is never silently triggered by "Download".
+     */
+    var archiveDownloadAllAcknowledged by mutableStateOf(false)
+
+    /** True when the parsed archive actually supports picking individual members (ranges are served). */
+    val archiveCanSelect: Boolean
+        get() = (archiveInspection as? org.blaze.download.api.ArchiveInspectionDto.Browsable)?.selectiveSupported == true
+
+    /**
+     * Set when the archive parsed but selective retrieval is impossible: holds the reason so the dialog
+     * can offer an explicit, user-confirmed full-archive download rather than silently fetching it all.
+     */
+    var pendingArchiveFullDownloadReason by mutableStateOf<String?>(null)
+
     val batchItems = mutableStateListOf<BatchDownloadItem>()
     val isBatch: Boolean get() = batchItems.isNotEmpty()
 
@@ -125,9 +173,36 @@ class AddDownloadState(
             val selected = batchItems.filter { it.isSelected }
             val sizes = selected.mapNotNull { it.metadata?.totalSize }
             if (selected.isEmpty() || sizes.size != selected.size) null else sizes.sum()
-        } else {
-            metadata?.totalSize
+        } else when (reviewedKind) {
+            // An HLS stream reports the engine's bitrate x duration estimate for the chosen variant.
+            ReviewedKind.HLS -> hlsInspection?.estimatedTotalBytes
+            // An archive reports the uncompressed size of just the members the user selected (all of
+            // them when nothing is ticked, which is the whole-archive case).
+            ReviewedKind.ARCHIVE -> archiveSelectedBytes
+            ReviewedKind.PLAIN -> metadata?.totalSize
         }
+
+    /**
+     * Uncompressed bytes of the selected archive members, or the whole archive's total when no
+     * selection has been made. Null until inspection has parsed the tree.
+     */
+    val archiveSelectedBytes: Long?
+        get() {
+            val browsable = (archiveInspection as? org.blaze.download.api.ArchiveInspectionDto.Browsable)
+                ?: return null
+            return if (selectedArchiveEntries.isEmpty()) {
+                browsable.totalUncompressedBytes.takeIf { it > 0 }
+            } else {
+                browsable.entries
+                    .filter { it.name in selectedArchiveEntries && !it.isDirectory }
+                    .sumOf { it.uncompressedSize }
+            }
+        }
+
+    /** True when a selective archive retrieval is on the table and something is actually ticked. */
+    val archiveSelectiveChosen: Boolean
+        get() = archiveInspection is org.blaze.download.api.ArchiveInspectionDto.Browsable &&
+                selectedArchiveEntries.isNotEmpty()
 
     /** Bytes the destination cannot hold, or null when there is room or the question can't be answered. */
     val spaceShortBy: Long? get() = destinationStatus.spaceShortBy(announcedBytes)
@@ -149,6 +224,17 @@ class AddDownloadState(
         fetchError = null
         detectedHandlers = emptyList()
         pendingPlainPageSource = null
+        // A source edit must drop every inspection verdict and choice so a stale HLS variant or
+        // archive selection can never leak into a different download.
+        reviewedKind = ReviewedKind.PLAIN
+        hlsInspection = null
+        selectedHlsVariant = -1
+        drmAcknowledged = false
+        showDrmWarning = false
+        archiveInspection = null
+        selectedArchiveEntries = emptySet()
+        archiveDownloadAllAcknowledged = false
+        pendingArchiveFullDownloadReason = null
     }
 
     private fun String.isSupportedSource(): Boolean {
@@ -163,6 +249,30 @@ class AddDownloadState(
 // Source-loading helpers, shared by the input view ("Add from File", paste) and
 // the dialog itself (a dropped/external link list arrives as an initialSource).
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Builds the typed [DownloadSource] the dialog queues after an inspection classified the source, or
+ * null when the review is a plain URL/torrent (which keeps going through the bare-URL path). This is
+ * the single place the user's validated choices are folded into a request: an HLS pick carries the
+ * chosen variant and the DRM acknowledgement (which only gates reporting, never an extra mechanism),
+ * and an archive carries exactly the members selected — null selection meaning the whole archive.
+ */
+internal fun typedDownloadSource(state: AddDownloadState): DownloadSource? = when (state.reviewedKind) {
+    AddDownloadState.ReviewedKind.HLS ->
+        DownloadSource.Hls(
+            url = state.effectiveSource,
+            variantIndex = state.selectedHlsVariant,
+            drmAcknowledged = state.drmAcknowledged,
+        )
+
+    AddDownloadState.ReviewedKind.ARCHIVE -> DownloadSource.RemoteArchive(
+        url = state.effectiveSource,
+        // A non-empty tick set retrieves just those members; an empty set is the whole-archive fallback.
+        selectedEntries = if (state.archiveSelectiveChosen) state.selectedArchiveEntries.sorted() else null,
+    )
+
+    AddDownloadState.ReviewedKind.PLAIN -> null
+}
 
 internal fun AddDownloadState.clearSource() {
     batchItems.clear()

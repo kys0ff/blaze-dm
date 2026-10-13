@@ -1,16 +1,16 @@
 package org.blaze.engine.execution
 
-import io.ktor.client.HttpClient
+import io.ktor.client.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
-import org.blaze.engine.api.CopyName
-import org.blaze.engine.api.DownloadError
-import org.blaze.engine.api.DownloadFileMetadata
-import org.blaze.engine.api.DownloadId
-import org.blaze.engine.api.DownloadRequest
-import org.blaze.engine.api.DownloadState
-import org.blaze.engine.api.DownloadTask
+import kotlinx.coroutines.launch
+import org.blaze.engine.api.*
+import org.blaze.engine.archive.HttpRemoteByteSource
+import org.blaze.engine.archive.RemoteZipExtractor
+import org.blaze.engine.archive.ZipCentralDirectory
+import org.blaze.engine.hls.HlsDownloader
 import org.blaze.engine.metrics.EngineMetrics
 import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
@@ -55,6 +55,8 @@ class DownloadExecutorImpl(
             val flow = when (val request = currentTask.request) {
                 is DownloadRequest.Http -> executeHttp(request, currentTask)
                 is DownloadRequest.Torrent -> executeTorrent(request, currentTask)
+                is DownloadRequest.Hls -> executeHls(request, currentTask)
+                is DownloadRequest.Archive -> executeArchive(request, currentTask)
             }
 
             flow.collect { updatedTask ->
@@ -213,6 +215,188 @@ class DownloadExecutorImpl(
                         )
                     )
                 }
+            }
+        }
+
+    private fun executeHls(request: DownloadRequest.Hls, task: DownloadTask): Flow<DownloadTask> =
+        channelFlow {
+            val settings = settingsRepository.settings.value
+            val (finalDestination, _) = resolveDestination(request.destination, settings.fileConflictBehavior)
+            if (finalDestination == null) {
+                val sz = storage.size(request.destination)
+                send(task.copy(state = DownloadState.Completed, downloadedBytes = sz, totalBytes = sz, progress = 1f))
+                return@channelFlow
+            }
+            val resolved =
+                if (finalDestination == request.destination) request else request.copy(destination = finalDestination)
+            val labelled =
+                if (resolved.destination == request.destination) task else task.copy(name = finalDestination.fileName.toString())
+
+            val client = HttpNetworkClient(
+                client = httpClient,
+                userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+                maxRedirects = settings.maxRedirects
+            )
+            val downloader = HlsDownloader(client, storage, limiter)
+
+            // Segment progress is emitted by a callback running inside the downloader's own coroutine
+            // scope, not this producer's, so it is bridged through a conflated channel drained here.
+            val updates = Channel<Pair<Int, Int>>(Channel.CONFLATED)
+            val progressJob = launch {
+                for ((done, total) in updates) {
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Downloading,
+                            totalBytes = null,
+                            downloadedBytes = done.toLong(),
+                            progress = if (total > 0) done.toFloat() / total else 0f
+                        )
+                    )
+                }
+            }
+            val outcome = downloader.download(
+                playlistUrl = resolved.playlistUrl,
+                destination = resolved.destination,
+                variantIndex = resolved.variantIndex,
+                headers = resolved.headers,
+                drmAcknowledged = resolved.drmAcknowledged,
+            ) { done, total -> updates.trySend(done to total) }
+            updates.close()
+            progressJob.join()
+
+            when (outcome) {
+                is HlsDownloader.Outcome.Success -> {
+                    metrics.recordCompleted()
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Completed,
+                            totalBytes = outcome.outputBytes,
+                            downloadedBytes = outcome.outputBytes,
+                            progress = 1f
+                        )
+                    )
+                }
+
+                is HlsDownloader.Outcome.NeedsDrmConsent ->
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Failed,
+                            totalBytes = null,
+                            downloadedBytes = 0,
+                            error = DownloadError.Unknown("stream appears DRM-protected; Blaze does not bypass DRM")
+                        )
+                    )
+
+                is HlsDownloader.Outcome.Unsupported ->
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Failed,
+                            totalBytes = null,
+                            downloadedBytes = 0,
+                            error = DownloadError.Unknown(outcome.reason)
+                        )
+                    )
+
+                is HlsDownloader.Outcome.Failed -> {
+                    metrics.recordFailed()
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Failed,
+                            totalBytes = null,
+                            downloadedBytes = 0,
+                            error = outcome.error
+                        )
+                    )
+                }
+            }
+        }
+
+    private fun executeArchive(request: DownloadRequest.Archive, task: DownloadTask): Flow<DownloadTask> =
+        channelFlow {
+            val settings = settingsRepository.settings.value
+            val client = HttpNetworkClient(
+                client = httpClient,
+                userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+                maxRedirects = settings.maxRedirects
+            )
+            val selected = request.selectedEntries
+            if (selected == null) {
+                // No selection: the archive is just an ordinary ranged HTTP download of the whole file.
+                val asHttp = DownloadRequest.Http(request.name, request.url, request.destination, request.headers)
+                executeHttp(asHttp, task).collect { send(it) }
+                return@channelFlow
+            }
+            // Selective extraction writes a tree under destination; a pre-existing folder is reused, not
+            // renamed, so resuming a partially-extracted archive lands in the same place.
+            val destination = request.destination
+            val source = HttpRemoteByteSource(client, request.url, request.headers)
+            try {
+                val listing = ZipCentralDirectory.inspect(source)
+                if (!listing.selectiveSupported) {
+                    send(
+                        updateTask(
+                            task, request, DownloadState.Failed, null, 0,
+                            error = DownloadError.Unknown(
+                                listing.reasonIfUnsupported ?: "server does not support selective range reads"
+                            )
+                        )
+                    )
+                    return@channelFlow
+                }
+                val entries = selected.mapNotNull { listing.entryNamed(it) }
+                if (entries.isEmpty()) {
+                    send(
+                        updateTask(
+                            task, request, DownloadState.Failed, null, 0,
+                            error = DownloadError.Unknown("none of the selected entries exist in the archive")
+                        )
+                    )
+                    return@channelFlow
+                }
+                val totalDeclared = entries.sumOf { it.uncompressedSize.coerceAtLeast(0) }
+                send(updateTask(task, request, DownloadState.Downloading, totalDeclared, 0))
+                val extraction = RemoteZipExtractor(source).extract(entries, destination)
+                if (extraction.allSucceeded) {
+                    metrics.recordCompleted()
+                    send(
+                        updateTask(
+                            task,
+                            request,
+                            DownloadState.Completed,
+                            totalDeclared,
+                            totalDeclared,
+                            progress = 1f
+                        )
+                    )
+                } else {
+                    metrics.recordFailed()
+                    val failedNames = extraction.failures.joinToString(", ") { "${it.name}: ${it.reason}" }
+                    send(
+                        updateTask(
+                            task, request, DownloadState.Failed, totalDeclared, 0,
+                            error = DownloadError.Unknown("selected entries could not be fully retrieved: $failedNames")
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                metrics.recordFailed()
+                send(
+                    updateTask(
+                        task, request, DownloadState.Failed, null, 0,
+                        error = DownloadError.Unknown(e.message ?: "archive extraction failed")
+                    )
+                )
             }
         }
 

@@ -247,6 +247,52 @@ object EnStrings : BlazeStrings {
                 override val confirm = "Download the page anyway"
             }
 
+            override val hls = object : BlazeStrings.Downloads.Dialogs.Hls {
+                override val qualityTitle = "Choose a quality"
+                override val estimatedSize = "Estimated size"
+                override val noSizeEstimate = "Size unknown until it downloads"
+                override val defaultQuality = "Best available"
+                override val notAStream = "This link isn't a stream Blaze can play or save."
+                override fun variantLabel(resolution: String?, bandwidthMbps: String?): String {
+                    val parts =
+                        listOfNotNull(resolution?.takeIf { it.isNotBlank() }, bandwidthMbps?.takeIf { it.isNotBlank() })
+                    return if (parts.isEmpty()) defaultQuality else parts.joinToString(" \u00b7 ")
+                }
+            }
+
+            override val drmWarning = object : BlazeStrings.Downloads.Dialogs.DrmWarning {
+                override val title = "Potential DRM Protection Detected"
+                override val message =
+                    "This stream may use DRM or another content-protection mechanism. Downloading or copying " +
+                            "protected content may be restricted by applicable laws, your authorization, or the " +
+                            "content provider's terms. You are responsible for ensuring you have permission to " +
+                            "download this content and that your use complies with applicable requirements."
+                override val detail =
+                    "Continuing only attempts a normal download through Blaze's supported methods. It does not " +
+                            "guarantee success and never bypasses DRM, defeats access controls, or extracts protected keys."
+                override val uncertainNote =
+                    "Blaze couldn't classify this stream's protection with certainty; it may or may not be " +
+                            "DRM-protected."
+                override val advice =
+                    "If you're unsure whether you may download this stream, consult the provider's official " +
+                            "documentation or terms of service."
+                override val continueAction = "Continue with a normal download"
+            }
+
+            override val archive = object : BlazeStrings.Downloads.Dialogs.Archive {
+                override val entriesTitle = "Archive contents"
+                override fun estimatedSelected(size: String) = "Selected: $size"
+                override val selectiveUnsupported =
+                    "This server won't deliver individual parts of the archive, so Blaze can only download the " +
+                            "whole file. You can extract the members you want from it afterwards."
+                override val downloadWholeArchive = "Download the entire archive"
+                override val notExtractable = "can't be extracted"
+                override val hint = "Tick the files or folders to retrieve only those members."
+                override fun unavailable(reason: String) =
+                    if (reason.isBlank()) "This resource isn't an archive Blaze can open."
+                    else "This resource isn't an archive Blaze can open: $reason"
+            }
+
             override val details = object : BlazeStrings.Downloads.Dialogs.Details {
                 override val title = "Download details"
                 override val name = "Name"
