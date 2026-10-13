@@ -68,11 +68,6 @@ dependencies {
     implementation(libs.logback.classic)
 
     testImplementation(kotlin("test"))
-    // Compose UI tests deliver real pointer and key events to an offscreen scene, which is the only
-    // way to reproduce (and then pin) the submenu hover trap: it is an interaction bug, invisible to
-    // any test that only calls the state machine directly. The `runDesktopComposeUiTest` these tests use
-    // lives in the plain ui-test artifact, so it is specified directly (the uiTestJUnit4 DSL accessor is
-    // deprecated and only exists to add a JUnit4 rule none of these tests use).
     testImplementation(libs.compose.ui.test)
 }
 
@@ -81,21 +76,34 @@ repositories {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(25)
 }
 
-/**
- * The UI tests compose Jewel widgets, and Jewel 0.41.0 is built for Java 25 (class file version 69),
- * which the toolchain above cannot load. Running the tests on the same JetBrains 25 launcher the
- * screenshot harness uses keeps the whole presentational layer testable.
- */
+// Jewel 0.41.0 is built for Java 25 (class file version 69), so every JVM that runs the presentational
+// layer - the `run`/`runDistributable`/`hotRun` app-launch tasks, the UI tests and the offscreen
+// screenshot harness - must fork on Java 25. Pinning only `javaLauncher` is not enough: JavaExec also
+// carries an `executable` property that defaults to the Gradle daemon JVM, which IntelliJ runs as a
+// Java 21 GraalVM, and Gradle then aborts with an "executable vs javaLauncher toolchain mismatch".
+// So pin BOTH properties to the same JetBrains 25 runtime below; compilation stays on jvmToolchain(25).
+val jbr25Launcher = project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(25))
+    vendor.set(JvmVendorSpec.JETBRAINS)
+}
+
 tasks.withType<Test>().configureEach {
-    javaLauncher.set(
-        project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
-            languageVersion.set(JavaLanguageVersion.of(25))
-            vendor.set(JvmVendorSpec.JETBRAINS)
-        }
-    )
+    javaLauncher.set(jbr25Launcher)
+}
+
+tasks.withType<JavaExec>().configureEach {
+    javaLauncher.set(jbr25Launcher)
+    // The Compose plugin re-points the fork `executable` at the current/daemon JVM during task graph
+    // setup (and IntelliJ does the same from its Gradle JVM), which overrides any config-time value and
+    // then collides with `javaLauncher` as an "executable vs javaLauncher toolchain mismatch". Re-assert
+    // the executable at execution time, after that, so both properties resolve to the same JetBrains 25
+    // and the app forks on 25 no matter which JVM the daemon or IDE happens to run on.
+    doFirst {
+        executable(jbr25Launcher.get().executablePath.asFile.absolutePath)
+    }
 }
 
 compose.desktop {
@@ -238,13 +246,6 @@ val uiProbe = tasks.register<JavaExec>("uiProbe") {
         ((project.findProperty("probe") as String?) ?: "cursor")
             .split(" ").filter { it.isNotBlank() },
     )
-
-    javaLauncher.set(
-        project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
-            languageVersion.set(JavaLanguageVersion.of(25))
-            vendor.set(JvmVendorSpec.JETBRAINS)
-        }
-    )
 }
 
 /**
@@ -261,13 +262,4 @@ val uiScreenshots = tasks.register<JavaExec>("uiScreenshots") {
     systemProperty("java.awt.headless", "true")
     // Write to the repo-root build/ui-screenshots/ regardless of which subproject dir Gradle runs in.
     workingDir = rootDir
-
-    // Jewel 0.41.0 is built for Java 25 (class file version 69); run the harness on a 25 launcher so
-    // the offscreen scene can load it, independent of the jvmToolchain(21) the app itself targets.
-    javaLauncher.set(
-        project.extensions.getByType(JavaToolchainService::class.java).launcherFor {
-            languageVersion.set(JavaLanguageVersion.of(25))
-            vendor.set(JvmVendorSpec.JETBRAINS)
-        }
-    )
 }
