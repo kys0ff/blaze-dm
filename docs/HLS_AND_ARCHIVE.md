@@ -50,6 +50,13 @@ the container is decided from real downloaded bytes, not from a filename guess.
 **No external executable is required** — segments are assembled by simple byte concatenation (valid for
 TS), and AES-128 is decrypted with the JDK's own `javax.crypto`. Blaze does **not** shell out to FFmpeg.
 
+**Output file name & progress.** Because Blaze assembles MPEG-TS into one file, the playlist's `.m3u8`
+ending (which names the *source*, not the output) is replaced with a `.ts` container extension, so a
+numeric playlist like `…/1096000-1280x720.m3u8` lands as a playable `1096000-1280x720.ts` rather than an
+extension-less file. Progress is reported in **bytes**, not segments: the row shows the real downloaded
+total and speed, with the bar driven by the fetched-segment fraction and an extrapolated total (pinned to
+the exact size on completion), instead of counting up "1b, 2b, …".
+
 ---
 
 ## 2. DRM detection and the warning dialog

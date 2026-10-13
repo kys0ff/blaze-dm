@@ -22,6 +22,9 @@ import java.nio.file.Path
  */
 object RequestMapper {
 
+    /** Container extensions that already name the assembled stream file, so `.ts` is not doubled on. */
+    private val STREAM_OUTPUT_EXTENSIONS = setOf("ts", "mpg", "mpeg", "m2ts")
+
     /**
      * @param destinationDir the already-validated absolute directory to write into.
      */
@@ -157,7 +160,15 @@ object RequestMapper {
         val segment = url.substringBefore('?').substringAfterLast('/')
         val decoded = runCatching { URLDecoder.decode(segment, StandardCharsets.UTF_8).ifBlank { segment } }
             .getOrDefault(segment)
-        return if (decoded.endsWith(".m3u8", ignoreCase = true)) decoded.dropLast(".m3u8".length) else decoded
+        val stripped =
+            if (decoded.endsWith(".m3u8", ignoreCase = true)) decoded.dropLast(".m3u8".length) else decoded
+        val base = stripped.ifBlank { "stream" }
+        // The `.m3u8` ending names the playlist, not the assembled file. Blaze only ever concatenates
+        // MPEG-TS segments into one file, so the output is given a `.ts` extension unless the derived name
+        // already carries a stream-container suffix - otherwise a numeric playlist like
+        // "…/1096000-1280x720.m3u8" would land as an extension-less file no media player can open.
+        val extension = base.substringAfterLast('.', "")
+        return if (extension.lowercase() in STREAM_OUTPUT_EXTENSIONS) base else "$base.ts"
     }
 
     private fun torrentMagnet(uri: String, request: NewDownloadRequest, dir: Path): DownloadRequest.Torrent {

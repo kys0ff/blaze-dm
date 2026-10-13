@@ -285,7 +285,7 @@ internal fun resolvePreview(url: String, savePath: String, name: String?): Path 
         is DownloadSource.Url ->
             dir.resolve(explicit ?: deriveHttpName(source.url))
         is DownloadSource.Hls ->
-            dir.resolve(explicit ?: removeM3u8Suffix(deriveHttpName(source.url)))
+            dir.resolve(explicit ?: deriveHlsOutputName(source.url))
 
         is DownloadSource.RemoteArchive ->
             dir.resolve(explicit ?: deriveHttpName(source.url))
@@ -296,9 +296,22 @@ internal fun resolvePreview(url: String, savePath: String, name: String?): Path 
 private fun removeTorrentSuffix(name: String): String =
     if (name.endsWith(".torrent", ignoreCase = true)) name.dropLast(".torrent".length) else name
 
-/** `.m3u8` names an HLS playlist, not the assembled output; the ending is stripped for the preview. */
-private fun removeM3u8Suffix(name: String): String =
-    if (name.endsWith(".m3u8", ignoreCase = true)) name.dropLast(".m3u8".length) else name
+/**
+ * The name the assembled HLS file actually gets, mirroring the service's `RequestMapper.deriveHlsName`: the
+ * playlist's `.m3u8` ending names the *source*, not the output, so it is trimmed and a `.ts` container
+ * extension is applied unless the base already carries one. Keeps the "Save as" preview from promising an
+ * extension-less file a media player cannot open.
+ */
+private fun deriveHlsOutputName(url: String): String {
+    val raw = deriveHttpName(url)
+    val stripped = if (raw.endsWith(".m3u8", ignoreCase = true)) raw.dropLast(".m3u8".length) else raw
+    val base = stripped.ifBlank { "stream" }
+    val extension = base.substringAfterLast('.', "")
+    return if (extension.lowercase() in HLS_OUTPUT_EXTENSIONS) base else "$base.ts"
+}
+
+/** Container extensions that already name the assembled stream, so `.ts` is not doubled on. */
+private val HLS_OUTPUT_EXTENSIONS = setOf("ts", "mpg", "mpeg", "m2ts")
 
 private fun deriveHttpName(url: String): String {
     val decoded = runCatching { URLDecoder.decode(url, StandardCharsets.UTF_8).ifBlank { url } }.getOrDefault(url)

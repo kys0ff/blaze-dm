@@ -38,8 +38,23 @@ class HlsArchiveSourceRoutingTest {
         assertEquals("https://host/streams/master.m3u8", hls.playlistUrl)
         assertEquals(3, hls.variantIndex)
         assertTrue(hls.drmAcknowledged, "the acknowledged choice must reach the engine")
-        assertEquals("master", hls.name, "the .m3u8 suffix is a source marker, not part of the name")
-        assertEquals(dir.resolve("master"), hls.destination)
+        assertEquals("master.ts", hls.name, "the assembled stream carries a .ts container extension")
+        assertEquals(dir.resolve("master.ts"), hls.destination)
+    }
+
+    @Test
+    fun `a numeric playlist URL with no filename extension still yields a container extension`() {
+        // The reported case: a bitratexresolution segment that leaves an extension-less name once the
+        // .m3u8 is trimmed - the output must be playable, so Blaze appends the MPEG-TS container suffix.
+        val hls = assertIs<DownloadRequest.Hls>(
+            map(
+                DownloadSource.Hls(
+                    "https://videoar.cgtn.com/public/2018-03-22/video/x/1096000-1280x720/1096000-1280x720.m3u8"
+                )
+            )
+        )
+        assertEquals("1096000-1280x720.ts", hls.name)
+        assertEquals(dir.resolve("1096000-1280x720.ts"), hls.destination)
     }
 
     @Test

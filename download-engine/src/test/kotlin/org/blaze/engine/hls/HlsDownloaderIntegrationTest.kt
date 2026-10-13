@@ -1,21 +1,18 @@
 package org.blaze.engine.hls
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
 import kotlinx.coroutines.runBlocking
 import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.storage.DefaultFileStorage
 import org.blaze.engine.support.TestStaticServer
 import java.nio.file.Files
+import java.util.concurrent.ConcurrentLinkedQueue
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * End-to-end tests for the HLS path against a real loopback HTTP server that serves a master playlist,
@@ -136,6 +133,44 @@ class HlsDownloaderIntegrationTest {
                 val outcome = downloader(server).download(server.url("/media.m3u8"), dest, -1, emptyMap(), false)
                 assertIs<HlsDownloader.Outcome.Unsupported>(outcome)
                 assertTrue(outcome.reason.contains("live", ignoreCase = true))
+            } finally {
+                Files.deleteIfExists(dest)
+            }
+        }
+    }
+
+    @Test
+    fun `progress reports cumulative downloaded bytes rather than a segment counter`(): Unit = runBlocking {
+        // Regression guard for the "1b, 2b" symptom: the callback must expose real byte totals so the
+        // executor can render a proper progress bar / speed / size instead of a bare 1..N segment index.
+        TestStaticServer(
+            mapOf(
+                "/master.m3u8" to master,
+                "/media.m3u8" to plainMedia(),
+                "/seg0.ts" to seg0Plain,
+                "/seg1.ts" to seg1Plain,
+            )
+        ).use { server ->
+            val dest = Files.createTempFile("hls-progress", ".ts")
+            val reports = ConcurrentLinkedQueue<Triple<Int, Int, Long>>()
+            val outcome = downloader(server).download(
+                server.url("/master.m3u8"), dest, -1, emptyMap(), false,
+            ) { done, total, bytes -> reports.add(Triple(done, total, bytes)) }
+            try {
+                assertIs<HlsDownloader.Outcome.Success>(outcome, "expected success, got $outcome")
+                val expectedBytes = (seg0Plain.size + seg1Plain.size).toLong()
+                val snap = reports.toList()
+                assertEquals(2, snap.maxOf { it.second }, "two segments are advertised in total")
+                val finalReport = snap.last { it.first == 2 }
+                assertEquals(
+                    expectedBytes, finalReport.third,
+                    "the completing tick must carry the real byte total, never the segment index (2)",
+                )
+                assertTrue(
+                    snap.map { it.third }.zipWithNext().all { (a, b) -> b >= a },
+                    "byte progress must never go backwards",
+                )
+                assertTrue(expectedBytes > 2L, "byte totals are far larger than a raw segment count")
             } finally {
                 Files.deleteIfExists(dest)
             }

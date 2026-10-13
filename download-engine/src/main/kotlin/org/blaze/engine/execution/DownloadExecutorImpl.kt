@@ -241,16 +241,23 @@ class DownloadExecutorImpl(
 
             // Segment progress is emitted by a callback running inside the downloader's own coroutine
             // scope, not this producer's, so it is bridged through a conflated channel drained here.
-            val updates = Channel<Pair<Int, Int>>(Channel.CONFLATED)
+            val updates = Channel<Triple<Int, Int, Long>>(Channel.CONFLATED)
+            val tracker = HttpProgress()
             val progressJob = launch {
-                for ((done, total) in updates) {
+                for ((done, total, bytes) in updates) {
+                    // The true size is only known once the last segment lands, so extrapolate the total
+                    // from the fraction already fetched; that keeps the bar, the "of ~X" label and the ETA
+                    // honest instead of showing a raw segment count ("1b, 2b") as if it were bytes. The
+                    // completion event below pins the exact size, so the estimate never reaches the record.
+                    val estimate = if (done > 0 && total > 0) bytes * total / done else null
                     send(
                         updateTask(
                             task = labelled,
                             request = resolved,
                             state = DownloadState.Downloading,
-                            totalBytes = null,
-                            downloadedBytes = done.toLong(),
+                            totalBytes = estimate,
+                            downloadedBytes = bytes,
+                            speed = tracker.sample(bytes),
                             progress = if (total > 0) done.toFloat() / total else 0f
                         )
                     )
@@ -262,7 +269,7 @@ class DownloadExecutorImpl(
                 variantIndex = resolved.variantIndex,
                 headers = resolved.headers,
                 drmAcknowledged = resolved.drmAcknowledged,
-            ) { done, total -> updates.trySend(done to total) }
+            ) { done, total, bytes -> updates.trySend(Triple(done, total, bytes)) }
             updates.close()
             progressJob.join()
 

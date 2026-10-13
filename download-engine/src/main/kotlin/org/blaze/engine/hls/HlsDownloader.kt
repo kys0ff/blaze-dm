@@ -67,7 +67,7 @@ class HlsDownloader(
         variantIndex: Int,
         headers: Map<String, String>,
         drmAcknowledged: Boolean,
-        onProgress: (completedSegments: Int, totalSegments: Int) -> Unit = { _, _ -> },
+        onProgress: (completedSegments: Int, totalSegments: Int, completedBytes: Long) -> Unit = { _, _, _ -> },
     ): Outcome {
         val request = DownloadRequest.Http(
             name = destination.fileName.toString(),
@@ -223,11 +223,14 @@ class HlsDownloader(
         segments: List<HlsSegment>,
         tempDir: Path,
         headers: Map<String, String>,
-        onProgress: (completedSegments: Int, totalSegments: Int) -> Unit,
+        onProgress: (completedSegments: Int, totalSegments: Int, completedBytes: Long) -> Unit,
     ): SegmentDownload = coroutineScope {
         val semaphore = Semaphore(maxConcurrency.coerceAtLeast(1))
         val failed = AtomicLong(0)
         val completed = AtomicInteger(0)
+        // Cumulative decrypted bytes written so far, so progress can be reported in bytes (which drives a
+        // real speed/size) rather than as a bare segment counter the UI would render as "1b, 2b, 3b".
+        val bytesDone = AtomicLong(0)
         val errorRef = java.util.concurrent.atomic.AtomicReference<DownloadError>()
         val keyCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray?>()
         val jobs = ArrayList<kotlinx.coroutines.Job>()
@@ -236,8 +239,10 @@ class HlsDownloader(
             val target = segmentPath(tempDir, index)
             // Already-on-disk segments with the right size are kept as-is: this is the resume path after
             // a retry or restart, gated by the container check downstream, so a re-run does not re-fetch.
-            if (Files.exists(target) && Files.size(target) > 0) {
-                onProgress(completed.incrementAndGet(), segments.size)
+            val existing = if (Files.exists(target)) Files.size(target) else 0L
+            if (existing > 0) {
+                bytesDone.addAndGet(existing)
+                onProgress(completed.incrementAndGet(), segments.size, bytesDone.get())
                 return@forEachIndexed
             }
             jobs += launch {
@@ -250,7 +255,8 @@ class HlsDownloader(
                         val result = fetchSegment(segment, media.mediaSequence + index, headers, keyCache)
                         if (result is SegmentBytes.Ok) {
                             Files.write(target, result.bytes)
-                            onProgress(completed.incrementAndGet(), segments.size)
+                            bytesDone.addAndGet(result.bytes.size.toLong())
+                            onProgress(completed.incrementAndGet(), segments.size, bytesDone.get())
                             return@withPermit
                         }
                         val err = (result as SegmentBytes.Err).error
