@@ -2,32 +2,13 @@ package org.blaze.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -54,6 +35,7 @@ fun BaseDialog(
 ) {
     val focusRequester = remember { FocusRequester() }
     val density = LocalDensity.current
+    val panelBackground = JewelTheme.globalColors.panelBackground
 
     var contentHeight by remember { mutableStateOf(0.dp) }
 
@@ -75,13 +57,12 @@ fun BaseDialog(
         resizable = false,
     ) {
         preventDialogMinimize()
+        applyWindowsTitleBarTheme(panelBackground)
 
         LaunchedEffect(width, height, contentHeight) {
             if (height != null) {
-                // Use the explicitly configured height.
                 state.size = DpSize(width, height)
             } else if (contentHeight > 0.dp) {
-                // Preserve automatic content-based sizing.
                 val decorations = (window.insets.top + window.insets.bottom).dp
                 state.size = DpSize(width, contentHeight + decorations)
             }

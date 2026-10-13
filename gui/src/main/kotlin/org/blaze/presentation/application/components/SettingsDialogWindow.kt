@@ -8,9 +8,11 @@ import androidx.compose.ui.window.DialogState
 import androidx.compose.ui.window.DialogWindow
 import cafe.adriel.voyager.navigator.Navigator
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.components.applyWindowsTitleBarTheme
 import org.blaze.presentation.components.preventDialogMinimize
 import org.blaze.presentation.screens.settings.LocalSettingsDialogDismiss
 import org.blaze.presentation.screens.settings.SettingsScreen
+import org.jetbrains.jewel.foundation.theme.JewelTheme
 import java.awt.Dimension
 
 /**
@@ -45,6 +47,10 @@ fun SettingsDialogWindow(
         // The Settings modal is never minimizable: an iconified dialog would drag the owner frame
         // into the group minimize and hide the whole app to the tray.
         preventDialogMinimize()
+
+        // Paint the native Windows caption with the panel background so the Settings dialog
+        // reads as a single themed surface rather than a Jewel panel under an off-theme bar.
+        applyWindowsTitleBarTheme(JewelTheme.globalColors.panelBackground)
 
         LaunchedEffect(window) {
             window.minimumSize = Dimension(720, 420)

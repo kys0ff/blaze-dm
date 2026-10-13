@@ -31,6 +31,10 @@ dependencies {
     implementation(libs.koin.core)
     implementation(libs.koin.compose)
 
+    // Windows DWM title-bar theming: JNA calls DwmSetWindowAttribute to paint the native
+    // caption with the active panel background so dialogs follow the app theme.
+    implementation(libs.jna)
+
     testImplementation(kotlin("test"))
     // The picker's screen model launches into Voyager's `screenModelScope`, which is pinned to the UI
     // dispatcher; the Swing provider makes that resolvable so the real wiring (which directory a picker
