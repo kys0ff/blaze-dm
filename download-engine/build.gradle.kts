@@ -33,6 +33,10 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.ktor.client.mock)
+    // Phase 3.5 engine-choice benchmark: measure the Java engine (production) against CIO and
+    // OkHttp on the same payload. Test-only so it does not become a runtime dep before the winner
+    // is decided by the benchmark.
+    testImplementation(libs.ktor.client.okhttp)
     testImplementation(libs.slf4j.simple)
 }
 

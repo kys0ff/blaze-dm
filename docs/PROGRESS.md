@@ -548,3 +548,94 @@ baseline numbers for those two paths.
 4. Speed-limiter review (leaky bucket is fine today but the per-128 KiB `synchronized` is worth
    measuring against a striped variant).
 
+---
+
+## Phase 3 – HTTP engine
+
+Status: **in progress**. Branch `feat/engine-optimization`.
+
+### 1. Engine choice: Java vs CIO vs OkHttp
+
+`HttpEngineBenchmark` measures the same 32 MiB LCG payload, the same `{1,4,8,16}` connection
+ladder and the same unthrottled / 4 MiB-s-per-conn scenarios against the three Ktor engines, with
+identical timeout / redirect configuration across all three. Numbers below are median-of-3 after
+1 warm-up.
+
+```
+=== Ktor engine comparison (payload=32 MiB, warmups=1, samples=3) ===
+
+engine      | unthrottled conn=1 / 4 / 8 / 16   | throttled-4MiBps conn=1 / 4 / 8 / 16
+------------+-----------------------------------+------------------------------------------
+Java        | 146.6  /  83.1  /  94.1  / 106.3  |   4.00 / 14.39 / 26.11 / 42.57 MiB/s
+CIO         | 258.86 /  81.98 /  91.89 /  90.52 |   4.00 / 14.19 / 26.17 / 42.72 MiB/s
+OkHttp      | 301.45 / 105.86 / 111.77 / 110.70 |   4.00 / 14.41 / 26.32 / 44.16 MiB/s
+
+Resources (conn=16 unless stated):
+  Java   : 214 threads (unthr) / 278 threads (thr), 170 MiB heap, 4-10 ms GC
+  CIO    : 53 threads, 117-185 MiB heap, 0-2 ms GC
+           BUT serverConnections = 34 at conn=4/8/16 - the KDoc warning is real:
+           CIO opens a fresh TCP connection for every request, the pool is not reused.
+  OkHttp : 69 threads (unthr) / 75 threads (thr), 93-187 MiB heap, 0-4 ms GC
+           serverConnections matches requested connections exactly (1 / 4 / 7-8 / 10-18),
+           so the pool actually pools.
+```
+
+Readings:
+
+- **OkHttp wins unthrottled throughput on every connection count.** 2.0-2.1× Java at conn=1
+  (301 vs 147 MiB/s), 1.27-1.3× Java at conn=4 (106 vs 83) and 8 (112 vs 94), comparable at
+  conn=16 (111 vs 106). Under the 4 MiB/s/conn cap it matches Java at conn=1/4 and beats Java by
+  1-4% at conn=8/16. There is no scenario in this recipe where Java beats OkHttp.
+- **CIO is disqualified by connection reuse**, not by throughput. `serverConnections = 34` at
+  conn=4 is the smoking gun: it opens a fresh socket per request. On loopback the handshake cost
+  is hidden by the very high effective bandwidth (its conn=1 number, 259 MiB/s, is the fastest
+  in the set), but on a real host every chunk would pay a full TCP - and TLS - handshake and the
+  abandoned sockets pile up in TIME_WAIT, exactly the KDoc reason for not picking CIO in
+  `DownloadManager.createDefaultHttpClient`.
+- **OkHttp is dramatically lighter on threads.** 69-75 threads at conn=16 vs Java's 214-278.
+  That is not just a nice-to-have: the ceiling for `maxConnectionsPerDownload` scaling is bound
+  by thread count in the current engine, and OkHttp's per-connection thread cost is essentially
+  flat. OkHttp's GC pause (0-4 ms across the download) is also less than half Java's 3-11 ms.
+- **Heap footprint** is comparable at conn=16 (Java 170 MiB, OkHttp 174 MiB) but OkHttp's
+  conn=1 heap is 82 MiB vs Java's 145 MiB - the JDK client's `HttpClientImpl` selector-manager
+  keeps more state warm.
+
+Decision: **switch the production client from Ktor Java to Ktor OkHttp in the next Phase-3 commit,
+keeping the same timeouts (`requestTimeoutMillis=INFINITE`, `connectTimeoutMillis=15_000`,
+`socketTimeoutMillis=60_000`) and `followRedirects = false`.**
+
+Notes on the swap:
+
+- OkHttp's own engine-level timeouts (`OkHttp.create { ... }`) are deliberately *not* configured;
+  the Ktor `HttpTimeout` plugin maps onto the underlying client and keeps the numbers identical
+  across engines. If a specific timeout does not translate we will see it in the test suite and
+  add an engine-specific override, not a change to the shape of the timeout policy.
+- OkHttp 4.x brings `okio` and `kotlin-stdlib-jdk8` as transitives; already present via Ktor.
+- `HttpNetworkClient` currently sets `Accept-Encoding: identity` on the socket. OkHttp by default
+  transparently decompresses gzip responses. Because we ask for `identity`, that path should be
+  inert; a `TestHttpServer` fixture (`gzipNonRanged`) exists to prove the behaviour end-to-end
+  after the swap.
+
+### 2. Correctness gaps (in progress)
+
+Order:
+1. ~~Engine choice~~ (done).
+2. `Retry-After` handling in `HttpNetworkClient` and the task-level retry scheduler.
+3. Chunk-level exponential backoff with jitter on `HttpDownloadCoordinator.worker` requeue.
+4. `If-Range` validation on resume against a swapped ETag; redirect re-probe against the new URL.
+5. HEAD-vs-GET disagreement (already test-covered; verify the engine handles it after the swap).
+
+### 3. Hot-path throughput (in progress)
+
+1. Work-stealing on largest-remaining chunk (fixes the 16-conn tail-latency saturation shown
+   by `2.5× ideal` scaling).
+2. Adaptive connection count backed off on 429/503 with hysteresis.
+3. Per-worker buffer pool to drop the per-chunk `ByteArray` allocation.
+4. Bounded disk-write queue behind a benchmark gate.
+
+### 4. Speed-limiter review
+
+Left for the tail of the phase; current leaky bucket is uncontended in practice and a striped
+variant only pays for itself beyond ~16 workers.
+
+
