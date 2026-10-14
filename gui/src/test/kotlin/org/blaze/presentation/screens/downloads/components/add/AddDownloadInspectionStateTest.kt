@@ -1,18 +1,8 @@
 package org.blaze.presentation.screens.downloads.components.add
 
 import androidx.compose.ui.text.input.TextFieldValue
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import org.blaze.download.api.ArchiveEntryDto
-import org.blaze.download.api.ArchiveInspectionDto
-import org.blaze.download.api.DownloadSource
-import org.blaze.download.api.HlsInspectStatusDto
-import org.blaze.download.api.HlsInspectionDto
-import org.blaze.download.api.HlsProtectionDto
-import org.blaze.download.api.HlsVariantDto
+import org.blaze.download.api.*
+import kotlin.test.*
 
 /**
  * The pure decision layer behind the Add-Download dialog's HLS and remote-ZIP flows.
