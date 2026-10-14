@@ -649,20 +649,70 @@ Interpretation:
   independent of the production client - it constructs its own CIO client).
 
 
-### 2. Correctness gaps (in progress)
+### 2. Correctness gaps
 
 Order:
-1. ~~Engine choice~~ (done).
-2. `Retry-After` handling in `HttpNetworkClient` and the task-level retry scheduler.
-3. Chunk-level exponential backoff with jitter on `HttpDownloadCoordinator.worker` requeue.
+1. ~~Engine choice~~ (done, §1/§1b).
+2. ~~`Retry-After` handling~~ (done, §2a).
+3. ~~Chunk-level exponential backoff with jitter~~ (done, §2a).
 4. `If-Range` validation on resume against a swapped ETag; redirect re-probe against the new URL.
+   (pending)
 5. HEAD-vs-GET disagreement (already test-covered; verify the engine handles it after the swap).
+   (pending)
 
-### 3. Hot-path throughput (in progress)
+#### 2a. `Retry-After` + chunk-level backoff (this commit)
+
+Two reliability bugs from §15.1/§15.2 are now closed. A throttling host that answers `429`/`503`
+with a `Retry-After` is honoured instead of hammered, and a flaky host that sends *no* hint still
+gets spaced-out chunk retries instead of a back-to-back burst.
+
+**`Retry-After` parse (`HttpNetworkClient`)**
+- `StreamResult.Failed` gained `retryAfterMillis: Long?`. On a non-success status the client now
+  calls `parseRetryAfter(headers, status)` and attaches the result.
+- `parseRetryAfter` accepts both RFC 9110 forms - delta-seconds (`Retry-After: 120`) and HTTP-date
+  (IMF-fixdate via `DateTimeFormatter.RFC_1123_DATE_TIME`) - but only on `429` and `503`; a stray
+  header on any other status is ignored. Negative counts and unparseable values fall through to
+  "no hint". The result is clamped to `RETRY_AFTER_CEILING_MILLIS = 15 min` so a hostile or
+  misconfigured `Retry-After: 999999999` cannot park a chunk forever.
+
+**Threading the hint through the data path**
+- `HttpDownloadCoordinator`: `Outcome.Failure` and `StreamOutcome.Failed` carry `retryAfterMillis`.
+  The segmented path tracks `lastRetryHintMillis: AtomicLong(-1)` so the final `Outcome.Failure`
+  surfaces the last-seen hint even after the per-chunk budget is exhausted.
+- The single-stream path returns the hint directly on `Failure`.
+- `DownloadExecutorImpl`: a `pendingRetryHintMillis` scratch field captures the hint from
+  `Outcome.Failure` and the task-level scheduler takes `maxOf(policyDelay, serverHint)` for the
+  next attempt's wait - the server's floor wins when it is longer than our own backoff.
+
+**Chunk-level exponential backoff (`HttpDownloadCoordinator.worker` → `requeue`)**
+- Previously a failed chunk was re-queued with **zero delay**; four workers meant four back-to-back
+  retries. Now `requeue` computes `chunkBackoffMillis(attempt, retryAfter)` and stamps
+  `readyAt[chunk]`; `claim` became `suspend` and `delay`s until the chunk's head-of-retry time, so
+  the worker actually waits instead of immediately re-requesting.
+- The schedule is **equal-jitter exponential**: base `CHUNK_BACKOFF_BASE_MS = 1000`, cap
+  `CHUNK_BACKOFF_CAP_MS = 30000`, window `base << (attempt-1)`, delay `= half + rand(half)`. So the
+  first four attempts span `[500,1000) / [1000,2000) / [2000,4000) / [4000,8000) ms`. Equal-jitter
+  (rather than full `[0, window]` jitter) keeps a hard floor per attempt so the backoff can never
+  collapse to an instant retry, while still decorrelating a herd; a server hint short-circuits the
+  schedule entirely (`chunkBackoffMillis` returns the hint verbatim).
+
+**Verification (`RetryAfterAndBackoffTest`, 6 tests, all green)**
+- 3 pure-parser tests pin the delta-seconds, HTTP-date, ceiling-clamp and ignore cases directly so
+  they survive any change to the fault-injection knobs.
+- 3 end-to-end tests use the extended `TestHttpServer` (`failStatus`/`failFirstN`/`retryAfter`)
+  across `connections = 4` to exercise the segmented path: a `429` with `Retry-After: 2` cannot
+  finish under 2 s (measured ~2.12 s), an unhinted flaky `500` cannot finish under 700 ms (measured
+  ~1.4-1.5 s across three re-runs - deterministic, comfortably above the floor), and an always-`503`
+  run that exhausts the chunk budget still surfaces `retryAfterMillis == 2000` on `Outcome.Failure`.
+- Full `:download-engine:test` suite (209 tests incl. the 6 new) passes; no regressions from the
+  `worker`/`requeue`/`claim`/`Outcome` signature changes.
+
+### 3. Hot-path throughput (pending)
 
 1. Work-stealing on largest-remaining chunk (fixes the 16-conn tail-latency saturation shown
    by `2.5× ideal` scaling).
-2. Adaptive connection count backed off on 429/503 with hysteresis.
+2. Adaptive connection count backed off on 429/503 with hysteresis - now buildable on top of the
+   `Retry-After`/hint plumbing from §2a.
 3. Per-worker buffer pool to drop the per-chunk `ByteArray` allocation.
 4. Bounded disk-write queue behind a benchmark gate.
 

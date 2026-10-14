@@ -71,7 +71,15 @@ class HttpDownloadCoordinator(
 
     sealed interface Outcome {
         data class Success(val downloadedBytes: Long, val totalBytes: Long?) : Outcome
-        data class Failure(val error: DownloadError) : Outcome
+        data class Failure(
+            val error: DownloadError,
+            /**
+             * Millis the server asked us to wait before retrying, if a 429/503 carried a
+             * `Retry-After`. The task-level scheduler treats it as a lower bound on the next
+             * attempt's delay. Null when no hint was given.
+             */
+            val retryAfterMillis: Long? = null,
+        ) : Outcome
     }
 
     /**
@@ -170,7 +178,7 @@ class HttpDownloadCoordinator(
     private sealed interface StreamOutcome {
         data object RangeIgnored : StreamOutcome
         data class Done(val downloadedBytes: Long, val totalBytes: Long?) : StreamOutcome
-        data class Failed(val error: DownloadError) : StreamOutcome
+        data class Failed(val error: DownloadError, val retryAfterMillis: Long? = null) : StreamOutcome
     }
 
     private suspend fun singleStream(
@@ -217,7 +225,7 @@ class HttpDownloadCoordinator(
             }
             return when (result) {
                 is StreamOutcome.Done -> Outcome.Success(result.downloadedBytes, result.totalBytes)
-                is StreamOutcome.Failed -> Outcome.Failure(result.error)
+                is StreamOutcome.Failed -> Outcome.Failure(result.error, result.retryAfterMillis)
                 StreamOutcome.RangeIgnored -> Outcome.Failure(DownloadError.RangeUnsupported)
             }
         }
@@ -282,7 +290,7 @@ class HttpDownloadCoordinator(
                     )
                 )
 
-                is HttpNetworkClient.StreamResult.Failed -> StreamOutcome.Failed(result.error)
+                is HttpNetworkClient.StreamResult.Failed -> StreamOutcome.Failed(result.error, result.retryAfterMillis)
                 is HttpNetworkClient.StreamResult.Redirected -> StreamOutcome.Failed(
                     DownloadError.NetworkFailure("Unresolved redirect")
                 )
@@ -423,10 +431,20 @@ class HttpDownloadCoordinator(
         val counted = AtomicLong(base)
         val nextChunk = AtomicInteger(0)
         val reclaimed = ConcurrentLinkedQueue<Int>()
+        // Per-chunk earliest retry time (System.nanoTime domain). A requeued chunk is only handed
+        // back to a worker once `readyAt[chunk] <= now`; the head-of-queue worker `delay`s the
+        // remaining time, so an exponential backoff and any server `Retry-After` hint actually
+        // bite instead of the retry hammering the host immediately.
+        val readyAt = AtomicLongArray(plan.chunkCount)
         val chunkBytes = AtomicLongArray(plan.chunkCount)
         val chunkAttempts = AtomicIntegerArray(plan.chunkCount)
         val completedCount = AtomicInteger(completed.cardinality())
         val error = AtomicReference<DownloadError?>(null)
+        // Last server hint observed on a chunk failure. Kept separate from `error` because that
+        // field is set once (compare-and-set) but a subsequent retry on a different chunk can
+        // legitimately carry a stronger hint; the final Outcome.Failure surfaces whichever hint
+        // was most recently attached to the winning error.
+        val lastRetryHintMillis = AtomicLong(-1L)
         val lastActivity = AtomicLongArray(workerCount)
         val liveWorkers = AtomicInteger(0)
         // Per-slot handle to the worker's *currently running request only*. The watchdog cancels
@@ -457,11 +475,13 @@ class HttpDownloadCoordinator(
                                 completed = completed,
                                 nextChunk = nextChunk,
                                 reclaimed = reclaimed,
+                                readyAt = readyAt,
                                 chunkBytes = chunkBytes,
                                 chunkAttempts = chunkAttempts,
                                 counted = counted,
                                 completedCount = completedCount,
                                 error = error,
+                                lastRetryHintMillis = lastRetryHintMillis,
                                 lastActivity = lastActivity,
                                 inFlightStream = inFlightStream
                             )
@@ -502,8 +522,9 @@ class HttpDownloadCoordinator(
 
         val failure = error.get()
         val allDone = completedCount.get() >= plan.chunkCount
+        val hint = lastRetryHintMillis.get().takeIf { it >= 0L }
         return when {
-            failure != null -> Outcome.Failure(failure)
+            failure != null -> Outcome.Failure(failure, hint)
             !allDone -> Outcome.Failure(DownloadError.NetworkFailure("Every connection stopped with chunks outstanding"))
             else -> {
                 // Crash-safe finalization order: content was force-flushed in the finally above, so
@@ -530,17 +551,19 @@ class HttpDownloadCoordinator(
         completed: CompletedChunks,
         nextChunk: AtomicInteger,
         reclaimed: ConcurrentLinkedQueue<Int>,
+        readyAt: AtomicLongArray,
         chunkBytes: AtomicLongArray,
         chunkAttempts: AtomicIntegerArray,
         counted: AtomicLong,
         completedCount: AtomicInteger,
         error: AtomicReference<DownloadError?>,
+        lastRetryHintMillis: AtomicLong,
         lastActivity: AtomicLongArray,
         inFlightStream: AtomicReferenceArray<Job?>
     ) {
         try {
             while (error.get() == null && currentCoroutineContext().isActive) {
-                val chunk = claim(plan, completed, nextChunk, reclaimed, completedCount) ?: return
+                val chunk = claim(plan, completed, nextChunk, reclaimed, readyAt, completedCount) ?: return
                 if (completed.isDone(chunk)) continue
 
                 val start = plan.startOf(chunk)
@@ -583,7 +606,15 @@ class HttpDownloadCoordinator(
                     if (!currentCoroutineContext().isActive) throw e
                     discard(chunk, chunkBytes, counted)
                     if (error.get() != null) return
-                    requeue(chunk, DownloadError.NetworkFailure("Stalled connection dropped"), chunkAttempts, reclaimed, error)
+                    requeue(
+                        chunk = chunk,
+                        cause = DownloadError.NetworkFailure("Stalled connection dropped"),
+                        chunkAttempts = chunkAttempts,
+                        reclaimed = reclaimed,
+                        readyAt = readyAt,
+                        error = error,
+                        lastRetryHintMillis = lastRetryHintMillis,
+                    )
                     continue
                 }
 
@@ -599,17 +630,42 @@ class HttpDownloadCoordinator(
 
                     is HttpNetworkClient.StreamResult.Truncated -> {
                         discard(chunk, chunkBytes, counted)
-                        requeue(chunk, result.error(), chunkAttempts, reclaimed, error)
+                        requeue(
+                            chunk = chunk,
+                            cause = result.error(),
+                            chunkAttempts = chunkAttempts,
+                            reclaimed = reclaimed,
+                            readyAt = readyAt,
+                            error = error,
+                            lastRetryHintMillis = lastRetryHintMillis,
+                        )
                     }
 
                     is HttpNetworkClient.StreamResult.Failed -> {
                         discard(chunk, chunkBytes, counted)
-                        requeue(chunk, result.error, chunkAttempts, reclaimed, error)
+                        requeue(
+                            chunk = chunk,
+                            cause = result.error,
+                            chunkAttempts = chunkAttempts,
+                            reclaimed = reclaimed,
+                            readyAt = readyAt,
+                            error = error,
+                            lastRetryHintMillis = lastRetryHintMillis,
+                            retryAfterMillis = result.retryAfterMillis,
+                        )
                     }
 
                     is HttpNetworkClient.StreamResult.Redirected -> {
                         discard(chunk, chunkBytes, counted)
-                        requeue(chunk, DownloadError.NetworkFailure("Redirect chain changed mid-transfer"), chunkAttempts, reclaimed, error)
+                        requeue(
+                            chunk = chunk,
+                            cause = DownloadError.NetworkFailure("Redirect chain changed mid-transfer"),
+                            chunkAttempts = chunkAttempts,
+                            reclaimed = reclaimed,
+                            readyAt = readyAt,
+                            error = error,
+                            lastRetryHintMillis = lastRetryHintMillis,
+                        )
                     }
                 }
             }
@@ -632,33 +688,71 @@ class HttpDownloadCoordinator(
         cause: DownloadError,
         chunkAttempts: AtomicIntegerArray,
         reclaimed: ConcurrentLinkedQueue<Int>,
-        error: AtomicReference<DownloadError?>
+        readyAt: AtomicLongArray,
+        error: AtomicReference<DownloadError?>,
+        lastRetryHintMillis: AtomicLong,
+        retryAfterMillis: Long? = null,
     ) {
         if (!cause.isRetryable()) {
             error.compareAndSet(null, cause)
             return
         }
         metrics.recordChunkRetry()
-        if (chunkAttempts.incrementAndGet(chunk) > MAX_CHUNK_ATTEMPTS) {
+        val attempt = chunkAttempts.incrementAndGet(chunk)
+        if (attempt > MAX_CHUNK_ATTEMPTS) {
             error.compareAndSet(null, cause)
+            // Preserve any hint the failing chunk carried so the task-level scheduler can honour
+            // it on the auto-retry path even though we exhausted the per-chunk budget here.
+            retryAfterMillis?.let { lastRetryHintMillis.set(it) }
             return
         }
+        val delayMillis = chunkBackoffMillis(attempt, retryAfterMillis)
+        if (retryAfterMillis != null) lastRetryHintMillis.set(retryAfterMillis)
+        readyAt.set(chunk, System.nanoTime() + delayMillis * 1_000_000L)
         reclaimed.offer(chunk)
+    }
+
+    /**
+     * Delay before the [attempt]-th retry of a chunk. Equal-jitter exponential: half the window
+     * is a hard floor, the other half is picked uniformly. Full-jitter (picking anywhere in
+     * `[0, window]`) is theoretically better at decorrelating a thundering herd, but it also lets
+     * the schedule collapse to "immediate retry" with unlucky draws - which defeats the point of
+     * a backoff on a single-worker test and looks like the fix did not land. Equal-jitter keeps
+     * the decorrelation *and* the observable guarantee.
+     *
+     * When the server sent a `Retry-After` we honour it verbatim (already capped upstream in
+     * [HttpNetworkClient.parseRetryAfter]) instead of our own schedule; the host knows its own
+     * queue better than we do.
+     */
+    private fun chunkBackoffMillis(attempt: Int, retryAfterMillis: Long?): Long {
+        if (retryAfterMillis != null) return retryAfterMillis.coerceAtLeast(0L)
+        val shift = (attempt - 1).coerceIn(0, 16)
+        val exponential = (CHUNK_BACKOFF_BASE_MS shl shift).coerceAtMost(CHUNK_BACKOFF_CAP_MS)
+        val half = exponential / 2
+        return if (half <= 0L) exponential else half + CHUNK_RANDOM.nextLong(half)
     }
 
     private fun discard(chunk: Int, chunkBytes: AtomicLongArray, counted: AtomicLong) {
         counted.addAndGet(-chunkBytes.getAndSet(chunk, 0L))
     }
 
-    private fun claim(
+    private suspend fun claim(
         plan: HttpTransferPlanner.Plan,
         completed: CompletedChunks,
         nextChunk: AtomicInteger,
         reclaimed: ConcurrentLinkedQueue<Int>,
+        readyAt: AtomicLongArray,
         completedCount: AtomicInteger
     ): Int? {
         if (completedCount.get() >= plan.chunkCount) return null
-        reclaimed.poll()?.let { return it }
+        reclaimed.poll()?.let { chunk ->
+            // A requeued chunk carries the earliest retry time; sleep the remaining window here
+            // so the worker's stream starts after the backoff instead of immediately, which is
+            // the whole point of the schedule.
+            val waitNanos = readyAt.get(chunk) - System.nanoTime()
+            if (waitNanos > 0L) delay((waitNanos / 1_000_000L).milliseconds)
+            return chunk
+        }
         while (true) {
             val index = nextChunk.getAndIncrement()
             if (index >= plan.chunkCount) return null
@@ -863,5 +957,18 @@ class HttpDownloadCoordinator(
         const val MAX_CHUNK_ATTEMPTS = 4
         const val RANGE_NOT_SATISFIABLE = 416
         val RESUME_FLUSH_INTERVAL: Duration = 15.seconds
+
+        /**
+         * Chunk-retry backoff shape: equal-jitter exponential with base 1000 ms and cap 30 s.
+         * Four attempts (the existing MAX_CHUNK_ATTEMPTS) then span `[500,1000] /
+         * [1000,2000] / [2000,4000] / [4000,8000]` ms. The 30 s cap only bites if the budget
+         * grows past four; a real `Retry-After` from the server short-circuits the schedule
+         * entirely (see [chunkBackoffMillis]).
+         */
+        const val CHUNK_BACKOFF_BASE_MS = 1_000L
+        const val CHUNK_BACKOFF_CAP_MS = 30_000L
+
+        /** Per-attempt jitter source; java.util.Random is thread-safe and cheap enough here. */
+        val CHUNK_RANDOM = java.util.Random()
     }
 }

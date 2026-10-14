@@ -46,7 +46,15 @@ class DownloadExecutorImpl(
 ) : DownloadExecutor {
     private val logger = LoggerFactory.getLogger(DownloadExecutorImpl::class.java)
 
+    /**
+     * Per-run scratch slot: the HTTP coordinator stashes any `Retry-After` hint here when it
+     * hands back a Failure so the task-level scheduler can widen the retry delay to match. Reset
+     * at the top of every `execute()` so a value never leaks across a pause/resume cycle.
+     */
+    private var pendingRetryHintMillis: Long? = null
+
     override fun execute(): Flow<DownloadTask> = channelFlow {
+        pendingRetryHintMillis = null
         var currentTask = initialTask
         logger.debug("Starting execution of task {} ({})", currentTask.id, currentTask.request::class.simpleName)
         send(currentTask)
@@ -74,11 +82,25 @@ class DownloadExecutorImpl(
         }
 
         if (currentTask.state == DownloadState.Failed) {
-            val delayMs = retryPolicy.getNextDelay(currentTask.error ?: DownloadError.Unknown("Unknown error"), currentTask.retryCount)
+            val serverHint = pendingRetryHintMillis
+            val policyDelay = retryPolicy.getNextDelay(
+                currentTask.error ?: DownloadError.Unknown("Unknown error"),
+                currentTask.retryCount,
+            )
+            // Honour the server's own pacing when it gave one: `Retry-After` is the host telling us
+            // how long its queue needs; the policy's exponential schedule is the fallback when it
+            // did not answer. Taking the max keeps the retry no-earlier-than both sources ask for
+            // and never shortens what the policy already thought was sensible.
+            val delayMs = when {
+                policyDelay == null -> null
+                serverHint == null -> policyDelay
+                else -> maxOf(policyDelay, serverHint)
+            }
             if (delayMs != null) {
                 logger.info(
-                    "Scheduling retry for {} in {}ms (retry {})",
-                    currentTask.id, delayMs, currentTask.retryCount + 1
+                    "Scheduling retry for {} in {}ms (retry {}, server hint {})",
+                    currentTask.id, delayMs, currentTask.retryCount + 1,
+                    if (serverHint != null) "${serverHint}ms" else "none",
                 )
                 val retryingTask = currentTask.copy(
                     state = DownloadState.Queued,
@@ -209,6 +231,8 @@ class DownloadExecutorImpl(
 
                 is HttpDownloadCoordinator.Outcome.Failure -> {
                     metrics.recordFailed()
+                    // Remember any hint so the outer channelFlow can widen the retry delay.
+                    pendingRetryHintMillis = outcome.retryAfterMillis
                     send(
                         updateTask(
                             task = labelled,
