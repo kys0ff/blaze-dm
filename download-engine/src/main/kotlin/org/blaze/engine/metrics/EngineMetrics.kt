@@ -23,6 +23,12 @@ class EngineMetrics {
     /** Largest worker pool any single segmented transfer actually ran with, over the engine's life. */
     private val peakWorkers = AtomicInteger(0)
 
+    /**
+     * Narrowest adaptive connection window any transfer was shed to while running (0 until an
+     * adaptive reduction happens). Diagnostic proof that the throttle back-off actually engaged.
+     */
+    private val minConnectionWindow = AtomicInteger(0)
+
     /** Wall time the most recent segmented transfer spent down to its last active connection. */
     private val lastTailMillis = AtomicLong(0)
 
@@ -35,6 +41,11 @@ class EngineMetrics {
 
     fun recordPeakWorkers(count: Int) = peakWorkers.accumulateAndGet(count) { a, b -> maxOf(a, b) }
 
+    /** Records the narrowest connection window seen so far; 0 means "not shed yet". */
+    fun recordConnectionWindow(allowed: Int) = minConnectionWindow.accumulateAndGet(allowed) { a, b ->
+        if (a == 0) b else minOf(a, b)
+    }
+
     /** Records (not accumulates) the tail duration of the transfer that just finished. */
     fun recordTailMillis(millis: Long) = lastTailMillis.set(millis.coerceAtLeast(0))
 
@@ -46,6 +57,7 @@ class EngineMetrics {
         failedTransfers = failedTransfers.get(),
         resumedTransfers = resumedTransfers.get(),
         peakWorkers = peakWorkers.get(),
+        minConnectionWindow = minConnectionWindow.get(),
         lastTailMillis = lastTailMillis.get()
     )
 }
@@ -64,5 +76,6 @@ data class DownloadDiagnostics(
     val failedTransfers: Long = 0,
     val resumedTransfers: Long = 0,
     val peakWorkers: Int = 0,
+    val minConnectionWindow: Int = 0,
     val lastTailMillis: Long = 0
 )

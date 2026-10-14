@@ -452,6 +452,14 @@ class HttpDownloadCoordinator(
         // re-queued while the worker itself stays alive to pick up more work. Dropping the whole
         // worker job (the old behavior) shrank the pool on every stall and never grew it back.
         val inFlightStream = AtomicReferenceArray<Job?>(workerCount)
+        // Adaptive concurrency gate: starts at the full worker pool and sheds connections when the
+        // host answers 429 / 503, winning them back slowly (hysteresis). Null when disabled, in which
+        // case the worker's `window?.…` calls are all no-ops and behaviour is exactly as before.
+        val window = if (settings.httpAdaptiveConnectionsEnabled && workerCount > 1) {
+            ConnectionWindow(max = workerCount, onChange = { metrics.recordConnectionWindow(it) })
+        } else {
+            null
+        }
         // Tail diagnostics: the moment the pool last had more than one connection alive. The span
         // from there to completion is how long the download spent waiting on a single connection -
         // the "last 1-5%" cost that chunked planning is supposed to bound.
@@ -483,7 +491,8 @@ class HttpDownloadCoordinator(
                                 error = error,
                                 lastRetryHintMillis = lastRetryHintMillis,
                                 lastActivity = lastActivity,
-                                inFlightStream = inFlightStream
+                                inFlightStream = inFlightStream,
+                                window = window
                             )
                         } finally {
                             liveWorkers.decrementAndGet()
@@ -559,7 +568,8 @@ class HttpDownloadCoordinator(
         error: AtomicReference<DownloadError?>,
         lastRetryHintMillis: AtomicLong,
         lastActivity: AtomicLongArray,
-        inFlightStream: AtomicReferenceArray<Job?>
+        inFlightStream: AtomicReferenceArray<Job?>,
+        window: ConnectionWindow?
     ) {
         try {
             while (error.get() == null && currentCoroutineContext().isActive) {
@@ -571,6 +581,10 @@ class HttpDownloadCoordinator(
                 var position = start
                 lastActivity.set(index, System.nanoTime())
 
+                // Hold a connection slot only for the duration of the network request (never across
+                // the backoff `delay` inside claim, which would waste a permit). On the healthy path
+                // the window is wide and acquire() falls straight through.
+                window?.acquire()
                 val result = try {
                     // A child scope whose Job the watchdog can cancel without killing this worker.
                     supervisorScope {
@@ -616,10 +630,15 @@ class HttpDownloadCoordinator(
                         lastRetryHintMillis = lastRetryHintMillis,
                     )
                     continue
+                } finally {
+                    window?.release()
                 }
 
                 when (result) {
-                    is HttpNetworkClient.StreamResult.Success -> markDone(chunk, completed, completedCount)
+                    is HttpNetworkClient.StreamResult.Success -> {
+                        window?.noteSuccess()
+                        markDone(chunk, completed, completedCount)
+                    }
 
                     HttpNetworkClient.StreamResult.RangeIgnored -> {
                         // A CDN that answers some requests with 200 cannot be segmented safely.
@@ -643,6 +662,10 @@ class HttpDownloadCoordinator(
 
                     is HttpNetworkClient.StreamResult.Failed -> {
                         discard(chunk, chunkBytes, counted)
+                        // A 429 / 503 is the host asking us to slow down; shed a connection step so
+                        // the whole pool stops stacking pressure on the same rate limiter. Non-
+                        // throttling failures leave the window alone (chunk backoff handles those).
+                        if (result.throttled) window?.noteThrottle()
                         requeue(
                             chunk = chunk,
                             cause = result.error,

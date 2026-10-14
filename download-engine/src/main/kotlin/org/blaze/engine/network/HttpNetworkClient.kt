@@ -94,6 +94,13 @@ class HttpNetworkClient(
              * in that case.
              */
             val retryAfterMillis: Long? = null,
+            /**
+             * True when the response status was a throttling answer (429 Too Many Requests or
+             * 503 Service Unavailable), regardless of whether a `Retry-After` came with it.
+             * The adaptive connection window uses this to decide when to shed concurrent
+             * connections against a host that is pushing back.
+             */
+            val throttled: Boolean = false,
         ) : StreamResult
 
         /** Internal: the request has to be replayed against another URL. Never returned by [stream]. */
@@ -253,7 +260,9 @@ class HttpNetworkClient(
                 }
                 if (!isSuccess(status)) {
                     val hint = parseRetryAfter(response.headers, status)
-                    return@execute StreamResult.Failed(errorForStatus(status), hint)
+                    val throttled = status == HttpStatusCode.TooManyRequests.value ||
+                        status == HttpStatusCode.ServiceUnavailable.value
+                    return@execute StreamResult.Failed(errorForStatus(status), hint, throttled)
                 }
                 if (requestedRange && response.status != HttpStatusCode.PartialContent) {
                     // The server ignored the range. Draining the body it offered instead would move

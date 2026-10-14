@@ -707,18 +707,113 @@ gets spaced-out chunk retries instead of a back-to-back burst.
 - Full `:download-engine:test` suite (209 tests incl. the 6 new) passes; no regressions from the
   `worker`/`requeue`/`claim`/`Outcome` signature changes.
 
-### 3. Hot-path throughput (pending)
+### 3. Hot-path throughput — measured before touching the data path
 
-1. Work-stealing on largest-remaining chunk (fixes the 16-conn tail-latency saturation shown
-   by `2.5× ideal` scaling).
-2. Adaptive connection count backed off on 429/503 with hysteresis - now buildable on top of the
-   `Retry-After`/hint plumbing from §2a.
-3. Per-worker buffer pool to drop the per-chunk `ByteArray` allocation.
-4. Bounded disk-write queue behind a benchmark gate.
+Per the ground rules (measure first, don't add coordination risk for an unproven gain), the tail
+and concurrency benchmarks were re-run on the post-swap OkHttp engine before any change. Three
+runs each.
+
+**`HttpTailLatencyBenchmark` (throttled — the case segmentation exists for):**
+- Uniform cap, 32 MiB @ 8 MiB/s/conn, 4 conn: ideal 1.00 s, actual **1.22 s = 1.22× ideal, all 4
+  workers active.** Residual tail cost is 22%.
+- Slow final region (last 8 MiB @ 1 MiB/s/conn): 2 conn **5.73 s**, 4 conn **3.12 s**, one-connection
+  serialised reference 8.00 s. Doubling connections cuts the tail ~1.8×, i.e. the slow region is
+  genuinely drained in parallel, not funnelled through one worker.
+
+**`HttpConcurrencyScalingBenchmark` (unthrottled loopback, 32 MiB / 32 chunks):**
+```
+         | Run A  | Run C  | Run D
+---------+--------+--------+--------
+ conn=1  | 173.3  | 164.0  | 165.1   (single stream)
+ conn=2  |  82.4  |  92.9  |  82.5
+ conn=4  |  89.4  | 106.1  | 101.9
+ conn=8  |  97.4  |  94.9  | 103.7
+ conn=16 |  39.7  |  97.0  | 102.9   (Run A dip did NOT reproduce -> GC/disk hiccup, not contention)
+```
+
+Findings:
+- The `2.5×`-ideal 16-conn "saturation" the Phase-2 plan attributed to a tail imbalance is **noise**:
+  it appeared once and was ~1.0× the 8-conn figure on both re-runs. The shared `FileChannel`
+  write path (one channel serialising positioned writes across workers) is a *theoretical* cliff,
+  not an observed one at these connection counts.
+- **Work-stealing / late chunk-splitting is NOT warranted.** The throttled test already bounds the
+  tail (1.22× uniform, slow region parallelises 2→4 conn), so there is no measurable imbalance to
+  steal away. This is exactly the precondition the benchmark's own doc set before adding splitting:
+  "if those units already let several workers drain a slow final region together, late splitting
+  buys nothing and would only add coordination risk." Measurement says they do.
+- On an *unthrottled* loopback single-stream is the ceiling (~165 MiB/s); segmentation is strictly
+  slower there because there is no network to parallelise, only per-chunk request + write overhead.
+  This is expected and is not a defect — segmentation earns its keep on per-connection-capped hosts,
+  which is what the throttled test models.
+- `BandwidthLimiter.acquire` early-returns without taking its monitor when unlimited, so the unthrottled
+  sweep never touches the lock; the limiter is not a hot-path cost until a cap is set (§4 stands).
+
+Remaining §3 items and their status after measurement:
+1. ~~Work-stealing~~ — **declined on evidence** (no measurable tail bottleneck).
+2. ~~Adaptive connection count~~ backed off on repeated 429/503 — **done (§3b)**. Its value is
+   reliability/politeness under a throttling host (avoid ban, honour `Retry-After`), not raw
+   throughput, and it builds directly on the §2a hint plumbing.
+3. Per-worker buffer pool — **no measured win** (allocation/GC is not the limiter: single-stream
+   already beats segmented and there is no GC cliff). Low value; only worth it behind the write-queue
+   work if that is built.
+4. Bounded disk-write queue — the premise (isolate disk stalls from socket stalls) is not observed:
+   no reproducible write-path cliff. **Declined on evidence**; will note the negative result so it
+   is not re-litigated.
+
+#### 3b. Adaptive connection count (this commit)
+
+The one §3 item that earns its place, and on reliability rather than raw speed: when a host starts
+answering `429`/`503`, holding the full connection pool open turns one throttled server into a ban.
+The engine now sheds concurrency under throttle and wins it back slowly once the host goes quiet,
+building directly on the §2a `Retry-After` plumbing.
+
+**`ConnectionWindow` (new, `execution/ConnectionWindow.kt`)** — a resizable concurrency gate with
+hysteresis, wrapped around the segmented worker pool:
+- `acquire()` is `suspend`: a worker blocks only while `inFlight > allowed`; on a healthy host
+  `allowed == workerCount` so the increment always satisfies `inFlight <= allowed` and returns
+  immediately — the gate is one atomic bump on the fast path.
+- `noteThrottle()` halves the window, but **at most one reduction per cooldown** (default 2 s):
+  when a whole pool observes the same `429` in one instant it must not march `8 -> 4 -> 2 -> 1`.
+- `noteSuccess()` grows the window **one step per N consecutive clean chunks** (default 4), never
+  snapping back to full width, so recovery is deliberately slower than shed.
+- `noteThrottle()` clears the banked successes, and the window is floored at `MIN_WINDOW = 1` so a
+  badly throttled host still makes progress instead of stalling.
+- The reduce clock is injectable (`clock: () -> Long`) purely so the cooldown/recovery policy is
+  testable without sleeping; production uses `System::nanoTime`.
+
+**Signal and wiring:**
+- `HttpNetworkClient.StreamResult.Failed` gained `throttled: Boolean`, set when the status is `429`
+  or `503`, so the coordinator distinguishes "back off the pool" from an ordinary retryable failure.
+- `HttpDownloadCoordinator.segmented()` creates a `ConnectionWindow(max = workerCount)` only when
+  `settings.httpAdaptiveConnectionsEnabled` (new, default **true**) and `workerCount > 1`; the
+  single-stream and disabled paths pass `null` and are byte-for-byte the old behaviour. Each worker
+  brackets its stream in `acquire()` / `finally release()`, calls `noteSuccess()` on `Success` and
+  `noteThrottle()` on a `throttled` failure.
+- `EngineMetrics` records the low-water mark via the window's `onChange` hook
+  (`minConnectionWindow`, surfaced on `DownloadDiagnostics`), which doubles as the test signal.
+
+**Verification:**
+- `ConnectionWindowTest` (7 tests, deterministic via a fake nano clock) pins: first throttle halves;
+  repeat throttles inside the cooldown collapse to one step; never below 1; growth is one step per
+  full clean run; growth caps at max; a throttle clears banked successes; and the gate bounds
+  observed concurrency to the window (6 coroutines through a width-3 gate peak at <= 3).
+- `AdaptiveConnectionTest` (3 end-to-end tests against the extended `TestHttpServer` returning
+  `429` on the first four chunk requests) proves the window actually sheds below the 4-worker pool
+  (`minConnectionWindow in 1..3`) **while the file still lands byte-exact**; the same run with the
+  feature off, and a healthy-host run with it on, both leave `minConnectionWindow == 0`, so a shed
+  is attributable to a throttle and never fires on the fast path.
+- **No fast-path regression**: `HttpTailLatencyBenchmark` re-run with the feature default-on against
+  a healthy throttled host is unchanged within noise — uniform cap 1.26x ideal (was 1.22x), slow
+  region 2 conn 5.70 s / 4 conn 2.97 s (was 5.73 / 3.12 s), and peak workers stayed at full width
+  (4/4), i.e. the gate never engaged without a throttle.
+- Full `:download-engine:test` suite passes at **219 tests, 0 failures** (the 10 new adaptive tests on
+  top of the prior 209).
 
 ### 4. Speed-limiter review
 
-Left for the tail of the phase; current leaky bucket is uncontended in practice and a striped
-variant only pays for itself beyond ~16 workers.
+Confirmed adequate by the §3 sweep: with no cap set the limiter is one atomic-get + early return on
+the hot path, and the throttled tail benchmark (per-connection caps) passes without a striped bucket.
+A striped variant only pays for itself beyond ~16 *actively limited* workers, which the engine does
+not reach in practice. No change.
 
 

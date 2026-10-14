@@ -52,6 +52,13 @@ data class DownloadSettings(
 
     /** A connection idle for this long while others progress gets dropped. */
     val httpStalledConnectionSeconds: Int = 30,
+
+    /**
+     * Shed concurrent connections when a host pushes back with 429 / 503, and win them back slowly.
+     * On by default because it only bends down under throttling - a healthy host never triggers it -
+     * and hammering a rate-limiting server is how a download gets its IP banned.
+     */
+    val httpAdaptiveConnectionsEnabled: Boolean = true,
     val globalSpeedLimitEnabled: Boolean = false,
     val globalSpeedLimitKbps: Long = 10240, // default 10 MB/s
 
