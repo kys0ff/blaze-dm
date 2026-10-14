@@ -211,18 +211,26 @@ class HttpNetworkClient(
     /**
      * Downloads `bytes=[start]-[end]` (open-ended when [end] is null) and hands every buffer read
      * to [sink]. Recoverable problems come back as a [StreamResult]; only cancellation throws.
+     *
+     * [ifRange] is sent as an `If-Range` validator alongside the `Range` header (RFC 9110 §14.22):
+     * a server whose representation still matches it answers the range with a 206 as usual, but one
+     * whose file has since changed ignores the range and returns the whole body with a 200. The
+     * caller uses that 200-to-a-ranged-request signal to detect a mid-transfer rotation and restart
+     * cleanly instead of stitching bytes from two different files together. Only meaningful for a
+     * ranged request; ignored for a whole-body one.
      */
     suspend fun stream(
         request: DownloadRequest.Http,
         start: Long = 0L,
         end: Long? = null,
         onHead: suspend (Head) -> Unit = {},
-        sink: suspend (ByteArray, Int) -> Unit
+        ifRange: String? = null,
+        sink: suspend (ByteArray, Int) -> Unit,
     ): StreamResult {
         var url = normalize(request.url)
         var redirects = 0
         while (true) {
-            val result = streamAt(request, url, start, end, onHead, sink)
+            val result = streamAt(request, url, start, end, onHead, ifRange, sink)
             if (result !is StreamResult.Redirected) return result
             if (redirects++ >= maxRedirects) {
                 return StreamResult.Failed(DownloadError.NetworkFailure("Too many redirects"))
@@ -238,13 +246,19 @@ class HttpNetworkClient(
         start: Long,
         end: Long?,
         onHead: suspend (Head) -> Unit,
-        sink: suspend (ByteArray, Int) -> Unit
+        ifRange: String? = null,
+        sink: suspend (ByteArray, Int) -> Unit,
     ): StreamResult {
         val expected = if (end != null && end >= start) end - start + 1 else null
         val requestedRange = start > 0 || end != null
         val statement = client.prepareGet(url) {
             applyCommonHeaders(request)
-            if (requestedRange) header(HttpHeaders.Range, buildRange(start, end))
+            if (requestedRange) {
+                header(HttpHeaders.Range, buildRange(start, end))
+                // `If-Range` is only well-defined alongside `Range`; a mismatch makes the server
+                // drop back to a whole-body 200, which the caller reads as "the file changed".
+                if (ifRange != null) header(HttpHeaders.IfRange, ifRange)
+            }
         }
 
         return try {

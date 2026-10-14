@@ -655,10 +655,57 @@ Order:
 1. ~~Engine choice~~ (done, §1/§1b).
 2. ~~`Retry-After` handling~~ (done, §2a).
 3. ~~Chunk-level exponential backoff with jitter~~ (done, §2a).
-4. `If-Range` validation on resume against a swapped ETag; redirect re-probe against the new URL.
-   (pending)
+4. ~~`If-Range` validation on resume against a swapped ETag~~ (done, §2b). Redirect re-probe against
+   the new URL was already correct: `HttpNetworkClient.probe`/`stream` resolve a 3xx and replay the
+   `Range` against the new Location without leaking auth headers cross-origin (see Phase-1 §15.13).
 5. HEAD-vs-GET disagreement (already test-covered; verify the engine handles it after the swap).
-   (pending)
+   (done — `probe` trusts a proven ranged-GET `206` over a lying HEAD via `maxOf`, §25/§1b; no change)
+
+#### 2b. `If-Range` on the segmented data path (this commit)
+
+Closes the Phase-1 §15.9 finding. The resume-at-start case was already safe (the probe's validator is
+compared against the sidecar before any byte is trusted), but the *mid-transfer* case was not: a
+segmented run issued every chunk `Range` request without an `If-Range` validator, so if the host
+rotated the representation while workers were fetching, some chunks came from the old file and some
+from the new - stitched together into a **silently corrupt output that still reported success**. No
+corruption existed on a clean pause/resume; it existed only for a rotation *during* a run.
+
+**The mechanism (RFC 9110 §14.22).** A ranged GET that carries `If-Range: <validator>` gets a `206`
+for the range when the validator still matches, but a **whole-body `200`** when it no longer does.
+Because the segmented path is only reached after the probe has *proven* ranged reads (a real `206` on
+`bytes=0-0`), a `200`-to-a-ranged-request during a segmented run is unambiguous: the representation
+changed under us. The `If-Range` presence is itself the discriminator that separates "the file
+rotated" from "this host never supported ranges" (the latter only happens with no validator to send).
+
+**Implementation:**
+- `HttpNetworkClient.stream`/`streamAt` gained an optional `ifRange: String?` (added *before* the
+  `sink` parameter so the trailing-lambda call sites stay source-compatible) that emits
+  `If-Range` alongside `Range`. Only sent on a ranged request.
+- `HttpDownloadCoordinator.segmented` now threads the transfer's `probe.validator` into every chunk
+  request as `ifRange`, and the worker's `RangeIgnored` branch splits on whether a validator was
+  sent: with one, an `AtomicBoolean rotated` is raised (plus a retryable error to stop the siblings);
+  without one, the old fatal `RangeUnsupported` is kept.
+- The segmented driver was refactored into an outer `segmented` loop plus `segmentedOnce`. On a
+  rotation `segmentedOnce` closes the writer, **deletes the mixed partial and its sidecar**, fires
+  the genuine-restart advisory, and asks for a fresh probe; the wrapper re-probes and re-runs the
+  pool against the new validator, bounded to `MAX_ROTATION_RESTARTS = 1`. A second consecutive
+  rotation surfaces a retryable `NetworkFailure` rather than looping. The recovery happens inside a
+  single `download()` call, so it does not depend on the task-level `autoRetryFailed` setting.
+
+**Verification (`IfRangeTest`, 4 tests, all green):**
+- Two wire-level tests on the primitive: a *matching* `If-Range` still yields a `206` and the full
+  range streams through (and the header demonstrably reaches the server); a *stale* `If-Range` makes
+  the harness answer a whole-body `200`, which the client surfaces as `RangeIgnored`.
+- The end-to-end test drives an 8-chunk / 4-connection segmented transfer against a host whose ETag
+  rotates after the probe (`etagSwapAfterRequests = 2`): the download still returns `Success`, the
+  file is byte-exact, the mismatch path was taken (`ifRangeMismatchServed >= 1`), a restart was
+  reported, and the re-fetch carried the new validator - proving the mixed bytes were discarded and
+  re-fetched cleanly rather than finalised corrupt.
+- A healthy-host control run never downgrades a range and never restarts, so the guard is inert on
+  the fast path.
+- Full `:download-engine:test` suite passes at **223 tests, 0 failures** (the 4 new on top of the 219
+  after the adaptive-connection commit); the `segmented` refactor and the `stream` signature change
+  broke no existing transfer/resume/failure test.
 
 #### 2a. `Retry-After` + chunk-level backoff (this commit)
 

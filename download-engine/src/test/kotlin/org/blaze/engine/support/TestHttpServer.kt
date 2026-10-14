@@ -151,6 +151,9 @@ class TestHttpServer(
     /** Every `Range` header received, in order, including the empty string for rangeless GETs. */
     val rangeRequests: CopyOnWriteArrayList<String> = CopyOnWriteArrayList()
 
+    /** Every `If-Range` header received, in order; empty string when the client sent none. */
+    val ifRangeRequests: CopyOnWriteArrayList<String> = CopyOnWriteArrayList()
+
     /** Every request line path, in order (query stripped). */
     val requestPaths: CopyOnWriteArrayList<String> = CopyOnWriteArrayList()
 
@@ -175,6 +178,9 @@ class TestHttpServer(
 
     /** Per-IP connection refusals triggered by [maxConcurrentConnections]. */
     val refusedConnections = AtomicInteger(0)
+
+    /** Ranged requests downgraded to a whole-body 200 because their `If-Range` validator had gone stale. */
+    val ifRangeMismatchServed = AtomicInteger(0)
 
     val port: Int get() = server.localPort
     val url: String get() = "http://127.0.0.1:$port/file.bin"
@@ -253,14 +259,17 @@ class TestHttpServer(
         val target = parts.getOrNull(1).orEmpty()
         val path = target.substringBefore('?')
         var range: String? = null
+        var ifRange: String? = null
         while (true) {
             val line = reader.readLine() ?: return false
             if (line.isEmpty()) break
             if (line.startsWith("Range:", ignoreCase = true)) range = line.substringAfter(':').trim()
+            if (line.startsWith("If-Range:", ignoreCase = true)) ifRange = line.substringAfter(':').trim()
         }
         requestCount.incrementAndGet()
         requestPaths.add(path)
         rangeRequests.add(range ?: "")
+        ifRangeRequests.add(ifRange ?: "")
 
         val connection = if (keepAlive) "keep-alive" else "close"
 
@@ -323,6 +332,13 @@ class TestHttpServer(
                 val (from, to) = parseRange(range, payload.size)
                 if (from == null) {
                     writeHead(out, "HTTP/1.1 416 Requested Range Not Satisfiable", -1, liveValidator, connection)
+                } else if (ifRange != null && ifRange != liveValidator) {
+                    // The `If-Range` validator no longer matches the live representation: per RFC 9110
+                    // §14.22 the server ignores the Range and answers with the whole body (200), which
+                    // is how a ranged client learns the file rotated under it instead of silently
+                    // stitching two representations together.
+                    ifRangeMismatchServed.incrementAndGet()
+                    serveWholeBody(out, connection, liveValidator)
                 } else {
                     val length = to - from + 1
                     write206(out, from, to, length, liveValidator, connection)

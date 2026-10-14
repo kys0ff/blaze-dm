@@ -305,6 +305,16 @@ class HttpDownloadCoordinator(
 
     // ---------------------------------------------------------------- segmented
 
+    /**
+     * Drives the segmented transfer, transparently recovering from a mid-transfer file rotation.
+     *
+     * [segmentedOnce] fetches the pool for one probe's worth of validator. If an `If-Range` mismatch
+     * reveals the host rotated the representation while chunks were being written, it discards the
+     * mixed bytes and asks for a fresh probe; we re-probe and re-run the pool against the new
+     * validator exactly once. A second rotation is treated as a genuine give-up (the host will not
+     * hold still) rather than looping forever. This keeps a single `download()` call delivering a
+     * byte-exact file without depending on the task-level retry settings.
+     */
     private suspend fun segmented(
         request: DownloadRequest.Http,
         destination: Path,
@@ -315,6 +325,46 @@ class HttpDownloadCoordinator(
         onRestart: suspend () -> Unit,
         onProgress: suspend (Progress) -> Unit
     ): Outcome {
+        var currentProbe = probe
+        var rotations = 0
+        while (true) {
+            when (val step = segmentedOnce(request, destination, partial, currentProbe, connections, support, onRestart, onProgress)) {
+                is SegmentedTransfer.Finished -> return step.outcome
+                SegmentedTransfer.RetryFromProbe -> {
+                    if (rotations >= MAX_ROTATION_RESTARTS) {
+                        return Outcome.Failure(
+                            DownloadError.NetworkFailure("Source representation kept changing during the transfer")
+                        )
+                    }
+                    rotations++
+                    val fresh = client.probe(request)
+                    support.note(fresh.rangeSupport)
+                    if (!fresh.acceptsRanges || fresh.totalBytes < settings.httpMinParallelSizeBytes) {
+                        // The host stopped being segmentable; finish honestly on one stream from 0.
+                        return singleStream(request, destination, partial, 0L, fresh.totalBytes, support, onRestart, onProgress)
+                    }
+                    currentProbe = fresh
+                }
+            }
+        }
+    }
+
+    private sealed interface SegmentedTransfer {
+        data class Finished(val outcome: Outcome) : SegmentedTransfer
+        /** If-Range mismatch: the bytes on disk mix two representations and were discarded. */
+        data object RetryFromProbe : SegmentedTransfer
+    }
+
+    private suspend fun segmentedOnce(
+        request: DownloadRequest.Http,
+        destination: Path,
+        partial: Path,
+        probe: HttpNetworkClient.Probe,
+        connections: Int,
+        support: RangeSupportReporter,
+        onRestart: suspend () -> Unit,
+        onProgress: suspend (Progress) -> Unit
+    ): SegmentedTransfer {
         val total = probe.totalBytes
         val statePath = storage.getResumeStateFile(destination).toPath()
         val persisted = readResumeState(statePath)
@@ -354,7 +404,9 @@ class HttpDownloadCoordinator(
         if (plan.chunkCount < 2) {
             // Too small to split: the single stream inherits the probe's answer, which the caller
             // already heard - handing the reporter along lets a restart found below correct it.
-            return singleStream(request, destination, partial, sizeOf(partial), total, support, onRestart, onProgress)
+            return SegmentedTransfer.Finished(
+                singleStream(request, destination, partial, sizeOf(partial), total, support, onRestart, onProgress)
+            )
         }
 
         val completed = CompletedChunks(plan.chunkCount)
@@ -398,7 +450,7 @@ class HttpDownloadCoordinator(
             storage.preallocate(partial, total)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            return Outcome.Failure(e.toFileSystemError())
+            return SegmentedTransfer.Finished(Outcome.Failure(e.toFileSystemError()))
         }
 
         // Lay out (or keep) the self-contained portable region. It lives strictly past the content
@@ -424,7 +476,7 @@ class HttpDownloadCoordinator(
             storage.openPositionedWriter(partial)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            return Outcome.Failure(e.toFileSystemError())
+            return SegmentedTransfer.Finished(Outcome.Failure(e.toFileSystemError()))
         }
 
         val workerCount = minOf(connections, plan.chunkCount)
@@ -460,6 +512,11 @@ class HttpDownloadCoordinator(
         } else {
             null
         }
+        // Set when a chunk request carrying our `If-Range` validator comes back a whole-body 200,
+        // i.e. the host rotated the representation mid-transfer. The workers stop and segmentedOnce
+        // discards the (now mixed) partial and asks the caller for a clean re-fetch.
+        val rotated = AtomicBoolean(false)
+        val baselineValidator = probe.validator
         // Tail diagnostics: the moment the pool last had more than one connection alive. The span
         // from there to completion is how long the download spent waiting on a single connection -
         // the "last 1-5%" cost that chunked planning is supposed to bound.
@@ -492,7 +549,9 @@ class HttpDownloadCoordinator(
                                 lastRetryHintMillis = lastRetryHintMillis,
                                 lastActivity = lastActivity,
                                 inFlightStream = inFlightStream,
-                                window = window
+                                window = window,
+                                baselineValidator = baselineValidator,
+                                rotated = rotated
                             )
                         } finally {
                             liveWorkers.decrementAndGet()
@@ -518,6 +577,17 @@ class HttpDownloadCoordinator(
             runCatching { writer.close() }
         }
 
+        // A rotation detected mid-run means the partial on disk is a mix of two representations and
+        // can never be finalised. The writer is closed, so drop the poisoned partial plus its sidecar
+        // and let the caller re-probe and re-fetch from scratch. Progress really was lost -> restart.
+        if (rotated.get()) {
+            logger.warn("The representation of {} changed mid-transfer (If-Range mismatch); discarding and re-fetching", destination.fileName)
+            runCatching { storage.delete(statePath) }
+            runCatching { storage.delete(partial) }
+            onRestart()
+            return SegmentedTransfer.RetryFromProbe
+        }
+
         writeResumeState(statePath, total, plan.chunkSize, probe.validator, completed)
         // Refresh the embedded region at every stop boundary — pause, failure or clean completion.
         // The periodic saver only fires on a 15s tick, so a fast failure could otherwise leave the
@@ -532,7 +602,7 @@ class HttpDownloadCoordinator(
         val failure = error.get()
         val allDone = completedCount.get() >= plan.chunkCount
         val hint = lastRetryHintMillis.get().takeIf { it >= 0L }
-        return when {
+        return SegmentedTransfer.Finished(when {
             failure != null -> Outcome.Failure(failure, hint)
             !allDone -> Outcome.Failure(DownloadError.NetworkFailure("Every connection stopped with chunks outstanding"))
             else -> {
@@ -548,7 +618,7 @@ class HttpDownloadCoordinator(
                 onProgress(Progress(total, total))
                 Outcome.Success(total, total)
             }
-        }
+        })
     }
 
     private suspend fun worker(
@@ -569,7 +639,9 @@ class HttpDownloadCoordinator(
         lastRetryHintMillis: AtomicLong,
         lastActivity: AtomicLongArray,
         inFlightStream: AtomicReferenceArray<Job?>,
-        window: ConnectionWindow?
+        window: ConnectionWindow?,
+        baselineValidator: String?,
+        rotated: AtomicBoolean
     ) {
         try {
             while (error.get() == null && currentCoroutineContext().isActive) {
@@ -596,6 +668,7 @@ class HttpDownloadCoordinator(
                                 start = start,
                                 end = end,
                                 onHead = {},
+                                ifRange = baselineValidator,
                                 sink = { buffer, length ->
                                     limiter.acquire(length)
                                     writer.writeAt(position, buffer, 0, length)
@@ -641,9 +714,25 @@ class HttpDownloadCoordinator(
                     }
 
                     HttpNetworkClient.StreamResult.RangeIgnored -> {
-                        // A CDN that answers some requests with 200 cannot be segmented safely.
+                        // We asked for a range and got a 200 whole body back. Two very different
+                        // things cause that, and the `If-Range` validator we sent tells them apart.
                         discard(chunk, chunkBytes, counted)
-                        error.compareAndSet(null, DownloadError.RangeUnsupported)
+                        if (baselineValidator != null) {
+                            // Ranged reads were proven at probe time and this request carried the
+                            // transfer's validator, so a whole-body answer means the representation
+                            // changed under us (RFC 9110 §14.22). The bytes already written mix the
+                            // old and new file and must never be finalised: flag the rotation so
+                            // segmentedOnce discards everything and re-fetches against a fresh probe.
+                            rotated.set(true)
+                            error.compareAndSet(
+                                null,
+                                DownloadError.NetworkFailure("Source representation changed during the transfer"),
+                            )
+                        } else {
+                            // No validator to test with - a CDN that answers some requests with 200
+                            // simply cannot be segmented safely.
+                            error.compareAndSet(null, DownloadError.RangeUnsupported)
+                        }
                         return
                     }
 
@@ -979,6 +1068,13 @@ class HttpDownloadCoordinator(
         const val WATCHDOG_INTERVAL_MS = 2_000L
         const val MAX_CHUNK_ATTEMPTS = 4
         const val RANGE_NOT_SATISFIABLE = 416
+        /**
+         * How many times a segmented transfer may discard its bytes and re-fetch when an `If-Range`
+         * mismatch shows the host rotated the representation mid-transfer. One covers the ordinary
+         * "file swapped once while we were reading" case; past that the host is not holding still
+         * and we surface a failure rather than spin re-downloading.
+         */
+        const val MAX_ROTATION_RESTARTS = 1
         val RESUME_FLUSH_INTERVAL: Duration = 15.seconds
 
         /**
