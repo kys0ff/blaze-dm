@@ -1,5 +1,6 @@
 package org.island.theme.ui
 
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -10,24 +11,31 @@ import androidx.compose.ui.unit.sp
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.intui.standalone.Inter
 import org.jetbrains.jewel.ui.component.computeLineHeightPx
+import java.awt.GraphicsEnvironment
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.platform.Font as ComposeFont
 import java.awt.Font as AwtFont
 
 /**
- * The font catalogue the Islands theme renders with.
+ * The font catalogue the Islands theme renders with, and the source of Settings' font dropdowns.
  *
- * Blaze ships no font binaries of its own: Jewel's standalone artifact already bundles the two
- * families the New UI is built on — Inter (the IDE's interface font) and JetBrains Mono (its code
- * font) — as classpath resources, so a customization re-points the theme's text styles at a
- * different bundled family (or at the OS default) instead of duplicating glyphs in the repo.
+ * Three kinds of entry live here:
+ *  - Jewel's own bundles — Inter (the IDE interface font) and JetBrains Mono (its code font) — which
+ *    ship as classpath resources inside Jewel's standalone jar and need no binary in this repo;
+ *  - Blaze's *own* bundles — a few free, redistribution-licensed families (Roboto, IBM Plex Sans,
+ *    Source Code Pro) checked in under `fonts/bundled/<slug>/` (see the `downloadBundledFonts`
+ *    Gradle task) so the picker offers more than the two Jewel families; and
+ *  - the OS's installed families, enumerated through AWT's [GraphicsEnvironment] and addressed by
+ *    name via `FontFamily(name)`.
  *
- * Settings persist these ids as opaque strings. An unknown id — a hand-edited app.json, a family
- * dropped from a future Jewel — falls back to the default, exactly like an unknown language code,
- * so the UI can never end up unrenderable.
+ * Settings persists the choice as an opaque id string: a bare id for a bundled family, `system` for
+ * the platform default, or a `system:<Family Name>` id for an installed family. An unknown id — a
+ * hand-edited app.json, a family dropped in a future release, a saved font missing on another
+ * machine — falls back to the default exactly like an unknown language code, so the UI can never
+ * end up unrenderable.
  */
-@OptIn(ExperimentalJewelApi::class)
+@OptIn(ExperimentalJewelApi::class, ExperimentalTextApi::class)
 object IslandFontFamilies {
 
     /** The OS-default family (Compose `FontFamily.Default`; `Monospace` for the mono slot). */
@@ -39,8 +47,20 @@ object IslandFontFamilies {
     /** Jewel's bundled JetBrains Mono — the IDE's coding font. */
     const val JETBRAINS_MONO = "jetbrains_mono"
 
-    /** Catalogue ids, in the order Settings presents them. */
-    val availableIds: List<String> = listOf(SYSTEM, INTER, JETBRAINS_MONO)
+    /** Blaze's own bundled Roboto (Apache-2.0) — a UI-friendly sans. */
+    const val ROBOTO = "roboto"
+
+    /** Blaze's own bundled IBM Plex Sans (OFL) — IBM's interface grotesque. */
+    const val IBM_PLEX_SANS = "ibm_plex_sans"
+
+    /** Blaze's own bundled Source Code Pro (OFL) — Adobe's monospace. */
+    const val SOURCE_CODE_PRO = "source_code_pro"
+
+    /** Prefix marking a persisted id as a specific OS-installed family (`system:Consolas`). */
+    const val SYSTEM_PREFIX = "system:"
+
+    /** The ids bundled in the catalogue — everything except the machine-specific OS families. */
+    val availableIds: List<String> = listOf(SYSTEM, INTER, JETBRAINS_MONO, ROBOTO, IBM_PLEX_SANS, SOURCE_CODE_PRO)
 
     /** The family Blaze renders with when nothing is configured — Jewel's stock interface font. */
     const val DefaultUiFontId = INTER
@@ -65,6 +85,9 @@ object IslandFontFamilies {
     private const val InterRegularResource = "/fonts/inter/Inter-Regular.ttf"
     private const val JetBrainsMonoRegularResource = "/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
 
+    /** Classpath root Blaze's *own* downloaded families live under (see `downloadBundledFonts`). */
+    private const val BundledRoot = "/fonts/bundled"
+
     /**
      * A selectable family: its Compose [family] plus the bundled regular face ([regularResource])
      * whose vertical metrics define the line height — `null` for OS families, which have no
@@ -72,18 +95,90 @@ object IslandFontFamilies {
      */
     data class IslandFont(val id: String, val family: FontFamily, val regularResource: String?)
 
+    /**
+     * One row of a Settings font dropdown: the persisted [id], its human [label], and the [family]
+     * the picker previews the name in. Unlike [IslandFont] (what the theme resolves to), this also
+     * carries the display name, which the dropdown needs but the substitution path never does.
+     */
+    data class FontChoice(val id: String, val label: String, val family: FontFamily)
+
     /** The interface family for [id]; anything unknown resolves to the stock [INTER]. */
-    fun uiFontFor(id: String): IslandFont = when (id) {
-        SYSTEM -> IslandFont(SYSTEM, FontFamily.Default, null)
-        JETBRAINS_MONO -> IslandFont(JETBRAINS_MONO, jetBrainsMono, JetBrainsMonoRegularResource)
-        else -> IslandFont(INTER, FontFamily.Inter, InterRegularResource)
-    }
+    fun uiFontFor(id: String): IslandFont = resolve(id, FontFamily.Default, interFont)
 
     /** The monospace family for [id]; anything unknown resolves to the stock [JETBRAINS_MONO]. */
-    fun monoFontFor(id: String): IslandFont = when (id) {
-        SYSTEM -> IslandFont(SYSTEM, FontFamily.Monospace, null)
-        INTER -> IslandFont(INTER, FontFamily.Inter, InterRegularResource)
-        else -> IslandFont(JETBRAINS_MONO, jetBrainsMono, JetBrainsMonoRegularResource)
+    fun monoFontFor(id: String): IslandFont = resolve(id, FontFamily.Monospace, jetBrainsMonoFont)
+
+    /**
+     * Map a persisted [id] onto a family: `system` to the slot's platform default, a `system:<name>`
+     * id to that OS family addressed by name, a bundled id to its entry, and anything else to [fallback].
+     */
+    private fun resolve(id: String, systemFamily: FontFamily, fallback: IslandFont): IslandFont = when {
+        id == SYSTEM -> IslandFont(SYSTEM, systemFamily, null)
+        id.startsWith(SYSTEM_PREFIX) -> IslandFont(id, FontFamily(id.removePrefix(SYSTEM_PREFIX)), null)
+        else -> byId[id] ?: fallback
+    }
+
+    /**
+     * The dropdown list for the interface font. The localized [systemDefaultLabel] names the OS-default
+     * entry; the bundled families keep their endonym labels (proper nouns, like the language row) and the
+     * OS families are appended, sorted.
+     */
+    fun uiChoices(systemDefaultLabel: String): List<FontChoice> =
+        buildChoices(FontFamily.Default, systemDefaultLabel)
+
+    /** The dropdown list for the monospace font; same shape as [uiChoices], mono-slot default. */
+    fun monoChoices(systemDefaultLabel: String): List<FontChoice> =
+        buildChoices(FontFamily.Monospace, systemDefaultLabel)
+
+    /** Bundled catalogue entries in presentation order — Jewel's two first, then Blaze's own. */
+    private val bundledChoices: List<FontChoice> by lazy {
+        listOf(
+            FontChoice(INTER, "Inter", FontFamily.Inter),
+            FontChoice(JETBRAINS_MONO, "JetBrains Mono", jetBrainsMono),
+            FontChoice(ROBOTO, "Roboto", roboto),
+            FontChoice(IBM_PLEX_SANS, "IBM Plex Sans", ibmPlexSans),
+            FontChoice(SOURCE_CODE_PRO, "Source Code Pro", sourceCodePro),
+        )
+    }
+
+    /**
+     * The OS-installed families, each addressed by name. Cached because the set is fixed for a
+     * process; wrapped defensively because the enumeration throws on a headless JVM (unit tests).
+     */
+    private val systemChoices: List<FontChoice> by lazy {
+        runCatching {
+            GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .availableFontFamilyNames
+                .sortedBy { it.lowercase() }
+                .map { name -> FontChoice(SYSTEM_PREFIX + name, name, FontFamily(name)) }
+        }.getOrElse { emptyList() }
+    }
+
+    private fun buildChoices(defaultFamily: FontFamily, systemDefaultLabel: String): List<FontChoice> =
+        listOf(FontChoice(SYSTEM, systemDefaultLabel, defaultFamily)) + bundledChoices + systemChoices
+
+    // The bundled families by id, kept so resolution and the picker read one source. Built lazily so
+    // the (possibly missing) TTFs are only touched when a family is actually chosen or previewed.
+    private val byId: Map<String, IslandFont> by lazy {
+        bundledChoices.associate { choice ->
+            choice.id to IslandFont(choice.id, choice.family, regularResourceFor(choice.id))
+        } + (INTER to interFont) + (JETBRAINS_MONO to jetBrainsMonoFont)
+    }
+
+    private val interFont: IslandFont get() = IslandFont(INTER, FontFamily.Inter, InterRegularResource)
+    private val jetBrainsMonoFont: IslandFont
+        get() = IslandFont(
+            JETBRAINS_MONO,
+            jetBrainsMono,
+            JetBrainsMonoRegularResource
+        )
+
+    /** The regular face whose metrics drive line height, for the Blaze-bundled families. */
+    private fun regularResourceFor(id: String): String? = when (id) {
+        ROBOTO -> "$BundledRoot/roboto/Roboto-Regular.ttf"
+        IBM_PLEX_SANS -> "$BundledRoot/ibm_plex_sans/IBMPlexSans-Regular.ttf"
+        SOURCE_CODE_PRO -> "$BundledRoot/source_code_pro/SourceCodePro-Regular.ttf"
+        else -> null
     }
 
     /**
@@ -159,5 +254,37 @@ object IslandFontFamilies {
         resource = "/fonts/jetbrains-mono/JetBrainsMono-$face.ttf",
         weight = weight,
         style = style,
+    )
+
+    // ── Blaze's own downloaded families (see the downloadBundledFonts Gradle task) ────────────────
+    // Each carries Regular / Bold faces plus their Italic counterparts; Jewel ramps rarely go past
+    // Bold, and a heavier requested weight resolves to the nearest face Compose has.
+
+    private val roboto: FontFamily by lazy {
+        fourFaceFamily("$BundledRoot/roboto/Roboto", "Regular", "Bold", "Italic", "BoldItalic")
+    }
+
+    private val ibmPlexSans: FontFamily by lazy {
+        fourFaceFamily("$BundledRoot/ibm_plex_sans/IBMPlexSans", "Regular", "Bold", "Italic", "BoldItalic")
+    }
+
+    private val sourceCodePro: FontFamily by lazy {
+        fourFaceFamily(
+            "$BundledRoot/source_code_pro/SourceCodePro",
+            "Regular", "Bold", "Italic", "BoldItalic",
+        )
+    }
+
+    private fun fourFaceFamily(
+        base: String,
+        regular: String,
+        bold: String,
+        italic: String,
+        boldItalic: String,
+    ): FontFamily = FontFamily(
+        ComposeFont(resource = "$base-$regular.ttf", weight = FontWeight.Normal),
+        ComposeFont(resource = "$base-$italic.ttf", weight = FontWeight.Normal, style = FontStyle.Italic),
+        ComposeFont(resource = "$base-$bold.ttf", weight = FontWeight.Bold),
+        ComposeFont(resource = "$base-$boldItalic.ttf", weight = FontWeight.Bold, style = FontStyle.Italic),
     )
 }

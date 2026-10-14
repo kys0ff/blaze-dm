@@ -53,6 +53,44 @@ class IslandFontFamiliesTest {
     }
 
     @Test
+    fun `system-prefixed ids resolve to the named OS family with nothing to measure`() {
+        // An OS family has no bundled regular face, so it keeps the base line height by design.
+        val consolas = IslandFontFamilies.monoFontFor("${IslandFontFamilies.SYSTEM_PREFIX}Consolas")
+        assertEquals("${IslandFontFamilies.SYSTEM_PREFIX}Consolas", consolas.id)
+        assertNull(consolas.regularResource)
+        assertNotNull(consolas.family)
+    }
+
+    @Test
+    fun `blaze's own bundled families resolve with a measurable regular face`() {
+        listOf(IslandFontFamilies.ROBOTO, IslandFontFamilies.IBM_PLEX_SANS, IslandFontFamilies.SOURCE_CODE_PRO)
+            .forEach { id ->
+                val font = IslandFontFamilies.uiFontFor(id)
+                assertEquals(id, font.id, "$id must resolve to itself, not the fallback")
+                assertNotNull(font.regularResource, "$id needs a bundled face to measure line height")
+                assertNotNull(font.family)
+            }
+    }
+
+    @Test
+    fun `dropdown choices lead with the localized default then every bundled family`() {
+        val choices = IslandFontFamilies.uiChoices("System default")
+        assertEquals(IslandFontFamilies.SYSTEM, choices.first().id)
+        assertEquals("System default", choices.first().label)
+        val ids = choices.map { it.id }
+        assertTrue(
+            ids.containsAll(
+                listOf(
+                    IslandFontFamilies.INTER,
+                    IslandFontFamilies.JETBRAINS_MONO,
+                    IslandFontFamilies.ROBOTO
+                )
+            )
+        )
+        assertTrue(ids.distinctBy { it }.size == ids.size, "choice ids must be unique")
+    }
+
+    @Test
     fun `bundled families report a line height while os families report none`() {
         val inter = IslandFontFamilies.uiFontFor(IslandFontFamilies.INTER)
         val interLineHeight = assertNotNull(IslandFontFamilies.lineHeightSp(inter, 13f))
