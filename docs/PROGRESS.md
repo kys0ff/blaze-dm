@@ -616,6 +616,39 @@ Notes on the swap:
   inert; a `TestHttpServer` fixture (`gzipNonRanged`) exists to prove the behaviour end-to-end
   after the swap.
 
+### 1b. Post-swap baseline (same recipe, OkHttp now the production engine)
+
+`HttpBaselineBenchmark` re-run against the new default client, same payload, same connection
+ladder, same cap. `Phase 2 §5` is the "before" table.
+
+```
+           | unthrottled MiB/s  Java -> OkHttp        | throttled 4 MiB/s/conn Java -> OkHttp
+-----------+-----------------------------------------+----------------------------------------
+ conn=1    | 141.4  -> 191.4   (+35%)                |  4.00 ->  4.00   (unchanged)
+ conn=4    |  78.1  ->  86.6   (+11%)                | 14.40 -> 14.31   (-0.6%, noise)
+ conn=8    |  85.6  -> 103.8   (+21%)                | 25.50 -> 26.04   (+2%)
+ conn=16   | 105.5  -> 103.7   (-2%,  noise)         | 40.60 -> 44.47   (+10%)
+
+peak threads @ conn=1/4/8/16 : 27 / 42 / 47 / 61  (was 25 / 52 / 102 / 213)
+peak heap    @ conn=1/4/8/16 : 79 / 132 / 137 / 169 MiB (was 131 / 163 / 157 / 163 MiB)
+```
+
+Interpretation:
+
+- Unthrottled single-stream is 1.35x Java; that is the client-side overhead the Phase 2 baseline
+  flagged as "software cost the loopback network cannot hide", and OkHttp just cut it in the way
+  its own connection dispatch does.
+- Throttled scaling at conn=16 improves 10%, which is where the tail-latency story was weakest.
+- **Thread footprint is the biggest win.** At conn=16 we went from 213 live threads to 61. That
+  changes the ceiling for `maxConnectionsPerDownload` from "about 16 before we're running
+  hundreds of threads per active download" to "room to grow", which the Phase 3 adaptive-conn
+  work needs.
+- Heap is comparable at conn=16 but roughly 40% lower at conn=1.
+- The full 203-test suite passes against the new engine (one transient timing flake in
+  `TimeoutRetryTest` did not reproduce on `--rerun-tasks` after a clean build; that test is
+  independent of the production client - it constructs its own CIO client).
+
+
 ### 2. Correctness gaps (in progress)
 
 Order:

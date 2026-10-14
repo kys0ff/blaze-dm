@@ -3,7 +3,7 @@ package org.blaze.engine.core
 import bt.bencoding.serializers.BEParser
 import bt.metainfo.MetadataConstants
 import io.ktor.client.*
-import io.ktor.client.engine.java.*
+import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -134,18 +134,23 @@ class DownloadManager(
         /**
          * The production HTTP client.
          *
-         * It deliberately uses the JDK's own [java.net.http.HttpClient] engine rather than Ktor's
-         * CIO engine: CIO opens a brand-new TCP connection for *every* request (verified - two
-         * sequential keep-alive GETs use two sockets), so a segmented download would pay a full
-         * TCP - and on a real host, TLS - handshake for each of its dozens of chunk requests, and
-         * the abandoned sockets pile up in TIME_WAIT. The JDK client pools and reuses keep-alive
-         * connections and speaks HTTP/2, so the workers reuse sockets instead.
+         * OkHttp is the engine chosen by `HttpEngineBenchmark` (see `docs/PROGRESS.md` Phase 3
+         * sect.1). On a 32 MiB segmented loopback workload it wins every unthrottled cell against
+         * the JDK client (1.2-2.1x throughput), matches or beats it under a per-connection cap,
+         * and does it with roughly 3x fewer threads at conn=16 and half the GC pause. CIO was
+         * rejected because it opens a fresh TCP connection per request (serverConnections=34 at
+         * conn=4), so a segmented download would pay a full TCP - and on a real host, TLS -
+         * handshake per chunk and leave the abandoned sockets in TIME_WAIT.
          *
-         * The JDK client has no per-socket read-inactivity timeout, so a stalled transfer is caught
-         * by the segmented path's watchdog (see HttpDownloadCoordinator) rather than by
-         * socketTimeoutMillis; the connect timeout still bounds dead hosts.
+         * Like the JDK engine, OkHttp pools and reuses keep-alive connections and speaks HTTP/2,
+         * which is what the segmented path assumes.
+         *
+         * `socketTimeoutMillis` on the Ktor `HttpTimeout` plugin translates to OkHttp's own
+         * read/write timeout. A stalled transfer is additionally bounded by the segmented path's
+         * watchdog (see `HttpDownloadCoordinator`), so the timeout here is a coarse backstop for
+         * dead hosts, not the primary stall detector.
          */
-        fun createDefaultHttpClient(): HttpClient = HttpClient(Java) {
+        fun createDefaultHttpClient(): HttpClient = HttpClient(OkHttp) {
             install(HttpTimeout) {
                 requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
                 connectTimeoutMillis = 15_000
