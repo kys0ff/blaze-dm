@@ -66,6 +66,7 @@ fun DownloadTask.toDto(): DownloadDto {
         // What the transfer proved about the source, not a state guess: null keeps "we don't know"
         // distinct from "this host cannot resume", which is what a client warns about.
         sourceSupportsResume = resumeSupported,
+        restarts = restarts,
         portable = false,
         files = files,
         priority = priority.toApi(),

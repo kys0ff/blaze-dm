@@ -157,6 +157,9 @@ class DownloadExecutorImpl(
             // Learned from the first response that proves it (a 206, an `Accept-Ranges` answer, an
             // ignored `Range`); carried on every update so a client can warn before it pauses.
             var resumeSupported: Boolean? = task.resumeSupported
+            // Monotonic across the run: the coordinator bumps it only when it truly discards bytes
+            // and restarts from 0, so a client can name the event without guessing from the count.
+            var restarts = task.restarts
             val progress = HttpProgress()
 
             val outcome = coordinator.download(
@@ -164,7 +167,8 @@ class DownloadExecutorImpl(
                 destination = finalDestination,
                 partial = finalPartialPath,
                 connections = connections,
-                onRangeSupport = { supported -> resumeSupported = supported }
+                onRangeSupport = { supported -> resumeSupported = supported },
+                onRestart = { restarts++ }
             ) { update ->
                 totalBytes = update.totalBytes ?: totalBytes
                 downloadedBytes = update.downloadedBytes
@@ -177,7 +181,8 @@ class DownloadExecutorImpl(
                         totalBytes = totalBytes,
                         downloadedBytes = downloadedBytes,
                         speed = speed,
-                        resumeSupported = resumeSupported
+                        resumeSupported = resumeSupported,
+                        restarts = restarts
                     )
                 )
             }
@@ -196,7 +201,8 @@ class DownloadExecutorImpl(
                             totalBytes = outcome.totalBytes ?: outcome.downloadedBytes,
                             downloadedBytes = outcome.downloadedBytes,
                             progress = 1f,
-                            resumeSupported = resumeSupported
+                            resumeSupported = resumeSupported,
+                            restarts = restarts
                         )
                     )
                 }
@@ -211,7 +217,8 @@ class DownloadExecutorImpl(
                             totalBytes = totalBytes,
                             downloadedBytes = downloadedBytes,
                             error = outcome.error,
-                            resumeSupported = resumeSupported
+                            resumeSupported = resumeSupported,
+                            restarts = restarts
                         )
                     )
                 }
@@ -517,7 +524,8 @@ class DownloadExecutorImpl(
         error: DownloadError? = null,
         name: String? = null,
         files: List<DownloadFileMetadata>? = null,
-        resumeSupported: Boolean? = null
+        resumeSupported: Boolean? = null,
+        restarts: Int = task.restarts
     ): DownloadTask {
         val total = totalBytes?.takeIf { it > 0 }
         val calculatedProgress = progress ?: run {
@@ -539,7 +547,8 @@ class DownloadExecutorImpl(
             error = error,
             completedAt = if (state == DownloadState.Completed) Instant.now() else task.completedAt,
             files = files ?: task.files,
-            resumeSupported = resumeSupported ?: task.resumeSupported
+            resumeSupported = resumeSupported ?: task.resumeSupported,
+            restarts = restarts
         )
     }
 

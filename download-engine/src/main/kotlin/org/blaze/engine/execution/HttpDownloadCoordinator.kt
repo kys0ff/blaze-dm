@@ -1,15 +1,6 @@
 package org.blaze.engine.execution
 
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadRequest
@@ -18,11 +9,7 @@ import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.network.toDownloadError
 import org.blaze.engine.persistence.HttpResumeState
-import org.blaze.engine.portable.PortableFormat
-import org.blaze.engine.portable.PortableKind
-import org.blaze.engine.portable.PortableManifest
-import org.blaze.engine.portable.PortableStore
-import org.blaze.engine.portable.inspectPortableFile
+import org.blaze.engine.portable.*
 import org.blaze.engine.retry.isRetryable
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.storage.FileStorage
@@ -33,15 +20,9 @@ import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.util.BitSet
+import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicIntegerArray
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicLongArray
-import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.atomic.AtomicReferenceArray
+import java.util.concurrent.atomic.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -101,6 +82,11 @@ class HttpDownloadCoordinator(
      * ranged requests a resume depends on. It is fired at most once per run and only with evidence
      * (a 206, an `Accept-Ranges` answer, an ignored `Range`), so a client can promise - or refuse to
      * promise - a resume without guessing.
+     *
+     * [onRestart] hears exactly once each time the transfer is forced back to byte 0 after discarding
+     * bytes already on disk - the *genuine* restarts (a refused range, an unusable resume record).
+     * It is deliberately not fired for a transient chunk retry or a pause/resume re-anchor, so a
+     * client can tell a real lost-progress event apart from a dip that self-corrects.
      */
     suspend fun download(
         request: DownloadRequest.Http,
@@ -108,6 +94,7 @@ class HttpDownloadCoordinator(
         partial: Path,
         connections: Int,
         onRangeSupport: suspend (Boolean) -> Unit = {},
+        onRestart: suspend () -> Unit = {},
         onProgress: suspend (Progress) -> Unit
     ): Outcome = withContext(Dispatchers.IO) {
         val support = RangeSupportReporter(onRangeSupport)
@@ -126,9 +113,18 @@ class HttpDownloadCoordinator(
                 return@withContext Outcome.Success(resumeFrom, resumeFrom)
             }
             if (probe.acceptsRanges && probe.totalBytes >= settings.httpMinParallelSizeBytes) {
-                segmented(request, destination, partial, probe, connections, support, onProgress)
+                segmented(request, destination, partial, probe, connections, support, onRestart, onProgress)
             } else {
-                singleStream(request, destination, partial, resumeFrom, probe.totalBytes, support, onProgress)
+                singleStream(
+                    request,
+                    destination,
+                    partial,
+                    resumeFrom,
+                    probe.totalBytes,
+                    support,
+                    onRestart,
+                    onProgress
+                )
             }
         } else if (readResumeState(statePath) != null) {
             // A previous accelerated run left a chunked, *sparse* partial. Its file size is the
@@ -143,7 +139,16 @@ class HttpDownloadCoordinator(
                 return@withContext Outcome.Success(resumeFrom, resumeFrom)
             }
             if (probe.acceptsRanges && probe.totalBytes > 0) {
-                segmented(request, destination, partial, probe, connections.coerceAtLeast(1), support, onProgress)
+                segmented(
+                    request,
+                    destination,
+                    partial,
+                    probe,
+                    connections.coerceAtLeast(1),
+                    support,
+                    onRestart,
+                    onProgress
+                )
             } else {
                 // The ranges the sidecar's bytes were read with can no longer be served; the chunk
                 // map is useless, so start clean instead of mis-resuming.
@@ -151,10 +156,12 @@ class HttpDownloadCoordinator(
                 support.note(false)
                 runCatching { storage.delete(statePath) }
                 runCatching { storage.delete(partial) }
-                singleStream(request, destination, partial, 0L, probe.totalBytes, support, onProgress)
+                // Bytes the sidecar vouched for are being thrown away: this is a genuine restart.
+                if (resumeFrom > 0) onRestart()
+                singleStream(request, destination, partial, 0L, probe.totalBytes, support, onRestart, onProgress)
             }
         } else {
-            singleStream(request, destination, partial, resumeFrom, -1L, support, onProgress)
+            singleStream(request, destination, partial, resumeFrom, -1L, support, onRestart, onProgress)
         }
     }
 
@@ -173,6 +180,7 @@ class HttpDownloadCoordinator(
         resumeFrom: Long,
         totalHint: Long,
         support: RangeSupportReporter,
+        onRestart: suspend () -> Unit,
         onProgress: suspend (Progress) -> Unit
     ): Outcome {
         var offset = resumeFrom
@@ -201,6 +209,8 @@ class HttpDownloadCoordinator(
                 support.note(false)
                 runCatching { storage.delete(partial) }
                 runCatching { storage.delete(statePath) }
+                // `offset > 0` here, so the bytes we are about to discard were real progress.
+                onRestart()
                 offset = 0L
                 restarted = true
                 continue
@@ -294,6 +304,7 @@ class HttpDownloadCoordinator(
         probe: HttpNetworkClient.Probe,
         connections: Int,
         support: RangeSupportReporter,
+        onRestart: suspend () -> Unit,
         onProgress: suspend (Progress) -> Unit
     ): Outcome {
         val total = probe.totalBytes
@@ -328,12 +339,14 @@ class HttpDownloadCoordinator(
             )
             runCatching { storage.delete(statePath) }
             runCatching { storage.delete(partial) }
+            // A record of committed bytes is being discarded: this is a genuine restart.
+            onRestart()
         }
 
         if (plan.chunkCount < 2) {
             // Too small to split: the single stream inherits the probe's answer, which the caller
             // already heard - handing the reporter along lets a restart found below correct it.
-            return singleStream(request, destination, partial, sizeOf(partial), total, support, onProgress)
+            return singleStream(request, destination, partial, sizeOf(partial), total, support, onRestart, onProgress)
         }
 
         val completed = CompletedChunks(plan.chunkCount)

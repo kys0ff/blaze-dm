@@ -1,3 +1,4 @@
+import java.net.URI
 import java.net.URL
 import java.util.zip.ZipInputStream
 
@@ -103,7 +104,7 @@ tasks.register("downloadBundledFonts") {
         families.forEach { (slug, url, faces) ->
             val folder = destination.resolve(slug).also { it.mkdirs() }
             logger.lifecycle("Fetching $slug from $url")
-            val bytes = URL(url).openStream().use { it.readBytes() }
+            val bytes = URI(url).toURL().openStream().use { it.readBytes() }
             var licenseWritten = false
             ZipInputStream(bytes.inputStream().buffered()).use { zip ->
                 while (true) {

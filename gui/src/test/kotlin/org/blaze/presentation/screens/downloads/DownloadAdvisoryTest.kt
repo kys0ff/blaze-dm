@@ -4,12 +4,7 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.presentation.screens.downloads.components.add.DestinationStatus
 import org.blaze.presentation.screens.downloads.components.add.spaceShortBy
-import kotlin.test.Test
-import kotlin.test.assertIs
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * Locks the rules that decide when the downloads UI is allowed to speak.
@@ -32,7 +27,8 @@ class DownloadAdvisoryTest {
         speed: Long = 512 * 1024,
         peers: Int = 0,
         savePath: String = "/home/user/Downloads",
-        resumeSupported: Boolean? = null
+        resumeSupported: Boolean? = null,
+        restarts: Int = 0
     ) = Download(
         id = id,
         name = url.substringAfterLast('/'),
@@ -45,7 +41,8 @@ class DownloadAdvisoryTest {
         state = state,
         addedAt = 0,
         savePath = savePath,
-        resumeSupported = resumeSupported
+        resumeSupported = resumeSupported,
+        restarts = restarts
     )
 
     // ------------------------------------------------------------------ capability is three-state
@@ -172,8 +169,8 @@ class DownloadAdvisoryTest {
         val after = listOf(
             download(id = "done", state = DownloadState.COMPLETED, done = 10 * mib),
             download(id = "broke", state = DownloadState.FAILED, done = 2 * mib),
-            // Bytes went backwards: the engine had to restart the transfer.
-            download(id = "lost", state = DownloadState.DOWNLOADING, done = 0, total = 10 * mib)
+            // The engine's restart counter moved: it genuinely threw the bytes away and began again.
+            download(id = "lost", state = DownloadState.DOWNLOADING, done = 0, total = 10 * mib, restarts = 1)
         )
 
         val advisories = diffDownloadTransitions(before, after)
@@ -236,10 +233,27 @@ class DownloadAdvisoryTest {
     @Test
     fun `a restart that had already moved is never reported as a loss of zero percent`() {
         val before = listOf(download(id = "tiny", done = 1, total = 100 * mib))
-        val after = listOf(download(id = "tiny", done = 0, total = 100 * mib))
+        val after = listOf(download(id = "tiny", done = 0, total = 100 * mib, restarts = 1))
 
         val restarted = assertIs<DownloadAdvisory.Restarted>(diffDownloadTransitions(before, after).single())
         assertEquals(1, restarted.lostPercent)
+    }
+
+    @Test
+    fun `a byte dip without an engine restart is not announced as lost progress`() {
+        // The two false positives the counter exists to kill: a segmented chunk retry rolls the byte
+        // count back before re-fetching it, and a pause/resume re-anchors it to the last checkpoint.
+        // Neither touches the restart counter, so neither may raise the "downloading from the start" notice.
+        val chunkRetry = listOf(download(id = "seg", done = 6 * mib)) to listOf(download(id = "seg", done = 4 * mib))
+        assertTrue(
+            diffDownloadTransitions(chunkRetry.first, chunkRetry.second).isEmpty(),
+            "a discarded chunk that re-fetches is not a restart"
+        )
+        val resumeDip = listOf(download(id = "res", done = 6 * mib)) to listOf(download(id = "res", done = 5 * mib))
+        assertTrue(
+            diffDownloadTransitions(resumeDip.first, resumeDip.second).isEmpty(),
+            "resuming a few bytes behind the last shown count is not a restart"
+        )
     }
 
     // ------------------------------------------------------------------ duplicate detection

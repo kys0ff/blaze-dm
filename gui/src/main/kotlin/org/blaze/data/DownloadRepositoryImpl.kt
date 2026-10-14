@@ -220,6 +220,7 @@ class DownloadRepositoryImpl(
             error = error,
             selectedFiles = selected?.mapIndexed { index, f -> SelectedFile(path = f.path, size = f.size, index = index) },
             resumeSupported = sourceSupportsResume,
+            restarts = restarts,
             priority = priority,
         )
     }

@@ -61,6 +61,13 @@ data class DownloadDto(
      * different from false - a client must not warn about lost progress on an unknown answer.
      */
     val sourceSupportsResume: Boolean? = null,
+    /**
+     * How many times the engine genuinely restarted the transfer from byte 0, discarding bytes already
+     * on disk. It only moves forward, so a client detects a real lost-progress event by watching it
+     * increment rather than inferring one from every dip in [downloadedBytes] (a chunk retry or a
+     * pause/resume re-anchor lowers the count without any bytes having been thrown away).
+     */
+    val restarts: Int = 0,
     val portable: Boolean = false,
     val files: List<DownloadFile>? = null,
     /** Scheduling priority of this download; see [DownloadPriority]. */
