@@ -95,10 +95,18 @@ private class CachedFileUnit(
  * What differs from the library is the root: the elements are joined *under the destination*, with no
  * folder for the torrent's own name. The result is then checked to lie inside it - a torrent is
  * untrusted input, so the guarantee is asserted rather than implied.
+ *
+ * The metainfo's own path separator is `/` on every platform (it is defined by the bencode spec, not
+ * by the local filesystem). Splitting only on the OS separator silently leaves an element like
+ * `/etc/passwd` intact on Windows, where it then resolves to a drive-rooted sibling and either
+ * escapes the destination or fails the containment check. So elements are pre-split on `/` before
+ * the normaliser runs, regardless of the separator used to re-join them.
  */
 internal fun torrentContentPath(root: Path, pathElements: List<String>): Path {
-    val relative = normalizeTorrentPath(pathElements, root.fileSystem.separator)
-    val normalized = root.resolve(relative).normalize().toAbsolutePath().normalize()
+    val preSplit = pathElements.flatMap { it.split('/') }
+    val relative = normalizeTorrentPath(preSplit, root.fileSystem.separator)
+    val resolved = root.resolve(relative)
+    val normalized = resolved.normalize().toAbsolutePath().normalize()
     val confined = root.toAbsolutePath().normalize()
     require(normalized.startsWith(confined) && normalized != confined) {
         "Torrent path ${pathElements.joinToString("/")} escapes its folder"
@@ -109,6 +117,8 @@ internal fun torrentContentPath(root: Path, pathElements: List<String>): Path {
 /** Joins the metainfo's path elements into one safe relative name. */
 private fun normalizeTorrentPath(pathElements: List<String>, separator: String): String {
     if (pathElements.isEmpty()) return "_"
+    // Any separator the caller picks is applied uniformly; a stray `/` inside an element has already
+    // been factored out by [torrentContentPath] before this is called.
     val joined = pathElements.joinToString(separator).trim()
     if (joined.isEmpty()) return "_"
     return joined.split(separator).joinToString(separator, transform = ::normalizeName)
