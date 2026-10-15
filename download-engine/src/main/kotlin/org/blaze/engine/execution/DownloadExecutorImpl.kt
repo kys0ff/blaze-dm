@@ -17,6 +17,7 @@ import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.network.TorrentNetworkClient
 import org.blaze.engine.network.TorrentNetworkEvent
+import org.blaze.engine.network.webseed.HttpWebSeedFetcher
 import org.blaze.engine.retry.RetryPolicy
 import org.blaze.engine.settings.DEFAULT_USER_AGENT
 import org.blaze.engine.settings.EngineSettingsRepository
@@ -521,7 +522,20 @@ class DownloadExecutorImpl(
                 unlimitedSeeding = settings.unlimitedSeeding,
                 seedRatioLimit = settings.seedRatioLimit,
                 torrentResumeDir = torrentResumeDir,
-                preallocation = settings.torrentPreallocation
+                preallocation = settings.torrentPreallocation,
+                // Web seeds ride the same HTTP stack as ordinary downloads (TOR-3). A fresh
+                // HttpNetworkClient per run is cheap - it just wraps the shared HttpClient - and keeps
+                // the seed feed honouring the configured UA / redirect budget.
+                webSeedFetcherFactory = { torrent ->
+                    HttpWebSeedFetcher(
+                        torrent = torrent,
+                        http = HttpNetworkClient(
+                            client = httpClient,
+                            userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+                            maxRedirects = settings.maxRedirects,
+                        ),
+                    )
+                }
             )
             networkClient.download(request).collect { event ->
                 when (event) {

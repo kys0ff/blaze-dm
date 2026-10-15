@@ -16,11 +16,14 @@ import bt.runtime.BtClient
 import bt.runtime.BtRuntime
 import bt.torrent.TorrentRegistry
 import bt.torrent.fileselector.FilePriority
+import bt.torrent.webseed.WebSeedFetcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
@@ -37,6 +40,7 @@ import org.blaze.engine.portable.PortableManifest
 import org.blaze.engine.portable.PortableTorrentFile
 import org.blaze.engine.portable.TorrentPortableFile
 import org.blaze.engine.settings.TorrentPreallocation
+import org.blaze.engine.network.webseed.WebSeedDownloader
 import org.blaze.engine.storage.TorrentContentStorage
 import org.blaze.engine.storage.toForkMode
 import org.slf4j.LoggerFactory
@@ -70,6 +74,10 @@ import kotlin.time.Duration.Companion.seconds
  * keeps every restart on the full re-hash path (fork PATCH-4, TOR-1).
  * @param preallocation how much of each torrent file's length to reserve before the transfer
  * (fork PATCH-5, TOR-2); NONE - the default - keeps the historical grow-on-write behavior.
+ * @param webSeedFetcherFactory builds the transport that pulls bytes from a torrent's web/HTTP seeds
+ * (BEP-17/BEP-19 `url-list`/`httpseeds`) once metadata is known; null disables the web-seed feed and
+ * leaves the transfer entirely swarm-driven. The fork stays free of any HTTP dependency, so the
+ * engine supplies the concrete fetcher here - see [org.blaze.engine.network.webseed.HttpWebSeedFetcher].
  */
 class TorrentNetworkClient(
     private val peerDiscoveryTimeout: Duration = 120.seconds,
@@ -82,6 +90,7 @@ class TorrentNetworkClient(
     private val seedRatioLimit: Double = 0.0,
     private val torrentResumeDir: Path? = null,
     private val preallocation: TorrentPreallocation = TorrentPreallocation.NONE,
+    private val webSeedFetcherFactory: ((Torrent) -> WebSeedFetcher?)? = null,
     private val runtimeProvider: TorrentRuntimeProvider = TorrentRuntimeProvider.GLOBAL
 ) {
     private val logger = LoggerFactory.getLogger(TorrentNetworkClient::class.java)
@@ -325,6 +334,13 @@ class TorrentNetworkClient(
                     }
                 }, 1000)
 
+                // Feed the swarm's missing pieces straight from web/HTTP seeds (BEP-17/BEP-19),
+                // concurrently with normal peer exchange. The agent waits for metadata, then for the
+                // data descriptor, so it is harmless when a torrent declares no seeds or none are set.
+                val webSeedJob = webSeedFetcherFactory?.let { factory ->
+                    launch(Dispatchers.IO) { runWebSeedFeed(runtime, torrentRef, factory) }
+                }
+
                 val watchdog = launch {
                     while (isActive) {
                         delay(2_000.milliseconds)
@@ -375,6 +391,7 @@ class TorrentNetworkClient(
                     logger.info("Torrent download cancelled.")
                     throw e
                 } finally {
+                    webSeedJob?.cancel()
                     watchdog.cancel()
                     // On cancellation the future's own `whenComplete -> stop()` inside bt has
                     // already run, so this is typically a no-op (DefaultClient.stop() ignores a
@@ -649,6 +666,31 @@ class TorrentNetworkClient(
         }
     }
 
+    /**
+     * Bridges metadata to the web-seed agent. Waits (cancellably) for the torrent to be resolved, then
+     * asks the factory for this torrent's fetcher and hands the declared `url-list` / `httpseeds` URLs
+     * to a [WebSeedDownloader]. Cancelling the owning download cancels this job, which is what bounds
+     * the agent's seed-retry loop against a permanently unreachable mirror.
+     */
+    private suspend fun runWebSeedFeed(
+        runtime: BtRuntime,
+        torrentRef: AtomicReference<Torrent?>,
+        factory: (Torrent) -> WebSeedFetcher?,
+    ) {
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val torrent = torrentRef.get()
+            if (torrent != null) {
+                val fetcher = factory(torrent) ?: return
+                val seedUrls = torrent.webSeedUrls + torrent.httpSeedUrls
+                if (seedUrls.isEmpty()) return
+                WebSeedDownloader(runtime, torrent, fetcher, seedUrls, logger).run()
+                return
+            }
+            delay(METADATA_POLL_MS)
+        }
+    }
+
     private fun reconstructTorrentFile(torrent: Torrent): ByteArray {
         val infoDictBytes = torrent.source.exchangedMetadata
         val infoDict = BEParser(infoDictBytes).readMap()
@@ -756,3 +798,6 @@ private const val SETTLE_HOLD_MS = 100L
 
 /** 1-second progress ticks between portable-marker hint refreshes (~every 30s of download). */
 private const val MARKER_REFRESH_TICKS = 30
+
+/** Cadence for waiting on metadata before the web-seed agent can read the torrent's seed URLs. */
+private const val METADATA_POLL_MS = 100L
