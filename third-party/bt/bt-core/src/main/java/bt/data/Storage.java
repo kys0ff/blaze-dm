@@ -19,6 +19,9 @@ package bt.data;
 import bt.metainfo.Torrent;
 import bt.metainfo.TorrentFile;
 
+import java.nio.file.Path;
+import java.util.Optional;
+
 /**
  * Data back-end. Provides storage for torrent files.
  *
@@ -35,6 +38,20 @@ public interface Storage {
      * @since 1.0
      */
     StorageUnit getUnit(Torrent torrent, TorrentFile torrentFile);
+
+    /**
+     * Reports where the data of a particular torrent file lives, if this back-end is file-system
+     * based and can say so. Used for fingerprinting files (size, modification time) for fast
+     * resume; back-ends without a stable on-disk location simply return {@link Optional#empty()},
+     * which disables resume trust for their torrents.
+     *
+     * @param torrent     Torrent metainfo
+     * @param torrentFile Torrent file metainfo
+     * @return Location of the file's data, or empty when this storage has no such concept
+     */
+    default Optional<Path> locationOf(Torrent torrent, TorrentFile torrentFile) {
+        return Optional.empty();
+    }
 
     /**
      * Flushes any buffered data in this storage backend

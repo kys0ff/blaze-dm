@@ -22,6 +22,7 @@ import bt.protocol.crypto.EncryptionPolicy;
 import bt.service.NetworkUtil;
 
 import java.net.InetAddress;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
 
@@ -67,6 +68,9 @@ public class Config {
     private int maxOutstandingRequests;
     private int networkBufferSize;
     private int hashingBufferSize;
+    private boolean autoResumeEnabled;
+    private Path resumeDirectory;
+    private int resumeSpotCheckCount;
 
     /**
      * Create a config with default parameters.
@@ -109,6 +113,9 @@ public class Config {
         this.maxOutstandingRequests = 250;
         this.networkBufferSize = 1 * 1024 * 1024; // 1 MB
         this.hashingBufferSize = SHA1Digester.DEFAULT_BUFFER_SIZE;
+        this.autoResumeEnabled = false; // off by default: re-verifies everything, like before
+        this.resumeDirectory = null; // required when auto-resume is enabled; unset means disabled
+        this.resumeSpotCheckCount = 5;
     }
 
     /**
@@ -153,6 +160,9 @@ public class Config {
         this.maxOutstandingRequests = config.getMaxOutstandingRequests();
         this.networkBufferSize = config.getNetworkBufferSize();
         this.hashingBufferSize = config.getHashingBufferSize();
+        this.autoResumeEnabled = config.isAutoResumeEnabled();
+        this.resumeDirectory = config.getResumeDirectory();
+        this.resumeSpotCheckCount = config.getResumeSpotCheckCount();
     }
 
     /**
@@ -740,5 +750,65 @@ public class Config {
      */
     public void setHashingBufferSize(int hashingBufferSize) {
         this.hashingBufferSize = hashingBufferSize;
+    }
+
+    /**
+     * Enable fast resume: persist the verified-piece bitfield (with per-file size and
+     * modification-time fingerprints) on clean session close, and trust it - after a
+     * spot-check - instead of re-hashing everything on the next start.
+     *
+     * <p>Requires {@link #setResumeDirectory(Path)} to be set as well; enabling without a
+     * directory leaves the plain full-verification behavior in place.</p>
+     *
+     * @param autoResumeEnabled true to enable fast resume
+     * @since 1.10 (blaze fork)
+     */
+    public void setAutoResumeEnabled(boolean autoResumeEnabled) {
+        this.autoResumeEnabled = autoResumeEnabled;
+    }
+
+    /**
+     * @since 1.10 (blaze fork)
+     */
+    public boolean isAutoResumeEnabled() {
+        return autoResumeEnabled;
+    }
+
+    /**
+     * @param resumeDirectory directory holding the per-torrent resume state files
+     * @since 1.10 (blaze fork)
+     */
+    public void setResumeDirectory(Path resumeDirectory) {
+        this.resumeDirectory = resumeDirectory;
+    }
+
+    /**
+     * @return Directory for resume state files, or {@code null} when none was configured.
+     * @since 1.10 (blaze fork)
+     */
+    public Path getResumeDirectory() {
+        return resumeDirectory;
+    }
+
+    /**
+     * Number of random pieces claimed by a saved resume state to re-hash before trusting it.
+     * Anything that mismatches falls back to the full re-hash. Zero means the fingerprint
+     * gate alone (not recommended); a torrent with fewer verified pieces is checked in full.
+     *
+     * @param resumeSpotCheckCount number of pieces to spot-check, {@code >= 0}
+     * @since 1.10 (blaze fork)
+     */
+    public void setResumeSpotCheckCount(int resumeSpotCheckCount) {
+        if (resumeSpotCheckCount < 0) {
+            throw new IllegalArgumentException("resumeSpotCheckCount must be >= 0");
+        }
+        this.resumeSpotCheckCount = resumeSpotCheckCount;
+    }
+
+    /**
+     * @since 1.10 (blaze fork)
+     */
+    public int getResumeSpotCheckCount() {
+        return resumeSpotCheckCount;
     }
 }

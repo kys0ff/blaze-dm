@@ -163,7 +163,7 @@ class DefaultDataDescriptor implements DataDescriptor {
             }
         };
 
-        this.startedAsSeed = verifier.verify(chunks, bitfield);
+        this.startedAsSeed = verifier.verify(chunks, bitfield, torrent, storage);
         return bitfield;
     }
 
@@ -244,6 +244,17 @@ class DefaultDataDescriptor implements DataDescriptor {
                 LOGGER.error("Failed to close storage unit: " + unit);
             }
         });
+
+        // Give verifiers that persist derived state (e.g. a resume snapshot) their one clean
+        // closing word, after every storage unit is closed and its file's size/mtime are final.
+        // The hook contract is not to throw; the guard is belt-and-suspenders for shutdown safety.
+        if (bitfield != null) {
+            try {
+                verifier.onTorrentClosed(torrent, storage, bitfield);
+            } catch (Exception e) {
+                LOGGER.error("Failed to finalize verifier state for torrent: " + torrent, e);
+            }
+        }
     }
 
     @Override

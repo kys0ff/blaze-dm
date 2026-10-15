@@ -23,6 +23,8 @@ import bt.data.DefaultChunkVerifier;
 import bt.data.IDataDescriptorFactory;
 import bt.data.digest.Digester;
 import bt.data.digest.SHA1Digester;
+import bt.data.resume.FastResumeVerifier;
+import bt.data.resume.FileResumeStore;
 import bt.event.EventBus;
 import bt.event.EventSink;
 import bt.event.EventSource;
@@ -200,7 +202,14 @@ public class ServiceModule implements Module {
     @Provides
     @Singleton
     public ChunkVerifier provideVerifier(Config config, Digester digester) {
-        return new DefaultChunkVerifier(digester, config.getNumOfHashingThreads());
+        DefaultChunkVerifier verifier = new DefaultChunkVerifier(digester, config.getNumOfHashingThreads());
+        // Fast resume is strictly opt-in (and inert without a resume directory); an incomplete
+        // configuration keeps the plain full-verification behavior of the unmodified library.
+        if (config.isAutoResumeEnabled() && config.getResumeDirectory() != null) {
+            return new FastResumeVerifier(verifier, new FileResumeStore(config.getResumeDirectory()),
+                    config.getResumeSpotCheckCount());
+        }
+        return verifier;
     }
 
     @Provides

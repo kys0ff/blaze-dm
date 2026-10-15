@@ -23,6 +23,7 @@ import bt.metainfo.TorrentFile;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * Provides file-system based storage for torrent files.
@@ -98,6 +99,21 @@ public class FileSystemStorage implements Storage {
 
     @Override
     public StorageUnit getUnit(Torrent torrent, TorrentFile torrentFile) {
+        Path location = resolveLocation(torrent, torrentFile);
+        return new FileSystemStorageUnit(cache, location.getParent(), location.getFileName().toString(),
+                torrentFile.getSize());
+    }
+
+    @Override
+    public Optional<Path> locationOf(Torrent torrent, TorrentFile torrentFile) {
+        return Optional.of(resolveLocation(torrent, torrentFile).toAbsolutePath().normalize());
+    }
+
+    /**
+     * Resolves the on-disk location of a torrent file, with the same normalization that
+     * {@link #getUnit(Torrent, TorrentFile)} writes through.
+     */
+    private Path resolveLocation(Torrent torrent, TorrentFile torrentFile) {
         Path torrentDirectory;
         if (torrent.getFiles().size() == 1) {
             torrentDirectory = rootDirectory;
@@ -106,7 +122,7 @@ public class FileSystemStorage implements Storage {
             torrentDirectory = rootDirectory.resolve(normalizedName);
         }
         String normalizedPath = pathNormalizer.normalize(torrentFile.getPathElements());
-        return new FileSystemStorageUnit(cache, torrentDirectory, normalizedPath, torrentFile.getSize());
+        return torrentDirectory.resolve(normalizedPath);
     }
 
     @Override

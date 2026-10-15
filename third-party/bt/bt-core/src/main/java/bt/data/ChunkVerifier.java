@@ -16,6 +16,8 @@
 
 package bt.data;
 
+import bt.metainfo.Torrent;
+
 import java.util.List;
 
 /**
@@ -34,6 +36,39 @@ public interface ChunkVerifier {
      * @since 1.2
      */
     boolean verify(List<ChunkDescriptor> chunks, LocalBitfield bitfield);
+
+    /**
+     * Context-aware variant of {@link #verify(List, LocalBitfield)}: implementations that can
+     * skip or narrow verification based on where the torrent's data lives (e.g. trust-but-verify
+     * resume of a previously verified bitfield) use the torrent metainfo and storage to
+     * fingerprint the files. The default implementation ignores the context and verifies
+     * everything, which keeps the behavior of existing verifiers unchanged.
+     *
+     * @param chunks   List of chunks
+     * @param bitfield the local bitfield for the torrent
+     * @param torrent  Torrent metainfo
+     * @param storage  Storage back-end holding the torrent's files
+     * @return true if all chunks have been verified successfully
+     */
+    default boolean verify(List<ChunkDescriptor> chunks, LocalBitfield bitfield, Torrent torrent, Storage storage) {
+        return verify(chunks, bitfield);
+    }
+
+    /**
+     * Called once when a torrent session is closed cleanly, with the final local bitfield.
+     * Verifiers that persist derived state (e.g. a resume snapshot) hook in here; a process
+     * crash means this callback never ran, and whatever was saved earlier is the state from
+     * the last clean close - deliberately stale by then, and rejected by fingerprinting on the
+     * next start. The default implementation does nothing.
+     *
+     * <p>Implementations must not throw: this runs on the shutdown path.</p>
+     *
+     * @param torrent  Torrent metainfo
+     * @param storage  Storage back-end holding the torrent's files
+     * @param bitfield Final local bitfield of the session
+     */
+    default void onTorrentClosed(Torrent torrent, Storage storage, LocalBitfield bitfield) {
+    }
 
     /**
      * Conducts verification of the provided chunk.

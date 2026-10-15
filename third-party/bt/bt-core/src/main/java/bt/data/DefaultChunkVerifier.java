@@ -103,7 +103,11 @@ public class DefaultChunkVerifier implements ChunkVerifier {
         if (parallel)
             stream = stream.parallel();
         final Digester localDigester = digester.createCopy();
-        stream.filter(i -> this.checkIfChunkVerified(chunks.get(i), localDigester))
+        // Pieces already marked verified are skipped. In the ordinary flow the bitfield arrives
+        // empty so this changes nothing; it is what lets a resume-applied bitfield (see
+        // bt.data.resume.FastResumeVerifier) spare the already-trusted pieces from re-hashing.
+        stream.filter(i -> !bitfield.isVerified(i))
+                .filter(i -> this.checkIfChunkVerified(chunks.get(i), localDigester))
                 .forEach(bitfield::markLocalPieceVerified);
     }
 
