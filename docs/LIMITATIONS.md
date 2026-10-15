@@ -108,8 +108,10 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
   id-key (`:373-374`); the **preview** path (`fetchMetadata`) instead writes `cache/${sha256(source)}.torrent`
   (`:416-417`). So preview and real never share an entry, and the sha256-keyed preview files are **never cleaned**
   (leak) — matching `PROGRESS.md:268`.
-- **Fix (Phase 11)**: one key derivation for both paths (sha256 of source string), have cleanup delete the real key,
-  and let the real download reuse a preview-cached `.torrent`. No persisted-format change.
+- **Fix (Phase 7.5, done)**: one key derivation for both paths (sha256 of source string), cleanup deletes the real
+  key, and the real download reuses a preview-cached `.torrent`. No persisted-format change. Leak-cleanup tests in
+  `DownloadManagerTest`; confirmed in a real run (2026-10-15): preview cached `7276…841.torrent`, real download
+  reused the same file.
 
 ### TOR-10 — No file/piece priority API surfaced through the engine request model — **B**, M, risk: low
 - **Evidence**: `PROGRESS.md:199` — `PrioritizedPieceSelector`/`FilePiecePriorityMapper` exist in `bt` but Blaze does
@@ -121,6 +123,22 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
 - **Evidence**: not exercised by any test; `bt` accepts IPv6 endpoints but Blaze never binds/tests them.
 - **Action (Phase 8b.8)**: test whether it works over loopback `[::1]`; implement only if broken and the fix is small.
   Until proven, it is stated as **unverified**, not as "supported".
+
+### TOR-12 — Real-swarm ERROR noise: unknown message types and resets logged as full stack traces — **C**, S, risk: low
+- **Evidence (real run, 2026-10-15, nyaa swarm)**: a download completed with correct content while the log showed
+  repeating `ERROR bt.net.DataReceivingLoop - Failed to process key` with `InvalidMessageException: Unknown message
+  type ID: 70 / -59 / 29` and `SocketException: Connection reset`, plus `ERROR b.t.m.PieceConsumer - Failed to verify
+  piece index {N} ... Will re-download.`
+- **Analysis (fork sources)**: `StandardBittorrentProtocol.readMessageType` throws on any type byte outside 0–9/13–16
+  (`StandardBittorrentProtocol.java:219-226`); `InboundMessageProcessor.processInboundData` rewraps as
+  `RuntimeException` (`InboundMessageProcessor.java:93-96`); `SocketChannelHandler.read` already shuts the connection
+  down on any read exception (`SocketChannelHandler.java:85-88, 171-181`) — the self-healing is correct, only the
+  **logging** is wrong: routine hostile/legacy-peer churn is logged at ERROR with full stack traces
+  (`DataReceivingLoop.java:130-132`), which reads like a defect to users. Piece-verify failures are the same churn
+  (`PieceConsumer.java:121-123`); final content is hash-gated, so correctness is unaffected.
+- **Fix (fork, Phase 8b.7)**: classify per-connection read failures — unknown message type → WARN one-liner with the
+  message (peer still dropped, behavior unchanged); `SocketException`/`EOFException` churn → DEBUG. Keep genuine
+  I/O-worker errors at ERROR. No protocol behavior change.
 
 ---
 
@@ -297,6 +315,7 @@ Ordering is fixed by PROMPT-2's phase sequence; within that I flag the must-meas
 | 7 | TOR-7 pause latency (real stopped signal) | B | M | 8b.5 |
 | 8 | TOR-10 file/piece priority API | B | M | 8b.6 |
 | 9 | TOR-11 IPv6 test-only | C | S | 8b.8 |
+| 9a | TOR-12 swarm log-noise classification (fork patch #1-2) + guava bump (#3) | C | S | 8b.7 |
 | 10 | TOR-4 µTP **design + libtorrent memo** (no code) | B/C | — | **8c** → Gate d |
 | 11 | HLS-2 resume completeness (correctness) | A | M | **9.1** |
 | 12 | HLS-1 write-once assembly via PositionedWriter | A | M | 9.1 |
@@ -313,7 +332,7 @@ Ordering is fixed by PROMPT-2's phase sequence; within that I flag the must-meas
 | 23 | HTTP-2/3 per-host budget + per-download limit | A | M | 10.5 |
 | 24 | HTTP-5/6 probe caching + single-stream positional writes | A | S | 10.7 |
 | 25 | QLTY-1 fix Windows test; QLTY-2 flake; QLTY-3 metrics API | A | S | **11** |
-| 26 | TOR-9 metadata cache-key fix | A | S | 11 |
+| 26 | TOR-9 metadata cache-key fix — **done in 7.5** | A | S | ~~11~~ 7.5 |
 | 27 | QLTY-4 persistence scaling benchmark (ask before format change) | C/D | L | 11 |
 
 **Held for your review at Gate (b).** No Phase-8+ code until you approve this register and the priority order.
