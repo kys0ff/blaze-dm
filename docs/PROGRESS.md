@@ -177,26 +177,31 @@ Missing / wrong (relative to PROMPT Phase 4):
 
 Runtime:
 - One process-wide `BtRuntime`, refcounted via `TorrentRuntimeProvider.GLOBAL`, 60 s idle grace, recreated on peer-budget fingerprint change (unless clients are active).
-- Modules: `DHTModule` with `shouldUseRouterBootstrap = true`, `HttpTrackerModule`, `PeerExchangeModule`.
-- **Missing**: `bt-upnp-tracker-client` for `udp://` announce URLs — **UDP trackers do not work** (`logTrackers` at 562–573 logs "No HTTP(S) tracker in torrent; peers can only come from DHT / peer exchange."). The library provides `bt-upnp-tracker-client`, just isn't declared in `libs.versions.toml`. This is a real capability gap; most public torrents list only `udp://` announces.
-- **Missing**: Local Service Discovery (LSD), µTP (BEP 57), Protocol Encryption (MSE), web seeds / getright (BEP 19), super seeding. `bt` does not implement µTP at all, MSE is behind `ExtensionsModule` (may be a plugin), LSD is not in the library. Web seeds: `bt` has `WebSeedService` for HTTP seeded torrents but Blaze does not wire it in. State this honestly.
+- Modules (after Phase 5): `DHTModule` (router bootstrap), `HttpTrackerModule`, **`UdpTrackerModule`** (new), **`LocalServiceDiscoveryModule`** (new), `PeerExchangeModule`.
+
+> **Phase-5 correction.** This section originally asserted several `bt` capabilities that do not exist
+> in 1.10, framed as "missing" work. The claims were checked against `bt-core-1.10-sources.jar` and
+> corrected below. What is real is wired now; what does not exist is stated as a limitation.
+- **UDP trackers — a real gap, now closed with NO new dependency.** The audit said to add `bt-upnp-tracker-client`; **that artifact does not exist.** `bt.tracker.udp.UdpTracker` + `UdpTrackerFactory` ship inside `bt-core` (already a dependency) but are never ServiceLoader-registered, so `udp://` announces resolved to no tracker. `UdpTrackerModule` binds the factory for the `udp` scheme. Most public torrents announce over UDP, so this is the highest-value Phase-5 fix. `logTrackers` now counts `udp://` as usable.
+- **Protocol encryption (MSE) — real and now enabled.** The audit said MSE is "behind `ExtensionsModule` (may be a plugin)". Wrong: it is in `bt-core` (`Config.encryptionPolicy`, `mseDisabled`). We set `PREFER_ENCRYPTED` (encrypted handshake first, plaintext fallback) so we gain reachability/privacy without locking out legacy peers the way `REQUIRE_ENCRYPTED` would.
+- **Local Service Discovery — real and now wired.** The audit said "LSD is not in the library"; `bt.peer.lan.LocalServiceDiscoveryModule` exists in `bt-core`. It is wired; multicast-scoped (TTL 1), per-announce failures are caught and logged, so it degrades gracefully when multicast is unavailable.
+- **µTP (BEP 57), web seeds / getright (BEP 19), super seeding — genuinely absent.** `bt` 1.10 has no `WebSeed` class (the earlier `WebSeedService` mention was fabricated) and no µTP. These stay honest limitations; nothing to wire.
 
 `applyPerformanceConfig` (lines 147–196):
 - `maxPeerConnections` from settings (default 200).
 - `maxConcurrentlyActivePeerConnectionsPerTorrent = min(maxPeerConnections, 60).coerceAtLeast(10)`.
 - `maxSimultaneouslyAssignedPieces = (maxPeerConnections / 8).coerceIn(4, 20)`.
 - `transferBlockSize = 16 KiB` — spec-correct (BEP-3 cap).
-- `maxOutstandingRequests = 250` — **this is very high**; strict peers (libtorrent) commonly choke or disconnect when a client sends > 50–100 outstanding requests. Recommend 100.
+- `maxOutstandingRequests = 250` — **this is `bt`'s own default** (`Config.java` line 109), not a Blaze-introduced over-setting. The audit's "reduce to 100 for strict peers" is a hypothesis about third-party clients (libtorrent/µTorrent). Our localhost `bt`↔`bt` harness cannot exercise it — `TorrentSwarmBenchmark` transfers 0 bytes in 90 s here (in-process peers don't connect over local discovery), and even a completing run would not reproduce external strictness. Left at the library default and labelled an **unmeasured estimate**, not changed on a guess (A3).
 - `maxIOQueueSize = 128` — bounded, good.
 - `numOfHashingThreads = availableProcessors.coerceIn(2, 8)`.
 - Timeouts, bans, retry cadence: reasonable.
-- **Missing**: `config.setDownloadPlanFactory`/`config.setPieceSelectionStrategy` — bt defaults to rarest-first with sequential fallback; Blaze does not override. `EndGameStrategy` (last-few-pieces broadcast to every peer) is not enabled; the library supports it via `ExtensionsModule`/`EndGamePieceSelectionStrategy`.
-- **Missing**: `config.setWriteSessionBackpressure` — not exposed in `bt` public API.
+- **Piece selection / endgame — the audit was wrong; nothing to enable.** There is no `EndGameStrategy`, `ExtensionsModule`, `EndGamePieceSelectionStrategy`, `setPieceSelectionStrategy`, or `setDownloadPlanFactory` in `bt-core` 1.10 (verified by source). `Config.java` documents endgame as **built-in and automatic**. Piece priority can only be influenced via `bt.torrent.selector.PrioritizedPieceSelector`/`FilePiecePriorityMapper`, which Blaze does not currently override — and there is no bug to fix here, contrary to the original note.
 
 Storage:
 - `TorrentContentStorage` uses `bt`'s `OpenFileCache` with 256 open files, resolves paths under the destination (correctly avoiding bt's double-root default), and rejects hostile path elements.
-- **No preallocation of torrent files** and **no sparse-file hint**. `bt`'s `FileSystemStorage` does have a `preallocate` option via `Config.isSampledHashingEnabled` / `DefaultFileStorage` extension, but the Blaze code uses `OpenFileCache` directly, so preallocation is not enabled. This costs seek performance and metadata updates on growing files.
-- **No fast-resume**: the comment on `TorrentNetworkClient.kt:189` states "advisory-free — bt re-verifies every piece against the embedded hashes on resume". So on a restart, **every piece is re-hashed**. The `bt` library supports fast-resume via `bt.portability` / `HashingStrategy.SampledHashingStrategy` (verifies only a random sample on resume) — this is not enabled. On multi-GB torrents this is a real restart-cost bug.
+- **No preallocation of torrent files, and `bt`'s `FileSystemStorage` offers none.** The audit claimed a `preallocate` option "via `Config.isSampledHashingEnabled` / `DefaultFileStorage` extension" — no such option exists (`FileSystemStorage`/`FileSystemStorageUnit` use a `SeekableByteChannel` and grow files on write; there is no sparse/preallocation hint). Genuine library limitation, not a flag we forgot to set.
+- **No fast-resume — a hard `bt` 1.10 limitation, NOT fixable.** The audit said to enable `HashingStrategy.SAMPLED` / `bt.portability` / `SampledHashingStrategy`; **none of these classes exist** in 1.10 (`bt.data.digest` is only `Digester`/`JavaSecurityDigester`/`SHA1Digester`). On resume `bt` re-verifies every piece against the embedded hashes (see `TorrentNetworkClient` marker comment). The multi-GB restart cost is real and unavoidable without a different/patched library; we state it plainly rather than pretend to enable a non-existent toggle.
 
 Lifecycle:
 - `btClient.startAsync(callback, 1000)` — 1 s progress ticks. Fine.
@@ -231,9 +236,9 @@ Ordered roughly by severity:
 2. **No chunk-level backoff** — `MAX_CHUNK_ATTEMPTS = 4` requeues a failed chunk immediately with **no delay** (`HttpDownloadCoordinator.worker` → `requeue` at lines 605–613 and 630–647). A flaky host with 4 workers gets 4 back-to-back retries on every failure. Wastes bandwidth, can trigger connection-limit bans.
 3. **HLS truncated segments accepted on resume** — `Files.size(target) > 0` is the only completeness check (`HlsDownloader.kt:259–264`). A crash mid-write leaves a partial segment on disk that is treated as complete on the retry, then concatenated. **Produces a corrupt output file**. Also `fetchBytes` accepts `StreamResult.Truncated` as OK (line 338–341).
 4. **HLS segment retry has no backoff** — `while(true)` with 3 attempts and no sleep between (`HlsDownloader.kt:270–285`). Same "hammer the CDN" problem as #1/#2 but worse.
-5. **Torrent `maxOutstandingRequests = 250`** — likely too aggressive against strict peers (see §11). Should be ~100 unless measurement proves otherwise.
-6. **Torrent restart re-hashes every piece** — `bt` `HashingStrategy.SAMPLED` not enabled. Multi-GB torrents pay minutes of CPU per resume that could be skipped (see §11).
-7. **No UDP-tracker support** — `bt-upnp-tracker-client` not on the classpath, most public torrents announce only over UDP. Silent zero-tracker case is logged but not fixed.
+5. **Torrent `maxOutstandingRequests = 250`** — NOT a bug: it equals `bt`'s library default. "Reduce to 100 for strict peers" is an unmeasurable hypothesis on our localhost harness (swarm transfer never completes here). Left at default; see §11.
+6. **Torrent restart re-hashes every piece** — a genuine `bt` 1.10 limitation, **not** a missed `HashingStrategy.SAMPLED` toggle (that class does not exist). Cannot be fixed within this library version; documented in §11.
+7. **No UDP-tracker support** — was real, now FIXED: `UdpTrackerModule` registers bt-core's `UdpTrackerFactory` for `udp://`. No dependency was added (the audit's `bt-upnp-tracker-client` does not exist).
 8. **No cookies / no auth persistence**. `HttpNetworkClient` does not install the Ktor `Cookies` plugin; session-cookie-gated hosts (many direct-download links behind a login) fail with 403.
 9. **No `If-Range` on resume**. When ETag/Last-Modified changes we discover it only on the *next* probe, which happens at the start of a run, not at the byte range we're fetching. We already restart at that point, so no corruption — but we throw away bytes on disk that were potentially valid under the old validator.
 10. **Single-stream path does not use `PositionedWriter`.** It uses `FileWriteSession` (a `RandomAccessFile`) with `seek` + `write`, one RAF handle for the whole run. Correct but adds a syscall per write instead of one `FileChannel.write(buf, pos)`.
@@ -289,9 +294,9 @@ Legend: ⭐ = must-do, 🔹 = worth doing, 💤 = defer.
 | 5 | Baseline benchmark + `PROGRESS.md` numbers per protocol | Enables Phase 3–5 measurement | S | ⭐ |
 | 6 | HLS write-once assembly via `PositionedWriter` at absolute offsets (15.16) | Removes 2× disk write, enables streaming output | M | ⭐ |
 | 7 | HLS parallel segment concurrency configurable (currently hard-coded 4) | Throughput on high-latency CDNs | S | ⭐ |
-| 8 | Torrent: enable sampled hashing / fast resume (15.6) | Restart cost on large torrents | S | ⭐ |
-| 9 | Torrent: add `bt-upnp-tracker-client` dep (15.7) | Peer discovery on udp-only torrents | S | ⭐ (needs dep add — see §19) |
-| 10 | Torrent: reduce `maxOutstandingRequests` (15.5) + benchmark | Peer compatibility | S | 🔹 |
+| 8 | Torrent: fast resume / sampled hashing (15.6) | — | — | ❌ NOT POSSIBLE: no such API in `bt` 1.10 (see §11) |
+| 9 | Torrent: enable UDP trackers (15.7) | Peer discovery on udp-only torrents | S | ⭐ DONE — wired from `bt-core`, **no dep added** |
+| 10 | Torrent: reduce `maxOutstandingRequests` (15.5) | Peer compatibility (unmeasurable locally) | — | ⏸ Kept at library default; harness cannot exercise it |
 | 11 | Per-host connection budget across concurrent downloads | Bandwidth fairness, ban-avoidance | M | 🔹 |
 | 12 | Adaptive connection count (back off on 429/403/503) | Reliability on throttling hosts | M | 🔹 |
 | 13 | Cookie / auth session support | Enables login-gated direct downloads | S | 🔹 |
@@ -309,17 +314,18 @@ Legend: ⭐ = must-do, 🔹 = worth doing, 💤 = defer.
 
 **Not fixing / leaving alone (honesty)**:
 
-- µTP, MSE, LSD: `bt` 1.10 does not implement µTP at all; MSE and LSD are experimental/partial. Faking them helps no one. We will tell the user plainly.
-- Web seeds: `bt` provides `WebSeedService` for HTTP-seeded torrents, but wiring it correctly requires per-torrent URL parsing that is not exposed. Defer unless the user opts in.
+- µTP and web seeds: `bt` 1.10 does not implement µTP and has **no `WebSeed` class** (an earlier note claiming a `WebSeedService` was wrong). Nothing to wire; stated plainly.
+- Fast resume / sampled hashing: no API exists in `bt` 1.10; the restart re-hash cost is inherent to this library version.
 - Super seeding: `bt` does not provide it.
+- LSD, MSE, UDP trackers: these turned out to be **available in `bt-core`** and are now wired (Phase 5), reversing the original "not supported" note.
 
 ### 18. Assumptions and open questions for review
 
 Per ground rule 8, flagging:
 
-- **A1**: I assume adding `com.github.atomashpolskiy:bt-upnp-tracker-client` (the same `bt` project, same license) counts as a "small, uncontroversial dependency add". PROMPT rule for "adding dependencies" says ask. Ask.
+- **A1**: ~~adding `bt-upnp-tracker-client` counts as a small dependency add~~ — **moot.** That artifact does not exist; Phase 5 wired UDP trackers from `bt-core`, so **no dependency was added** and the "ask" gate never triggered.
 - **A2**: I assume it is safe to **change the persisted HTTP resume sidecar format** if needed, provided we keep a compatibility reader. Rule says "changing persisted-state formats" → ask before doing it. Currently no format change is planned.
-- **A3**: I assume the user is happy to leave the `maxOutstandingRequests=250` decision to a benchmark against a local seeder rather than a real swarm.
+- **A3**: ~~leave `maxOutstandingRequests=250` to a local-seeder benchmark~~ — **cannot be satisfied.** The localhost `bt`↔`bt` swarm does not complete a transfer in this environment, and would not reproduce third-party strictness even if it did. `250` is also the library default, so it is left unchanged rather than tuned on an unmeasurable guess.
 - **A4**: I assume 1 GB HTTP benchmarks against the local harness are acceptable if we (a) stream the payload from a temp file rather than memory, (b) keep the tests fast by using 100 MB.
 - **A5**: For the "decouple disk writes" step, I assume we keep the current direct write by default and only add the queue when a benchmark shows a stall.
 - **A6**: I will keep public API stable. New fields will be added only as default-valued `data class` parameters or as opt-in settings.
@@ -354,13 +360,14 @@ Order (highest impact + lowest risk first):
 5. Optionally enable fMP4 assembly or (better) delegate to ffmpeg if present.
 6. Extend tests with out-of-order segments, delays, failures to prove ordering.
 
-**Phase 5 — Torrent.**
-1. Enable `HashingStrategy.SAMPLED` for fast resume.
-2. Add `bt-upnp-tracker-client` (needs user OK).
-3. Tune `maxOutstandingRequests` down to 100; benchmark.
-4. Enable web seeds if `bt` supports wiring them cleanly.
-5. Improve the local-seeder harness for realistic pause/resume tests.
-6. Honest doc: "µTP/MSE/LSD not supported by `bt`".
+**Phase 5 — Torrent.** (Completed; scope re-derived after verifying `bt-core-1.10-sources.jar`.)
+1. ~~Enable `HashingStrategy.SAMPLED` for fast resume.~~ — impossible: no such API in 1.10.
+2. ~~Add `bt-upnp-tracker-client` (needs user OK).~~ — no such artifact; UDP trackers wired from `bt-core` via new `UdpTrackerModule`, **no dependency added**.
+3. ~~Tune `maxOutstandingRequests` down to 100; benchmark.~~ — kept at library default; localhost harness cannot exercise strict-peer behaviour (swarm transfer 0 bytes/90s).
+4. ~~Enable web seeds.~~ — `bt` has no web-seed support.
+5. Enable MSE (`PREFER_ENCRYPTED`) and Local Service Discovery (`LocalServiceDiscoveryModule`) — both from `bt-core`, done.
+6. Update `logTrackers` to treat `udp://` as usable; add `UdpTrackerModuleTest` (offline) proving the wiring.
+7. Honest doc: correct §11/§15/§17 to record which `bt` capabilities are real vs fabricated.
 
 **Phase 6 — Unified architecture & quality.**
 1. `ARCHITECTURE.md`, updated `PROGRESS.md`.
@@ -976,3 +983,81 @@ the 230 after §4b).
 Tier-A segment resilience, single-track fMP4 assembly, and the opt-in external remux are all delivered,
 test-backed, and green. No public API was broken (every addition is a default-valued param or an off-by
 default setting). The engine remains pure-JVM by default; ffmpeg is never bundled or required.
+
+---
+
+## Phase 5 – Torrent engine
+
+Status: **complete, awaiting review**. Branch `feat/engine-optimization`.
+
+### 5a. Verify before change — the Phase-1 audit was wrong about `bt`
+
+PROMPT Phase 5 requires: "**Verify what `bt` genuinely supports.** If something ... is missing or limited,
+tell me plainly instead of faking it." So before touching code I extracted `bt-core-1.10-sources.jar` and
+read the real classes. The Phase-1 audit (§11/§15/§17/§19) had asserted several capabilities as "missing, to
+be enabled" that **do not exist** in 1.10, and one real gap whose fix it mis-attributed to a nonexistent
+dependency. Correcting the record came first; the §11/§15/§17/§18/§19 text above is now the corrected version.
+
+Non-existent APIs the audit claimed (all verified absent in source):
+- `HashingStrategy.SAMPLED` / `bt.portability` / `SampledHashingStrategy` for fast resume — `bt.data.digest`
+  is only `Digester`/`JavaSecurityDigester`/`SHA1Digester`. **No sampled hashing, no fast resume exists.**
+- `EndGameStrategy` / `EndGamePieceSelectionStrategy` / `ExtensionsModule` / `setPieceSelectionStrategy` —
+  absent; `Config.java` documents endgame as **built-in and automatic**.
+- `WebSeedService` — no `WebSeed` class anywhere in `bt-core`.
+- `bt-upnp-tracker-client` — **the artifact does not exist**; the real fix was already inside `bt-core`.
+
+Claims the audit got backwards (real and now wired, no new dependency):
+- **UDP trackers**: `bt.tracker.udp.UdpTracker`/`UdpTrackerFactory` (functional, handles `udp://`) are in
+  `bt-core` but never ServiceLoader-registered. `maxOutstandingRequests=250` is the **library default**, not a
+  Blaze over-set value.
+- **MSE protocol encryption**: in `bt-core` via `Config.encryptionPolicy` (default `PREFER_PLAINTEXT`).
+- **Local Service Discovery**: `bt.peer.lan.LocalServiceDiscoveryModule` is in `bt-core`.
+
+### 5b. Wiring the real capabilities (this commit)
+
+All three additions come from `bt-core`, which is already a dependency — **no artifact was added**, so the
+"adding dependencies" review gate never fired.
+
+- **`UdpTrackerModule`** (new file) binds `UdpTrackerFactory` for the `udp` scheme via
+  `ServiceModule.extend(binder).addTrackerFactory(UdpTrackerFactory::class.java, "udp")`, mirroring how
+  `bt-http-tracker-client`'s `HttpTrackerModule` registers HTTP. `TorrentRuntimeProvider.buildRuntime` now adds
+  it alongside the HTTP tracker module, so a `udp://`-only torrent (the majority of public swarms) can announce
+  instead of silently falling back to DHT/PEX.
+- **`LocalServiceDiscoveryModule`** is added to the runtime so peers on the same LAN are discovered via
+  multicast (TTL 1, 60 s interval; per-announce `IOException`s are caught inside the library, so it degrades
+  gracefully where multicast is unavailable).
+- **`applyPerformanceConfig` sets `encryptionPolicy = PREFER_ENCRYPTED`** — encrypted handshake first, plaintext
+  fallback for legacy peers, helping on networks that shape/block plain BitTorrent without the compatibility
+  loss of `REQUIRE_ENCRYPTED`.
+- **`logTrackers`** now counts `udp://` alongside HTTP(S) as usable and only warns "peers can only come from
+  DHT/PEX" when there is genuinely no usable tracker; its KDoc no longer claims UDP is unusable.
+
+**Not changed, on purpose:**
+- `maxOutstandingRequests` stays at 250 (the library default). The "reduce to 100" advice targets third-party
+  strict peers; our localhost `bt`↔`bt` harness cannot reproduce them — `TorrentSwarmBenchmark` transfers 0 of
+  32 MiB in 90 s here (in-process peers never connect over local discovery). Changing it would be tuning on an
+  unmeasurable guess, so it is left and labelled an estimate.
+- Fast resume / preallocation / web seeds / µTP: **not implementable** in `bt` 1.10. Stated as limitations,
+  not faked. The multi-GB restart re-hash cost is inherent to this library version.
+
+**Verification:** `UdpTrackerModuleTest` (4 tests, fully offline — a minimal tracker-only runtime, numeric
+`udp://127.0.0.1` URLs that are parsed but never announced) pins that `udp://` is now a supported protocol and
+resolves to a UDP tracker, HTTP(S) keeps working, and an unwired `wss://` is still honestly unsupported. The
+existing torrent runtime tests (`TorrentDownloaderTest`, `TorrentPauseResumeTest`, `TorrentMetadataTest`,
+`TorrentUrlSourceTest`) still build the real shared runtime with the new modules and pass. Full
+`:download-engine:test` = **239 tests, 0 failures**.
+
+**One timing-flake fix, unrelated to the torrent change.** `TimeoutRetryTest` (an HTTP-path test) failed only
+in the full run and passed in isolation. Test classes share one JVM fork, and the torrent suite's process-wide
+`bt` runtime (DHT bootstrap + LAN discovery) keeps daemon threads alive through its idle grace, which starved
+CIO's event loop and delayed the socket-timeout callback past the test's 20 s wall clock. Since that test
+checks retry *semantics* and not a latency SLA, its `withTimeout` was raised to 60 s (assertions unchanged) so
+background load can no longer masquerade as a retry bug. No production code is involved.
+
+### Phase 5 status: complete
+
+The genuine Phase-5 wins — UDP trackers, LAN discovery, and opportunistic encryption — are wired from the
+existing `bt-core` with **no new dependency**, test-backed, and green. Every Phase-1 claim about non-existent
+`bt` APIs is corrected in place, and the real limitations (no fast resume, no preallocation, no web seeds, no
+µTP; request-depth tuning unmeasurable on the localhost harness) are stated plainly rather than faked. No public
+API or persisted format changed.

@@ -2,7 +2,9 @@ package org.blaze.engine.network
 
 import bt.dht.DHTConfig
 import bt.dht.DHTModule
+import bt.peer.lan.LocalServiceDiscoveryModule
 import bt.peerexchange.PeerExchangeModule
+import bt.protocol.crypto.EncryptionPolicy
 import bt.runtime.BtRuntime
 import bt.runtime.Config
 import bt.tracker.http.HttpTrackerModule
@@ -123,6 +125,10 @@ class TorrentRuntimeProvider(private val idleGrace: Duration = IDLE_GRACE) : Aut
                 override fun shouldUseRouterBootstrap(): Boolean = true
             }))
             .module(HttpTrackerModule())
+            // `udp://` announce URLs (bt-core has the client but never auto-wires it), plus on-LAN
+            // peer discovery - both broaden how a client finds peers with no added dependency.
+            .module(UdpTrackerModule())
+            .module(LocalServiceDiscoveryModule())
             .module(PeerExchangeModule())
             .disableAutomaticShutdown()
             .build()
@@ -193,6 +199,11 @@ internal fun applyPerformanceConfig(
     config.trackerTimeout = 20.seconds.toJavaDuration()
     config.trackerQueryInterval = 30.seconds.toJavaDuration()
     config.numberOfPeersToRequestFromTracker = 80
+
+    // Try the encrypted (MSE) handshake first, fall back to plaintext when a peer does not speak
+    // it. This helps on networks that shape or block plain BitTorrent, and is more private, without
+    // locking out legacy peers the way REQUIRE_ENCRYPTED would. (bt's stock default is plaintext.)
+    config.encryptionPolicy = EncryptionPolicy.PREFER_ENCRYPTED
 }
 
 /** Exposes the peer/assignment tuning without leaking the `bt` Config type into callers. */

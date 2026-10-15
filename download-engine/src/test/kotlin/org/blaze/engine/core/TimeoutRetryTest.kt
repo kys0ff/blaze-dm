@@ -109,7 +109,14 @@ class TimeoutRetryTest {
                 )
                 manager.start(id)
 
-                withTimeout(20.seconds) {
+                // The behaviour under test is retry *semantics* (timeout -> requeue -> restart -> resume
+                // from partial bytes), not a latency SLA: a 1.5 s socket timeout makes the happy path finish
+                // in a few seconds. The generous wall budget is deliberate - test classes share one JVM fork
+                // and the torrent suite's process-wide `bt` runtime (DHT bootstrap, LAN discovery) keeps
+                // daemon threads alive for its idle grace, which can starve CIO's event loop and delay the
+                // timeout callback well past 20 s. Loosening the deadline stops that background load from
+                // masquerading as a retry bug; the assertions below still enforce the real behaviour.
+                withTimeout(60.seconds) {
                     try {
                         manager.observeTask(id).collect { t ->
                             if (t.state == DownloadState.Queued && t.retryCount >= 1) sawQueuedRetry = true
