@@ -18,6 +18,10 @@ package bt.net;
 
 import bt.protocol.InvalidMessageException;
 
+import java.io.EOFException;
+import java.net.SocketException;
+import java.nio.channels.ClosedChannelException;
+
 /**
  * Classifies exceptions that escape per-connection read processing in {@link DataReceivingLoop},
  * so routine hostile/legacy peer behavior is not logged like an internal defect (fork patch, TOR-12).
@@ -33,6 +37,8 @@ final class ReadLoopFailures {
     enum Kind {
         /** The peer sent something unparseable or out of spec; expected churn on real swarms. */
         PEER_MISBEHAVIOR,
+        /** The peer tore the connection down (reset, EOF, channel closed under us); expected churn. */
+        CONNECTION_CHURN,
         /** Not caused by the peer and not expected churn; a genuine defect worth a full trace. */
         UNEXPECTED
     }
@@ -46,18 +52,26 @@ final class ReadLoopFailures {
     /**
      * @return {@link Kind#PEER_MISBEHAVIOR} if any throwable in the cause chain is an
      * {@link InvalidMessageException} (bt's own "unknown/invalid inbound message" signal, e.g.
-     * thrown by {@code StandardBittorrentProtocol.readMessageType}), else {@link Kind#UNEXPECTED}.
+     * thrown by {@code StandardBittorrentProtocol.readMessageType}); {@link Kind#CONNECTION_CHURN}
+     * if the chain instead bottoms out in a peer-caused disconnect ({@link java.net.SocketException},
+     * {@link EOFException}, {@link ClosedChannelException}); else {@link Kind#UNEXPECTED}.
+     * Peer misbehavior wins over churn if both appear in one chain.
      */
     static Kind kindOf(Throwable error) {
+        boolean churn = false;
         Throwable current = error;
         for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
             if (current instanceof InvalidMessageException) {
                 return Kind.PEER_MISBEHAVIOR;
             }
+            if (current instanceof SocketException || current instanceof EOFException
+                    || current instanceof ClosedChannelException) {
+                churn = true;
+            }
             Throwable cause = current.getCause();
             current = (cause == current) ? null : cause;
         }
-        return Kind.UNEXPECTED;
+        return churn ? Kind.CONNECTION_CHURN : Kind.UNEXPECTED;
     }
 
     /**

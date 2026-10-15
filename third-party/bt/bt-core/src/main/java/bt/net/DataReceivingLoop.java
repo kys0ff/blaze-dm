@@ -24,7 +24,6 @@ import com.google.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectableChannel;
@@ -124,18 +123,21 @@ public class DataReceivingLoop implements Runnable, DataReceiver {
                         } catch (ClosedSelectorException e) {
                             // selector has been closed, there's no point to continue processing
                             throw e;
-                        } catch (EOFException e) {
-                            LOGGER.debug("Channel disconnected", e);
-                            selectedKeys.remove();
                         } catch (Exception e) {
-                            // Fork patch (TOR-12): a peer sending an unparseable/unknown message type is
-                            // routine churn on real swarms; the connection is already down (SocketChannelHandler.read
-                            // shuts it before rethrowing), so log a one-liner instead of a scary ERROR stack trace.
-                            if (ReadLoopFailures.kindOf(e) == ReadLoopFailures.Kind.PEER_MISBEHAVIOR) {
-                                LOGGER.warn("Dropping connection to misbehaving peer: "
-                                        + ReadLoopFailures.rootMessage(e));
-                            } else {
-                                LOGGER.error("Failed to process key", e);
+                            // Fork patches (TOR-12): peer protocol violations and peer-torn connections are routine
+                            // churn on real swarms; the connection is already down (SocketChannelHandler.read shuts
+                            // it before rethrowing), so log one-liners instead of scary ERROR stack traces. Only
+                            // genuinely unexpected failures keep the ERROR + trace.
+                            switch (ReadLoopFailures.kindOf(e)) {
+                                case PEER_MISBEHAVIOR:
+                                    LOGGER.warn("Dropping connection to misbehaving peer: "
+                                            + ReadLoopFailures.rootMessage(e));
+                                    break;
+                                case CONNECTION_CHURN:
+                                    LOGGER.debug("Channel disconnected: " + ReadLoopFailures.rootMessage(e));
+                                    break;
+                                default:
+                                    LOGGER.error("Failed to process key", e);
                             }
                             selectedKeys.remove();
                         }

@@ -19,7 +19,10 @@ package bt.net;
 import bt.protocol.InvalidMessageException;
 import org.junit.Test;
 
+import java.io.EOFException;
 import java.io.IOException;
+import java.net.SocketException;
+import java.nio.channels.ClosedChannelException;
 
 import static org.junit.Assert.assertEquals;
 
@@ -55,6 +58,44 @@ public class ReadLoopFailuresTest {
     public void unrelatedFailureIsUnexpected() {
         assertEquals(ReadLoopFailures.Kind.UNEXPECTED,
                 ReadLoopFailures.kindOf(new IllegalStateException("bug elsewhere")));
+    }
+
+    // Fork patch #2 (TOR-12): peer-torn connections are churn, not defects.
+    @Test
+    public void connectionResetIsChurn() {
+        Throwable inLoop = new SocketException("Connection reset");
+        assertEquals(ReadLoopFailures.Kind.CONNECTION_CHURN, ReadLoopFailures.kindOf(inLoop));
+    }
+
+    @Test
+    public void eofIsChurn() {
+        assertEquals(ReadLoopFailures.Kind.CONNECTION_CHURN,
+                ReadLoopFailures.kindOf(new RuntimeException(new EOFException())));
+    }
+
+    @Test
+    public void closedChannelIsChurn() {
+        assertEquals(ReadLoopFailures.Kind.CONNECTION_CHURN,
+                ReadLoopFailures.kindOf(new ClosedChannelException()));
+    }
+
+    @Test
+    public void plainIOExceptionIsNotAssumedChurn() {
+        // Conservative: only known peer-disconnect signals demote; other I/O failures keep the ERROR trace.
+        assertEquals(ReadLoopFailures.Kind.UNEXPECTED,
+                ReadLoopFailures.kindOf(new IOException("some other I/O problem")));
+    }
+
+    @Test
+    public void misbehaviorBeatsChurnInOneChain() {
+        // SocketException has no (message, cause) constructor; simulate the mixed chain via getCause().
+        Throwable both = new SocketException("Connection reset") {
+            @Override
+            public synchronized Throwable getCause() {
+                return new InvalidMessageException("Unknown message type ID: 70");
+            }
+        };
+        assertEquals(ReadLoopFailures.Kind.PEER_MISBEHAVIOR, ReadLoopFailures.kindOf(both));
     }
 
     @Test
