@@ -87,12 +87,28 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
 - **Known follow-up**: the mode is not yet surfaced in the GUI settings screen, so engine-default NONE is what
   production runs until the toggle ships.
 
-### TOR-3 — No web seeds (BEP 19 / BEP 17) — **B**, L, risk: medium
-- **Evidence**: `PROGRESS.md:188`; no `WebSeed`/`WebSeedService` in `bt-core-1.10`.
-- **Fix (fork, Phase 8b.3)**: parse `url-list`, map piece requests to HTTP Range requests (multi-file boundaries),
-  integrate with selection/endgame, ban a seed on bad hash. The fork must NOT depend on Ktor — define a
-  `WebSeedFetcher` interface in the fork, implement it in download-engine over the existing HTTP client (inherits
-  retry/`Retry-After`/speed-limit).
+### TOR-3 — No web seeds (BEP 19 / BEP 17) — **B**, L, risk: medium — ✅ FIXED (Phase 8b.3)
+- **Evidence (pre-fix)**: `PROGRESS.md:188`; no `WebSeed`/`WebSeedService` in `bt-core-1.10`; `url-list`/`httpseeds` were
+  silently ignored by `MetadataService`.
+- **Fix (fork patches #6/#7 + engine wiring, done)**: the fork owns the HTTP-agnostic, unit-testable half and stays free
+  of any HTTP dependency — #6 parses BEP-19 `url-list` (root or info-dict, bare string tolerated) and BEP-17 `httpseeds`
+  into `Torrent.getWebSeedUrls()`/`getHttpSeedUrls()` (default methods, so existing `Torrent` implementers still compile);
+  #7 adds `bt.torrent.webseed.WebSeedPlanner` (maps a piece onto the ordered file byte-ranges over the concatenated-file
+  stream, splitting boundary-straddling pieces and clipping the short last piece) and the `WebSeedFetcher` transport seam.
+  Engine (`fc2292d`): `HttpWebSeedFetcher` implements the seam over the shared `HttpNetworkClient` (GetRight-style file
+  URLs + a `Range: bytes=from-to` GET, inheriting redirect/UA handling), and `WebSeedDownloader` feeds every missing,
+  non-deselected piece straight into `DataWorker.addBlock` as one block — the same write/verify choke point a peer uses,
+  so verification, bitfield counting and completion are untouched. A SHA-1 mismatch (`BlockWrite` verification future
+  `== false`) **bans that seed URL** and retries the piece from the next mirror (BEP-19 discard rule); a transport error
+  backs off without banning. `TorrentNetworkClient` takes an optional `webSeedFetcherFactory` and launches the agent
+  concurrently after `startAsync`, cancelled with the download.
+- **Tests**: 5 fork cases (`WebSeedParsingTest`) + 6 (`WebSeedPlannerTest`); engine `HttpWebSeedFetcherTest` (3 URL cases)
+  + `WebSeedTransferTest`: a multi-file torrent with **no peers** completes end to end against a real loopback HTTP
+  range server, and a mirror returning tampered bytes is banned on the bad hash while the transfer still lands
+  byte-perfect by SHA-256.
+- **Known follow-up**: the fetch uses the BEP-19 GetRight per-file + `Range` model (the widely supported common subset that
+  real `url-list` and plain-HTTP `httpseeds` mirrors serve); BEP-17's legacy concatenated-stream `-%s%s`/CGI query forms are
+  not separately implemented, so a pure FTP-style `httpseeds` host would 404 and be skipped rather than corrupting data.
 
 ### TOR-4 — No µTP (BEP 29) — **B/C**, design-first (Phase 8c), risk: high
 - **Evidence**: `PROGRESS.md:188,317`; no µTP transport in `bt-core-1.10` (TCP peer transport only).
