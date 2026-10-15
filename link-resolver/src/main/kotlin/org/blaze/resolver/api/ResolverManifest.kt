@@ -112,7 +112,7 @@ data class ResolverManifest(
 
         /** Reads the manifest through a class loader (built-ins: from the module's own resources). */
         fun load(classLoader: ClassLoader): ResolverManifest? = runCatching {
-            classLoader.getResourceAsStream(PATH)?.use { it.readBytes()?.decodeToString() }
+            classLoader.getResourceAsStream(PATH)?.use { it.readBytes().decodeToString() }
         }.getOrNull()?.let(::parse)
 
         /** True when [candidate] is a valid `[a-z0-9][a-z0-9_-]*` persistence key. */

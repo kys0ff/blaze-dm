@@ -91,7 +91,7 @@ object IslandFontFamilies {
     /**
      * A selectable family: its Compose [family] plus the bundled regular face ([regularResource])
      * whose vertical metrics define the line height — `null` for OS families, which have no
-     * resource to measure and keep the base line height.
+     * resource to measure and keep the baseline height.
      */
     data class IslandFont(val id: String, val family: FontFamily, val regularResource: String?)
 
