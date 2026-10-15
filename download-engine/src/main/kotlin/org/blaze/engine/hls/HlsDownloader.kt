@@ -1,9 +1,6 @@
 package org.blaze.engine.hls
 
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.blaze.engine.api.DownloadError
@@ -12,17 +9,19 @@ import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.retry.Backoff
 import org.blaze.engine.storage.FileStorage
-import kotlin.time.Duration.Companion.milliseconds
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Downloads a finite HLS stream: fetch a playlist, (optionally) narrow a master playlist to one variant,
@@ -33,11 +32,12 @@ import javax.crypto.spec.SecretKeySpec
  * with the JDK's own crypto. A *suspected* DRM stream is a warning, not a block: Blaze asks the user to
  * acknowledge before fetching anything, and an acknowledged stream still runs on the ordinary download path
  * — it is only ever stopped when the concrete evidence says so (segments encrypted with a scheme Blaze does
- * not decrypt, or a container that needs remuxing), never merely because the detector labelled it "DRM".
+ * not decrypt, or a container that needs remuxing), never merely because the detector labeled it "DRM".
  * Blaze never works around protection or extracts DRM keys, and never writes a file it would present as a
  * processed video when the essence cannot actually be decrypted. Reliable assembly by simple concatenation
- * is only claimed for MPEG-TS streams; fragmented-MP4 and any other container that needs remuxing is
- * reported as unsupported rather than concatenated into a file that only looks done. Temporary segment
+ * is claimed for MPEG-TS and for single-track fragmented-MP4 (whose `#EXT-X-MAP` init segment is prepended
+ * to the fragments to form a valid ISOBMFF file with no remuxing); any other container that needs remuxing
+ * is reported as unsupported rather than concatenated into a file that only looks done. Temporary segment
  * files are always cleaned up, on success, failure or cancellation.
  */
 class HlsDownloader(
@@ -122,9 +122,9 @@ class HlsDownloader(
             val container = detectContainer(tempDir, segments.size, media)
             // Only a scheme Blaze genuinely cannot decrypt stops assembly — never the warning label.
             // SAMPLE-AES leaves the TS packet headers in the clear, so a sync-byte sniff cannot certify
-            // the essence as playable and it is refused on the method itself; an unrecognized method is
+            // the essence as playable, and it is refused on the method itself; an unrecognized method is
             // refused only when the real bytes also fail to look like a container Blaze can concatenate,
-            // so a stream that a mere DRM advertisement mislabelled but which is actually clear still
+            // so a stream that a mere DRM advertisement mislabeled but which is actually clear still
             // downloads and succeeds. Either way Blaze decrypts nothing it has no key for.
             val cannotDecrypt = media.keyMethod == HlsKeyMethod.SampleAes ||
                     (media.keyMethod == HlsKeyMethod.Unknown && container != HlsContainer.MpegTs)
@@ -132,14 +132,36 @@ class HlsDownloader(
                 cleanup(tempDir)
                 return Outcome.Unsupported(undecryptableReason(media))
             }
-            if (container != HlsContainer.MpegTs) {
+            // MPEG-TS is concatenated as-is. A single-track fragmented-MP4 stream is too, once its
+            // init segment (EXT-X-MAP) is prepended: init (ftyp+moov) followed by the fragments
+            // (moof+mdat) is already a valid ISOBMFF file, so no remux is required. Any other container
+            // genuinely needs a remux and is refused rather than faked into a broken file.
+            val initMapUri = media.initMapUri
+            val fmp4 = container == HlsContainer.Fmp4 && initMapUri != null
+            if (container != HlsContainer.MpegTs && !fmp4) {
                 cleanup(tempDir)
                 return Outcome.Unsupported(
-                    "only MPEG-TS HLS streams can be assembled into a single file by Blaze; this stream uses " +
-                            "a fragmented-MP4/other container that needs remuxing"
+                    "only MPEG-TS and single-track fragmented-MP4 HLS streams can be assembled into a " +
+                            "single file by Blaze; this stream uses a container that needs remuxing"
                 )
             }
-            val written = assemble(tempDir, segments.size, destination)
+            // The init segment is fetched once and written ahead of the fragments. Its bytes define the
+            // container, so a failure here is a hard failure, never a silent skip that drops the moov box.
+            val initBytes: ByteArray? = if (fmp4) {
+                val range = media.initMapByteRange
+                val init = fetchResource(initMapUri, headers, range?.start ?: 0L, range?.endInclusive)
+                if (init is Resource.Ok) {
+                    init.bytes
+                } else {
+                    cleanup(tempDir)
+                    val error = when (init) {
+                        is Resource.Fatal -> init.error
+                        is Resource.Retryable -> init.error
+                    }
+                    return Outcome.Failed(error)
+                }
+            } else null
+            val written = assemble(tempDir, segments.size, destination, initBytes)
             cleanup(tempDir)
             Outcome.Success(written)
         } catch (e: Exception) {
@@ -251,9 +273,9 @@ class HlsDownloader(
         // Cumulative decrypted bytes written so far, so progress can be reported in bytes (which drives a
         // real speed/size) rather than as a bare segment counter the UI would render as "1b, 2b, 3b".
         val bytesDone = AtomicLong(0)
-        val errorRef = java.util.concurrent.atomic.AtomicReference<DownloadError>()
-        val keyCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
-        val jobs = ArrayList<kotlinx.coroutines.Job>()
+        val errorRef = AtomicReference<DownloadError>()
+        val keyCache = ConcurrentHashMap<String, ByteArray>()
+        val jobs = ArrayList<Job>()
 
         segments.forEachIndexed { index, segment ->
             val target = segmentPath(tempDir, index)
@@ -288,7 +310,7 @@ class HlsDownloader(
                             }
 
                             // A transient answer - a 5xx/429, a reset, or a body that stopped short of its
-                            // advertised length - is retried on the shared equal-jitter schedule, honouring a
+                            // advertised length - is retried on the shared equal-jitter schedule, honoring a
                             // server `Retry-After` when the host sent one. A truncated segment is NEVER written
                             // as if it were whole: baking a short segment into the file is exactly the corrupt
                             // output the correctness rule forbids.
@@ -305,7 +327,7 @@ class HlsDownloader(
                 }
             }
         }
-        jobs.forEach { it.join() }
+        jobs.joinAll()
         // Joining the first failure's peers does not stop the in-flight ones; a nonzero failure count means
         // at least one hole exists, so the run cannot be trusted to assemble a complete stream.
         if (failed.get() > 0) SegmentDownload.Failed(
@@ -323,7 +345,20 @@ class HlsDownloader(
     private sealed interface Resource {
         val bytesOrNull: ByteArray? get() = (this as? Ok)?.bytes
 
-        data class Ok(val bytes: ByteArray) : Resource
+        data class Ok(val bytes: ByteArray) : Resource {
+            override fun equals(other: Any?): Boolean {
+                if (this === other) return true
+                if (javaClass != other?.javaClass) return false
+
+                other as Ok
+
+                return bytes.contentEquals(other.bytes)
+            }
+
+            override fun hashCode(): Int {
+                return bytes.contentHashCode()
+            }
+        }
 
         /** Retryable: a 5xx/429/timeout/reset, a range the server ignored, or a body that stopped short. */
         data class Retryable(
@@ -347,7 +382,13 @@ class HlsDownloader(
         headers: Map<String, String>,
         keyCache: MutableMap<String, ByteArray>,
     ): Resource {
-        val raw = fetchResource(segment.uri, headers)
+        val range = segment.byteRange
+        val raw = if (range != null) {
+            // A fragmented-MP4 slice: pull exactly this byte window, then decrypt if a key is in force.
+            fetchResource(segment.uri, headers, range.start, range.endInclusive)
+        } else {
+            fetchResource(segment.uri, headers)
+        }
         if (raw !is Resource.Ok) return raw
         val keyUri = segment.keyUri ?: return raw
         val key = keyCache[keyUri] ?: run {
@@ -372,11 +413,16 @@ class HlsDownloader(
      * ending before its advertised length - is surfaced as retryable, never silently accepted as a short
      * success the way the old whole-or-null `fetchBytes` did.
      */
-    private suspend fun fetchResource(url: String, headers: Map<String, String>): Resource {
+    private suspend fun fetchResource(
+        url: String,
+        headers: Map<String, String>,
+        start: Long = 0L,
+        end: Long? = null,
+    ): Resource {
         val request =
             DownloadRequest.Http(name = "resource", url = url, destination = Path.of("resource"), headers = headers)
         val out = ByteArrayOutputStream()
-        val result = client.stream(request) { buffer, count ->
+        val result = client.stream(request, start = start, end = end) { buffer, count ->
             if (out.size().toLong() + count > maxPlaylistBytes) {
                 throw java.io.IOException("resource exceeds $maxPlaylistBytes bytes")
             }
@@ -410,10 +456,16 @@ class HlsDownloader(
     private suspend fun fetchText(url: String, headers: Map<String, String>): String? =
         fetchResource(url, headers).bytesOrNull?.toString(java.nio.charset.StandardCharsets.UTF_8)
 
-    private fun assemble(tempDir: Path, segmentCount: Int, destination: Path): Long {
+    private fun assemble(
+        tempDir: Path,
+        segmentCount: Int,
+        destination: Path,
+        initBytes: ByteArray? = null,
+    ): Long {
         val partial = storage.getPartialFile(destination).toPath()
         Files.createDirectories(partial.parent)
         java.io.BufferedOutputStream(Files.newOutputStream(partial)).use { os ->
+            if (initBytes != null) os.write(initBytes)
             for (index in 0 until segmentCount) {
                 val part = segmentPath(tempDir, index)
                 Files.newInputStream(part).use { it.copyTo(os) }
@@ -424,6 +476,10 @@ class HlsDownloader(
     }
 
     private fun detectContainer(tempDir: Path, segmentCount: Int, media: HlsPlaylist): HlsContainer {
+        // An EXT-X-MAP init segment declares a fragmented-MP4 stream outright; a fMP4 fragment starts at a
+        // box boundary (moof/mdat), not "ftyp", so sniffing the first fragment cannot classify it - the
+        // map tag is the authoritative signal and must win before any byte sniff.
+        if (media.initMapUri != null) return HlsContainer.Fmp4
         // Prefer a sniff of the first real segment bytes; fall back to the URI extension.
         val head = runCatching {
             val first = segmentPath(tempDir, 0)
@@ -482,7 +538,10 @@ class HlsDownloader(
     }
 }
 
-/** The transport container a stream's segments actually use; only [MpegTs] is safe to concatenate. */
+/**
+ * The transport container a stream's segments actually use. [MpegTs] and [Fmp4] (a single-track stream with
+ * an `#EXT-X-MAP` init segment) are both safe to concatenate; [Other] needs a remux and is refused.
+ */
 enum class HlsContainer { MpegTs, Fmp4, Other }
 
 // ---------------------------------------------------------------- HLS crypto helpers (JDK-only, shared code safe)

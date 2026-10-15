@@ -55,6 +55,14 @@ object HlsPlaylistParser {
         var pendingDiscontinuity = false
         var lastWasStreamInf = false
 
+        // Fragmented-MP4 support: an init segment (EXT-X-MAP) plus per-segment byte windows. The byte
+        // range cursor resolves an offset-omitted `#EXT-X-BYTERANGE` ("continue after the last window",
+        // per RFC 8216) into an absolute range at parse time, so concurrent fetches need no shared state.
+        var initMapUri: String? = null
+        var initMapByteRange: HlsByteRange? = null
+        var pendingByteRange: HlsByteRange? = null
+        var byteRangeCursor = 0L
+
         for (raw in lines) {
             val line = raw.trim()
             if (line == MAGIC || line.startsWith("#EXT-X-VERSION")) continue
@@ -96,6 +104,19 @@ object HlsPlaylistParser {
                     }
                 }
 
+                line.startsWith("#EXT-X-MAP") -> {
+                    val attrs = parseAttributeList(line.afterColon())
+                    attrs["URI"]?.let { initMapUri = resolveUrl(baseUrl, it) }
+                    attrs["BYTERANGE"]?.let { initMapByteRange = parseByteRange(it, 0L) }
+                }
+
+                line.startsWith("#EXT-X-BYTERANGE") -> {
+                    parseByteRange(line.afterColon(), byteRangeCursor)?.let {
+                        pendingByteRange = it
+                        byteRangeCursor = it.start + it.length
+                    }
+                }
+
                 line.startsWith("#EXTINF") -> {
                     // "#EXTINF:9.008,title" — the duration is the field before the first comma.
                     val value = line.afterColon()
@@ -118,9 +139,11 @@ object HlsPlaylistParser {
                             discontinuity = pendingDiscontinuity,
                             keyUri = if (currentMethod == HlsKeyMethod.Aes128) currentKeyUri else null,
                             iv = if (currentMethod == HlsKeyMethod.Aes128) currentIv else null,
+                            byteRange = pendingByteRange,
                         )
                         pendingExtinfDuration = null
                         pendingDiscontinuity = false
+                        pendingByteRange = null
                     }
                 }
             }
@@ -155,6 +178,8 @@ object HlsPlaylistParser {
             keyUri = currentKeyUri,
             protection = protection,
             drmIndicators = drmIndicators.toList(),
+            initMapUri = initMapUri,
+            initMapByteRange = initMapByteRange,
         )
     }
 
@@ -229,6 +254,21 @@ object HlsPlaylistParser {
 
     /** Everything after the first colon, for a `#TAG:value` or `#TAG:KEY=VAL` line. */
     private fun String.afterColon(): String = substringAfter(':', missingDelimiterValue = "").trim()
+
+    /**
+     * Parse a `#EXT-X-BYTERANGE` / `EXT-X-MAP` `BYTERANGE` value (`n` or `n@o`) into an absolute window.
+     * An omitted offset continues from [cursor] - the byte after the previous window - which the caller
+     * advances after each resolved range. Returns null on a malformed value or a non-positive length so
+     * the segment is simply treated as whole-resource rather than mis-sliced.
+     */
+    private fun parseByteRange(spec: String, cursor: Long): HlsByteRange? {
+        val value = spec.trim()
+        val at = value.indexOf('@')
+        val length = (if (at >= 0) value.substring(0, at) else value).trim().toLongOrNull() ?: return null
+        val start = if (at >= 0) value.substring(at + 1).trim().toLongOrNull() ?: return null else cursor
+        if (length <= 0 || start < 0) return null
+        return HlsByteRange(start, length)
+    }
 
     /**
      * Parse an HLS attribute list (`BANDWIDTH=1000,URI="a,b",CODECS="avc1.4d400d"`), honouring

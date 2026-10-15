@@ -26,11 +26,26 @@ enum class HlsKeyMethod { None, Aes128, SampleAes, Unknown }
 enum class HlsProtection { None, OrdinaryEncryption, DrmSuspected, Uncertain }
 
 /**
+ * A byte window into a resource, from a resolved `#EXT-X-BYTERANGE` (`n[@o]`) or an `EXT-X-MAP`
+ * `BYTERANGE` attribute. [start] and [length] are absolute: the parser resolves the offset-omitted
+ * form (`n`, meaning "continue after the previous window") into an explicit [start] at parse time,
+ * because fragments are fetched concurrently and the continuation cannot be reconstructed from fetch
+ * order. Per RFC 8216 a window with no offset continues from the end of the preceding window; the very
+ * first such window starts at byte 0.
+ */
+data class HlsByteRange(val start: Long, val length: Long) {
+    /** Inclusive last byte index, for a `Range: bytes=start-end` request. */
+    val endInclusive: Long get() = start + length - 1
+}
+
+/**
  * One `#EXTINF` segment of a media playlist, with its URL already resolved to absolute form.
  *
  * [keyUri] carries the AES-128 key location in force for *this* segment (HLS allows the key to rotate
  * mid-playlist via repeated `#EXT-X-KEY`), and [iv] the explicit initialization vector when the tag
- * supplies one; both are null for an unencrypted segment.
+ * supplies one; both are null for an unencrypted segment. [byteRange] is the `#EXT-X-BYTERANGE` window
+ * when the segment is a slice of a larger file (fragmented-MP4 packs many media segments into one
+ * `.m4s`); null means the whole resource at [uri] is this segment.
  */
 data class HlsSegment(
     val uri: String,
@@ -38,6 +53,7 @@ data class HlsSegment(
     val discontinuity: Boolean,
     val keyUri: String? = null,
     val iv: String? = null,
+    val byteRange: HlsByteRange? = null,
 )
 
 /** One `#EXT-X-STREAM-INF` variant offered by a master playlist. */
@@ -69,6 +85,14 @@ data class HlsPlaylist(
     val keyUri: String?,
     val protection: HlsProtection,
     val drmIndicators: List<String>,
+    /**
+     * The `#EXT-X-MAP` initialization segment for a fragmented-MP4 media playlist: its URL and any byte
+     * window within it. Null for an MPEG-TS stream (which needs no init segment). Its presence is what
+     * makes a `.m4s`/CMAF stream concatenable - the init segment (ftyp+moov) precedes the fragments
+     * (moof+mdat) to form one valid ISOBMFF file, with no remuxing.
+     */
+    val initMapUri: String? = null,
+    val initMapByteRange: HlsByteRange? = null,
 ) {
     /** A VOD playlist declares `#EXT-X-ENDLIST`; without it the stream is (or was) live. */
     val isLive: Boolean get() = kind == HlsPlaylistKind.Media && !endList

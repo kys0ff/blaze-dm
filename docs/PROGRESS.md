@@ -912,9 +912,36 @@ transient 503 retried to success; permanent 404 fails fast with exactly one requ
 Full `:download-engine:test` = **226 tests, 0 failures** (the 3 new on top of the 223 after the If-Range
 commit); the shared-backoff refactor and the `HlsDownloader` fetch rework broke no existing HLS test.
 
-### 4b. fMP4 + optional remux — planned next
+### 4b. Single-track fragmented-MP4 assembly (this commit)
 
-- Parse `#EXT-X-MAP` (init segment) and `#EXT-X-BYTERANGE`, then assemble a single-track fMP4 VOD
-  stream as init + fragments concatenated (valid ISOBMFF, no remux).
-- Optional, cleanly-detected ffmpeg remux path for streams that genuinely need it; the pure-JVM
-  concatenation stays the default and never requires ffmpeg.
+The §10 audit flagged that a `.m4s`/CMAF stream was refused outright because the container could not be
+concatenated. A single-track fMP4 stream is already concatenable: its `#EXT-X-MAP` init segment
+(`ftyp`+`moov`) followed by the media fragments (`moof`+`mdat`) in order forms one valid ISOBMFF file with
+no remuxing. This adds that path without touching the public `Outcome` API.
+
+**Model + parser (default-valued, no API break).** `HlsPlaylist` gains `initMapUri` / `initMapByteRange`
+and each `HlsSegment` a `byteRange` (a new `HlsByteRange(start, length)`), all null-defaulted so every
+existing constructor call still compiles. The parser reads `#EXT-X-MAP` (URI + optional BYTERANGE) and
+`#EXT-X-BYTERANGE`. Crucially, the offset-omitted byterange form (`n`, meaning "continue after the
+previous window") is resolved to an **absolute** `[start,length]` at parse time via a byte cursor —
+fragments are fetched concurrently, so the continuation can never be reconstructed from fetch order.
+
+**Downloader.** `detectContainer` returns `Fmp4` the moment an init map is present, before any byte sniff
+(an fMP4 fragment starts at a box header, not `ftyp`, so the map tag is the only authoritative signal).
+`fetchResource` now takes an optional `[start,end]` window and issues a ranged GET for a `byteRange`
+segment. The init segment is fetched **once** and written ahead of the fragments in `assemble`; because it
+defines the container, a failed init is a hard `Outcome.Failed` — never a silent skip that drops the `moov`
+box into an unplayable file. Any container that genuinely needs a remux (not MPEG-TS, not init-bearing
+fMP4) is still refused rather than faked into a broken file.
+
+**Verification:** `HlsFmp4Test` (4 tests) — whole-fragment `.m4s` segments concat init-first, byte-exact,
+init fetched exactly once; byte-range fragments sliced from one `.m4s` via three ranged 206 GETs re-join
+byte-exactly after the init; a 404 on the init fails hard and writes no file; the parser resolves the
+offset-omitted byterange to the correct absolute windows. Full `:download-engine:test` = **230 tests,
+0 failures** (4 new on top of the 226 after §4a).
+
+### 4c. Optional ffmpeg remux — planned next
+
+- Optional, cleanly-detected ffmpeg remux path for streams that genuinely need multi-track remuxing; the
+  pure-JVM concatenation stays the default and never requires ffmpeg (opt-in setting, tests skip without
+  the binary).
