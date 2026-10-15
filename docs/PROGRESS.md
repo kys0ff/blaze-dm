@@ -864,3 +864,57 @@ A striped variant only pays for itself beyond ~16 *actively limited* workers, wh
 not reach in practice. No change.
 
 
+
+
+---
+
+## Phase 4 – HLS engine
+
+Status: **in progress**. VOD MPEG-TS assembly was already correct; this phase closes the resilience
+gaps the Phase-1 audit flagged in §10 and then widens container coverage. Every step is measured
+against the local `TestStaticServer` harness (no third-party hosts), keeps the public
+`HlsDownloader.Outcome` API stable, and adds new behaviour only as default-valued params or opt-in
+settings.
+
+### 4a. Segment-fetch correctness + resilience (this commit)
+
+Three real bugs from §10 are closed, and the fix reuses the HTTP engine's own retry schedule instead of
+inventing a second one.
+
+**Truncated segments are no longer accepted as complete (§10 line 172).** `fetchBytes` returned partial
+bytes for a `StreamResult.Truncated`, so a short body got written as a valid segment and concatenated
+into a corrupt file. The fetcher now classifies every outcome through a private `Resource` sealed type
+(`Ok` / `Retryable` / `Fatal`); a truncation is a `Retryable` failure that is re-requested, and it is
+never written to disk short. `HlsSegmentResilienceTest` proves the segment is re-fetched and the final
+file is byte-exact.
+
+**Transient failures are no longer flattened to a fake `NotFound` (§10 line 167).** The old code mapped
+*every* non-success to `null` → `DownloadError.NotFound`, and `NotFound` is not transient — so one 503
+(or a reset) failed the whole run instantly, with no retry. `fetchResource` now propagates the real
+`StreamResult.Failed` error together with its `retryAfterMillis` and `throttled` flag, and only genuine
+permancies (404/401/disk) become `Fatal`. A 503 is retried; a 404 fails fast on the first answer.
+
+**Per-segment retry now backs off, on the shared schedule.** The retry loop was a bare `while(true)`
+with 3 immediate attempts — it hammered a throttling host. It now delays by `Backoff.equalJitterMillis`,
+honouring a server `Retry-After` when present. To avoid a second copy of the arithmetic, the Phase-3
+HTTP chunk backoff (`HttpDownloadCoordinator.chunkBackoffMillis`) and the HLS segment backoff now both
+delegate to a new shared `org.blaze.engine.retry.Backoff` (identical equal-jitter math, base 1000 ms,
+cap 30 s). The HTTP behaviour is unchanged — `RetryAfterAndBackoffTest` and the full suite still pass.
+
+**Segment concurrency is configurable.** `HlsDownloader.maxConcurrency` was hard-wired at 4 and the
+executor never set it. A new `DownloadSettings.hlsMaxConcurrentSegments` (default **4**, so nothing
+changes until it is tuned) is wired through `DownloadExecutorImpl.executeHls`. The harness grew
+per-path fault injection (`TestStaticServer.failFirst` / `truncateFirst` / `hitCount`) to drive these
+cases over the wire.
+
+**Verification:** `HlsSegmentResilienceTest` (3 tests) — truncated segment retried & assembled full;
+transient 503 retried to success; permanent 404 fails fast with exactly one request and no output file.
+Full `:download-engine:test` = **226 tests, 0 failures** (the 3 new on top of the 223 after the If-Range
+commit); the shared-backoff refactor and the `HlsDownloader` fetch rework broke no existing HLS test.
+
+### 4b. fMP4 + optional remux — planned next
+
+- Parse `#EXT-X-MAP` (init segment) and `#EXT-X-BYTERANGE`, then assemble a single-track fMP4 VOD
+  stream as init + fragments concatenated (valid ISOBMFF, no remux).
+- Optional, cleanly-detected ffmpeg remux path for streams that genuinely need it; the pure-JVM
+  concatenation stays the default and never requires ffmpeg.

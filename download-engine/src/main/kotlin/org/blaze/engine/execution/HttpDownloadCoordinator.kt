@@ -10,6 +10,7 @@ import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.network.toDownloadError
 import org.blaze.engine.persistence.HttpResumeState
 import org.blaze.engine.portable.*
+import org.blaze.engine.retry.Backoff
 import org.blaze.engine.retry.isRetryable
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.storage.FileStorage
@@ -836,13 +837,8 @@ class HttpDownloadCoordinator(
      * [HttpNetworkClient.parseRetryAfter]) instead of our own schedule; the host knows its own
      * queue better than we do.
      */
-    private fun chunkBackoffMillis(attempt: Int, retryAfterMillis: Long?): Long {
-        if (retryAfterMillis != null) return retryAfterMillis.coerceAtLeast(0L)
-        val shift = (attempt - 1).coerceIn(0, 16)
-        val exponential = (CHUNK_BACKOFF_BASE_MS shl shift).coerceAtMost(CHUNK_BACKOFF_CAP_MS)
-        val half = exponential / 2
-        return if (half <= 0L) exponential else half + CHUNK_RANDOM.nextLong(half)
-    }
+    private fun chunkBackoffMillis(attempt: Int, retryAfterMillis: Long?): Long =
+        Backoff.equalJitterMillis(attempt, retryAfterMillis, CHUNK_BACKOFF_BASE_MS, CHUNK_BACKOFF_CAP_MS)
 
     private fun discard(chunk: Int, chunkBytes: AtomicLongArray, counted: AtomicLong) {
         counted.addAndGet(-chunkBytes.getAndSet(chunk, 0L))
@@ -1086,8 +1082,5 @@ class HttpDownloadCoordinator(
          */
         const val CHUNK_BACKOFF_BASE_MS = 1_000L
         const val CHUNK_BACKOFF_CAP_MS = 30_000L
-
-        /** Per-attempt jitter source; java.util.Random is thread-safe and cheap enough here. */
-        val CHUNK_RANDOM = java.util.Random()
     }
 }

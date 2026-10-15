@@ -2,6 +2,7 @@ package org.blaze.engine.hls
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -9,7 +10,9 @@ import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
+import org.blaze.engine.retry.Backoff
 import org.blaze.engine.storage.FileStorage
+import kotlin.time.Duration.Companion.milliseconds
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -249,7 +252,7 @@ class HlsDownloader(
         // real speed/size) rather than as a bare segment counter the UI would render as "1b, 2b, 3b".
         val bytesDone = AtomicLong(0)
         val errorRef = java.util.concurrent.atomic.AtomicReference<DownloadError>()
-        val keyCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray?>()
+        val keyCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
         val jobs = ArrayList<kotlinx.coroutines.Job>()
 
         segments.forEachIndexed { index, segment ->
@@ -269,18 +272,34 @@ class HlsDownloader(
                     var attempt = 0
                     while (true) {
                         attempt++
-                        val result = fetchSegment(segment, media.mediaSequence + index, headers, keyCache)
-                        if (result is SegmentBytes.Ok) {
-                            Files.write(target, result.bytes)
-                            bytesDone.addAndGet(result.bytes.size.toLong())
-                            onProgress(completed.incrementAndGet(), segments.size, bytesDone.get())
-                            return@withPermit
-                        }
-                        val err = (result as SegmentBytes.Err).error
-                        if (attempt >= SEGMENT_MAX_ATTEMPTS || !err.isTransient()) {
-                            failed.incrementAndGet()
-                            errorRef.compareAndSet(null, err)
-                            return@withPermit
+                        when (val fetched = fetchSegment(segment, media.mediaSequence + index, headers, keyCache)) {
+                            is Resource.Ok -> {
+                                Files.write(target, fetched.bytes)
+                                bytesDone.addAndGet(fetched.bytes.size.toLong())
+                                onProgress(completed.incrementAndGet(), segments.size, bytesDone.get())
+                                return@withPermit
+                            }
+
+                            // A permanent refusal (404/401/disk) fails the run at once - no point re-asking.
+                            is Resource.Fatal -> {
+                                failed.incrementAndGet()
+                                errorRef.compareAndSet(null, fetched.error)
+                                return@withPermit
+                            }
+
+                            // A transient answer - a 5xx/429, a reset, or a body that stopped short of its
+                            // advertised length - is retried on the shared equal-jitter schedule, honouring a
+                            // server `Retry-After` when the host sent one. A truncated segment is NEVER written
+                            // as if it were whole: baking a short segment into the file is exactly the corrupt
+                            // output the correctness rule forbids.
+                            is Resource.Retryable -> {
+                                if (attempt >= SEGMENT_MAX_ATTEMPTS) {
+                                    failed.incrementAndGet()
+                                    errorRef.compareAndSet(null, fetched.error)
+                                    return@withPermit
+                                }
+                                delay(Backoff.equalJitterMillis(attempt, fetched.retryAfterMillis).milliseconds)
+                            }
                         }
                     }
                 }
@@ -295,36 +314,65 @@ class HlsDownloader(
         else SegmentDownload.Done
     }
 
-    private sealed interface SegmentBytes {
-        data class Ok(val bytes: ByteArray) : SegmentBytes
-        data class Err(val error: DownloadError) : SegmentBytes
+    /**
+     * Outcome of pulling one whole resource (a segment, a key, or a playlist) into memory. The failure
+     * shapes are deliberately distinct so the caller can decide *how* to react: a truncated or
+     * transiently-refused body is worth another attempt, while a 404/401/disk-full will never succeed and
+     * must not be retried or - worse - written as if the bytes were complete.
+     */
+    private sealed interface Resource {
+        val bytesOrNull: ByteArray? get() = (this as? Ok)?.bytes
+
+        data class Ok(val bytes: ByteArray) : Resource
+
+        /** Retryable: a 5xx/429/timeout/reset, a range the server ignored, or a body that stopped short. */
+        data class Retryable(
+            val error: DownloadError,
+            val retryAfterMillis: Long? = null,
+            val throttled: Boolean = false,
+        ) : Resource
+
+        /** Permanent: re-asking cannot help, so the run fails on this immediately. */
+        data class Fatal(val error: DownloadError) : Resource
     }
 
+    /**
+     * Fetch a segment into memory and decrypt it if the playlist put an AES-128 key in force for it. Any
+     * non-`Ok` from the raw fetch (or from the key fetch) is propagated verbatim so the retry loop above
+     * sees the real reason - including a `Retry-After` - rather than a flattened "not found".
+     */
     private suspend fun fetchSegment(
         segment: HlsSegment,
         sequenceNumber: Long,
         headers: Map<String, String>,
-        keyCache: MutableMap<String, ByteArray?>,
-    ): SegmentBytes {
-        val raw = fetchBytes(segment.uri, headers) ?: return SegmentBytes.Err(DownloadError.NotFound)
-        val keyUri = segment.keyUri
+        keyCache: MutableMap<String, ByteArray>,
+    ): Resource {
+        val raw = fetchResource(segment.uri, headers)
+        if (raw !is Resource.Ok) return raw
+        val keyUri = segment.keyUri ?: return raw
+        val key = keyCache[keyUri] ?: run {
+            val fetched = fetchResource(keyUri, headers)
+            if (fetched !is Resource.Ok) return fetched
+            fetched.bytes.also { keyCache[keyUri] = it }
+        }
         return try {
-            if (keyUri == null) {
-                SegmentBytes.Ok(raw)
-            } else {
-                val key = keyCache.getOrPut(keyUri) { fetchBytes(keyUri, headers) }
-                    ?: return SegmentBytes.Err(DownloadError.Unauthorized)
-                val iv = segment.iv?.let { hexToBytes(it) } ?: defaultIv(sequenceNumber)
-                SegmentBytes.Ok(decryptAes128(key, iv, raw))
-            }
+            val iv = segment.iv?.let { hexToBytes(it) } ?: defaultIv(sequenceNumber)
+            Resource.Ok(decryptAes128(key, iv, raw.bytes))
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            SegmentBytes.Err(DownloadError.Unknown("failed to decrypt segment: ${e.message}"))
+            // A decryption failure is deterministic for these bytes: retrying the same ciphertext will not
+            // help, so it is fatal (and it never writes a half-decrypted segment into the assembly).
+            Resource.Fatal(DownloadError.Unknown("failed to decrypt segment: ${e.message}"))
         }
     }
 
-    /** Fetch a whole (small) resource into memory, following redirects, capped at [maxPlaylistBytes]. */
-    private suspend fun fetchBytes(url: String, headers: Map<String, String>): ByteArray? {
+    /**
+     * Fetch a whole (small) resource into memory, following redirects, capped at [maxPlaylistBytes], and
+     * classify the HTTP outcome so the caller knows whether it is worth retrying. Truncation - the body
+     * ending before its advertised length - is surfaced as retryable, never silently accepted as a short
+     * success the way the old whole-or-null `fetchBytes` did.
+     */
+    private suspend fun fetchResource(url: String, headers: Map<String, String>): Resource {
         val request =
             DownloadRequest.Http(name = "resource", url = url, destination = Path.of("resource"), headers = headers)
         val out = ByteArrayOutputStream()
@@ -336,14 +384,31 @@ class HlsDownloader(
             out.write(buffer, 0, count)
         }
         return when (result) {
-            is HttpNetworkClient.StreamResult.Success -> out.toByteArray()
-            is HttpNetworkClient.StreamResult.Truncated -> out.toByteArray()
-            else -> null
+            is HttpNetworkClient.StreamResult.Success -> Resource.Ok(out.toByteArray())
+            is HttpNetworkClient.StreamResult.Truncated -> Resource.Retryable(
+                DownloadError.NetworkFailure(
+                    "body truncated after ${result.received} of ${result.expected} bytes",
+                ),
+            )
+
+            is HttpNetworkClient.StreamResult.RangeIgnored ->
+                Resource.Retryable(DownloadError.NetworkFailure("server ignored the requested range"))
+
+            is HttpNetworkClient.StreamResult.Failed ->
+                if (result.error.isTransient())
+                    Resource.Retryable(result.error, result.retryAfterMillis, result.throttled)
+                else
+                    Resource.Fatal(result.error)
+
+            // `stream()` follows redirects internally and never hands a `Redirected` back to us; the
+            // branch is here to keep the `when` exhaustive against the sealed result.
+            is HttpNetworkClient.StreamResult.Redirected ->
+                Resource.Fatal(DownloadError.Unknown("redirect was not followed"))
         }
     }
 
     private suspend fun fetchText(url: String, headers: Map<String, String>): String? =
-        fetchBytes(url, headers)?.toString(java.nio.charset.StandardCharsets.UTF_8)
+        fetchResource(url, headers).bytesOrNull?.toString(java.nio.charset.StandardCharsets.UTF_8)
 
     private fun assemble(tempDir: Path, segmentCount: Int, destination: Path): Long {
         val partial = storage.getPartialFile(destination).toPath()

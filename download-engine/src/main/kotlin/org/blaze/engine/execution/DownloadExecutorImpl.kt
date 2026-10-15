@@ -268,7 +268,12 @@ class DownloadExecutorImpl(
                 userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
                 maxRedirects = settings.maxRedirects
             )
-            val downloader = HlsDownloader(client, storage, limiter)
+            val downloader = HlsDownloader(
+                client = client,
+                storage = storage,
+                limiter = limiter,
+                maxConcurrency = settings.hlsMaxConcurrentSegments,
+            )
 
             // Segment progress is emitted by a callback running inside the downloader's own coroutine
             // scope, not this producer's, so it is bridged through a conflated channel drained here.

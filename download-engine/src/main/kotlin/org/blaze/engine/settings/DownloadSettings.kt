@@ -59,6 +59,13 @@ data class DownloadSettings(
      * and hammering a rate-limiting server is how a download gets its IP banned.
      */
     val httpAdaptiveConnectionsEnabled: Boolean = true,
+
+    /**
+     * Concurrent HLS segment fetches in the worker pool. Segments are small independent requests so they
+     * parallelise well, but the pool stays modest to avoid tripping a host's per-IP connection limit.
+     * Defaults to the pre-existing 4 so turning the knob on changes throughput only when asked.
+     */
+    val hlsMaxConcurrentSegments: Int = 4,
     val globalSpeedLimitEnabled: Boolean = false,
     val globalSpeedLimitKbps: Long = 10240, // default 10 MB/s
 

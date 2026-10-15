@@ -6,8 +6,10 @@ import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -34,6 +36,35 @@ class TestStaticServer(
     val pathRequests: CopyOnWriteArrayList<String> = CopyOnWriteArrayList()
     val bytesServed = AtomicLong(0)
     val rangeRequestCount = AtomicLong(0)
+
+    /**
+     * Per-path GET fault injection so an HLS test can make the *first* attempt at a segment fail in a
+     * chosen way and succeed on the retry: a [Fault.status] answer exercises transient-vs-fatal retry,
+     * a [Fault.truncateBytes] answer sends a short body behind a full `Content-Length` to exercise
+     * truncation. The `firstN` bound lets the same path succeed once the injected budget is spent.
+     */
+    class Fault(
+        val firstN: Int,
+        val status: Int? = null,
+        val retryAfterSeconds: Long? = null,
+        val truncateBytes: Long? = null,
+    )
+
+    private val faults = ConcurrentHashMap<String, Fault>()
+    private val pathHits = ConcurrentHashMap<String, AtomicInteger>()
+
+    /** Fail the first [times] GETs of [path] with HTTP [status], optionally carrying `Retry-After`. */
+    fun failFirst(path: String, times: Int, status: Int, retryAfterSeconds: Long? = null) {
+        faults[path] = Fault(times, status = status, retryAfterSeconds = retryAfterSeconds)
+    }
+
+    /** Truncate the first [times] GETs of [path] to [bytes] bytes while advertising the full length. */
+    fun truncateFirst(path: String, times: Int, bytes: Long) {
+        faults[path] = Fault(times, truncateBytes = bytes)
+    }
+
+    /** Number of GETs actually served for [path], counting requests that hit the fault injection. */
+    fun hitCount(path: String): Int = pathHits[path]?.get() ?: 0
 
     val port: Int get() = server.localPort
     val baseUrl: String get() = "http://127.0.0.1:$port"
@@ -89,6 +120,44 @@ class TestStaticServer(
             writeHead(out, "HTTP/1.1 200 OK", body.size.toLong(), acceptRangesHeader)
             out.flush()
             return
+        }
+        // Fault injection applies to body-bearing GETs only (a HEAD above always answers cleanly), and
+        // only while this path's injected budget is still unspent so a retry can then succeed normally.
+        if (method == "GET") {
+            val hits = pathHits.computeIfAbsent(path) { AtomicInteger(0) }.incrementAndGet()
+            val fault = faults[path]
+            if (fault != null && hits <= fault.firstN) {
+                if (fault.status != null) {
+                    val retryAfter = fault.retryAfterSeconds?.let { "Retry-After: $it\r\n" } ?: ""
+                    out.write(
+                        buildString {
+                            append("HTTP/1.1 ").append(fault.status).append(" Injected\r\n")
+                            append("Content-Length: 0\r\n")
+                            append(retryAfter)
+                            append("Connection: close\r\n\r\n")
+                        }.toByteArray(StandardCharsets.ISO_8859_1)
+                    )
+                    out.flush()
+                    return
+                }
+                if (fault.truncateBytes != null) {
+                    // Advertise the full length but push fewer bytes, then hang up: the client reads
+                    // to EOF, sees it fell short, and reports a truncation instead of a clean success.
+                    out.write(
+                        buildString {
+                            append("HTTP/1.1 200 OK\r\n")
+                            append("Content-Length: ").append(body.size).append("\r\n")
+                            if (acceptRangesHeader != null) append("Accept-Ranges: ").append(acceptRangesHeader).append("\r\n")
+                            append("Connection: close\r\n\r\n")
+                        }.toByteArray(StandardCharsets.ISO_8859_1)
+                    )
+                    val partial = fault.truncateBytes.toInt().coerceIn(0, body.size)
+                    out.write(body, 0, partial)
+                    bytesServed.addAndGet(partial.toLong())
+                    out.flush()
+                    return
+                }
+            }
         }
         if (range == null || !supportsRanges) {
             writeHead(out, "HTTP/1.1 200 OK", body.size.toLong(), acceptRangesHeader)
