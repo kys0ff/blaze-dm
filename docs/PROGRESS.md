@@ -1140,3 +1140,45 @@ The state model is now unified and every phase the engine genuinely runs is surf
 fetch-assembly protocols, Pausing/Resuming for the scheduler's real windows - while Verifying/Completing are kept honest
 (defined, documented, never emitted) instead of faked. The change is additive and persisted-format compatible; the one
 suite exception is an unrelated Windows-path test stated plainly above.
+
+---
+
+## Phase 7 - Limitations register (Round 2)
+
+The audit output lives in `docs/LIMITATIONS.md`: every gap re-verified against current source with `file:line` or BEP
+citations, classed A-D, with the Phase-1 audit's stale claims corrected (µTP is BEP 29, not 57; single-track fMP4 HLS
+**is** supported). The register is the work queue for Phases 7.5-11.
+
+## Phase 7.5 - Class-A correctness fixes (Gate-b approved re-order)
+
+- **HLS-2** (`fix(download-engine): prove HLS segment completeness on resume`): each segment is written to a
+  `.part.tmp` name, renamed atomically to `<i>.part`, and only then gets a `.done` marker holding the exact byte
+  length. Resume trusts a segment only if the marker matches `Files.size`; anything else re-downloads. A crash
+  mid-segment now leaves a `.part.tmp` that is deleted on the next attempt instead of a truncated part that would
+  silently concatenate - proven by a crash-resume integration test (pre-seeded truncated part + complete part;
+  the good segment is reused, the truncated one re-fetched).
+- **HLS-1 companion**: the fetch-side completeness half (truncated body accepted as success) was already closed in
+  Phase 4 (`HlsDownloader.kt` maps `StreamResult.Truncated` to `Resource.Retryable`), and Phase 7.5's marker makes
+  the resume side honest too. The literal HLS-1 (assembly double-write) is the Phase 9.1 `PositionedWriter`
+  redesign, not a micro-fix - deliberately left there.
+- **TOR-9**: preview and real metadata share one cache key (`sha256` of the user-facing locator, with
+  `TorrentSource.File.origin` resolved recursively so a magnet and its cached file match). Cleanup deletes both the
+  legacy id-keyed and the shared sha-keyed entries, guarded by a "still referenced by a non-completed sibling"
+  check. Two tests: the preview leak is gone on completion; a shared entry survives while another download of the
+  same source is active.
+- **Stale claims**: corrected in a docs-only commit (no history rewrite), as above.
+
+## Phase 8a - Vendored `bt` fork + a swarm harness that transfers
+
+- `third-party/bt/` now contains `bt-bencoding` (34 files) and `bt-core` (353 files + 3 yml resources) from
+  upstream **1.10**, imported byte-for-byte unmodified (hash-verified against the published `-sources.jar` files),
+  as Gradle subprojects `org.blaze:bt-*:1.10-blaze`. Packages stay `bt.*` so the fork is a drop-in; `download-engine`
+  switched to it with the upstream artifacts excluded from the two Maven modules that remain external (`bt-dht`
+  shades native `libmldht`; `bt-http-tracker-client` wraps Apache HTTP; neither hosts a Round-2 feature). License
+  scaffolding: `LICENSE`, `NOTICE`, and `PATCHES.md` - the log every future fork change must appear in (empty: no
+  source patches yet).
+- **TOR-8 fixed**: the 0-byte localhost swarm had a structural cause - one `BtRuntime` has one acceptor and one
+  local identity, so in-process peers are always filtered as `isLocal` (`PeerRegistry.addPeer`). `SwarmHarness`
+  runs two runtimes on separate loopback ports with a static `PeerSourceFactory` (bt extension point; no fork
+  patch), and `LocalSwarmTransferTest` completes a real ~3.6 MiB multi-file transfer verifying SHA-256 per file.
+  The rewired benchmark printed its first honest number: 32 MiB in 3.15 s = 10.14 MiB/s (loopback, Windows).
