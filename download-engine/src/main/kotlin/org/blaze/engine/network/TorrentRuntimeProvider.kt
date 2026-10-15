@@ -13,6 +13,7 @@ import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.nio.file.Path
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
@@ -207,7 +208,13 @@ internal fun applyPerformanceConfig(
 }
 
 /** Exposes the peer/assignment tuning without leaking the `bt` Config type into callers. */
-internal fun torrentRuntimeFingerprint(maxPeerConnections: Int): String = "peers=$maxPeerConnections"
+internal fun torrentRuntimeFingerprint(maxPeerConnections: Int, resumeDir: Path? = null): String {
+    // The resume directory shapes the runtime's verifier decoration, so it belongs in the
+    // fingerprint: a shared runtime must never be reused by a client that expects different
+    // fast-resume settings than the ones the runtime was built with.
+    val resume = resumeDir?.toAbsolutePath()?.normalize()?.toString() ?: "off"
+    return "peers=$maxPeerConnections;resume=$resume"
+}
 
 /**
  * Address the acceptor binds to. Ask the OS which local address routes to the internet first (a

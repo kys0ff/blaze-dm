@@ -40,19 +40,23 @@ object SwarmHarness {
     fun reserveFreePort(): Int = ServerSocket(0).use { it.localPort }
 
     /** A seeding runtime: plain bt-core, bound to `127.0.0.1:[port]`, nothing loaded beyond defaults. */
-    fun seederRuntime(acceptorPort: Int): BtRuntime = runtime(acceptorPort, emptyList())
+    fun seederRuntime(acceptorPort: Int, configure: (Config) -> Unit = {}): BtRuntime =
+        runtime(acceptorPort, emptyList(), configure)
 
     /** A leeching runtime that is told exactly which peers exist — the seeder's loopback socket. */
-    fun leecherRuntime(acceptorPort: Int, knownPeers: List<Peer>): BtRuntime =
-        runtime(acceptorPort, knownPeers)
+    fun leecherRuntime(acceptorPort: Int, knownPeers: List<Peer>, configure: (Config) -> Unit = {}): BtRuntime =
+        runtime(acceptorPort, knownPeers, configure)
 
-    private fun runtime(port: Int, knownPeers: List<Peer>): BtRuntime {
+    private fun runtime(port: Int, knownPeers: List<Peer>, configure: (Config) -> Unit): BtRuntime {
         val config = Config().apply {
             acceptorAddress = loopback()
             acceptorPort = port
             // Query peer sources fast so the leecher meets the seeder within the first second.
             peerDiscoveryInterval = Duration.ofMillis(250)
         }
+        // Tests exercise runtime-shaped features (like the fork's fast resume) through the same
+        // injection point production uses: `applyPerformanceConfig` on the real `Config`.
+        configure(config)
         val builder = BtRuntime.builder(config).disableAutomaticShutdown()
         return if (knownPeers.isEmpty()) {
             builder.build()

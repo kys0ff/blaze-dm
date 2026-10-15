@@ -53,6 +53,13 @@ class DownloadManager(
     private val persistSignal = Channel<Unit>(Channel.CONFLATED)
     private val tasks = MutableStateFlow<Map<DownloadId, DownloadTask>>(emptyMap())
 
+    /**
+     * Where per-torrent fast-resume state (verified bitfield + file fingerprints) is kept between
+     * sessions. One shared folder for all torrents: the store keys files by torrent ID, and the
+     * fork only ever creates it lazily on the first clean close.
+     */
+    private val torrentResumeDir: Path = repository.storageDir.resolve("torrent-resume")
+
     /** One throttle for the whole engine, so "global" limit really is global. */
     private val limiter = BandwidthLimiter()
     private val metrics = EngineMetrics()
@@ -69,7 +76,8 @@ class DownloadManager(
                 retryPolicy = DefaultRetryPolicy(settingsRepository.settings.value),
                 onMetadataResolved = { id, bytes -> cacheMetadata(id, bytes) },
                 limiter = limiter,
-                metrics = metrics
+                metrics = metrics,
+                torrentResumeDir = torrentResumeDir
             )
         },
         onTaskUpdated = { task ->
@@ -445,7 +453,11 @@ class DownloadManager(
                         Files.write(torrentFile, bytes)
                     } catch (_: Exception) {
                     }
-                }
+                },
+                // Same resume dir as real downloads so both share one runtime fingerprint; a preview
+                // run must never build a runtime that later can't serve actual downloads (and vice
+                // versa) just because fast-resume settings differed.
+                torrentResumeDir = torrentResumeDir
             )
 
             val metadata = withTimeoutOrNull(30.seconds) {

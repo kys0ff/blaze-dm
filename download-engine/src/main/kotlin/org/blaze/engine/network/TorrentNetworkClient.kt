@@ -63,6 +63,8 @@ import kotlin.time.Duration.Companion.seconds
  * @param seedTimeLimitMinutes how long to keep seeding once the download completes; ignored when [unlimitedSeeding].
  * @param unlimitedSeeding keep seeding until the download is stopped manually (the time limit no longer applies).
  * @param seedRatioLimit stop seeding once uploaded/downloaded reaches this share ratio; 0 disables the ratio cap.
+ * @param torrentResumeDir directory for fast-resume state (verified bitfield + file fingerprints); null
+ * keeps every restart on the full re-hash path (fork PATCH-4, TOR-1).
  */
 class TorrentNetworkClient(
     private val peerDiscoveryTimeout: Duration = 120.seconds,
@@ -73,6 +75,7 @@ class TorrentNetworkClient(
     private val seedTimeLimitMinutes: Int = 30,
     private val unlimitedSeeding: Boolean = false,
     private val seedRatioLimit: Double = 0.0,
+    private val torrentResumeDir: Path? = null,
     private val runtimeProvider: TorrentRuntimeProvider = TorrentRuntimeProvider.GLOBAL
 ) {
     private val logger = LoggerFactory.getLogger(TorrentNetworkClient::class.java)
@@ -125,8 +128,15 @@ class TorrentNetworkClient(
 
             // Shared with every other torrent in the app: one DHT node, one acceptor, and no
             // re-bootstrap when a download is retried or started right after another finished.
-            val runtime = runtimeProvider.acquire(torrentRuntimeFingerprint(maxPeerConnections)) { config ->
+            val runtime = runtimeProvider.acquire(torrentRuntimeFingerprint(maxPeerConnections, torrentResumeDir)) { config ->
                 applyPerformanceConfig(config, maxPeerConnections, resolveBindAddress())
+                // Fast resume (fork PATCH-4): the bitfield is saved on clean session close and
+                // trusted again only after the fingerprint gate and random spot-checks, so a crash
+                // or a tampered file falls back to the exact full re-hash the library always did.
+                if (torrentResumeDir != null) {
+                    config.isAutoResumeEnabled = true
+                    config.resumeDirectory = torrentResumeDir
+                }
             }
             try {
                 // URL sources wait on bt's metainfo fetch the same way magnets wait on BEP 9.

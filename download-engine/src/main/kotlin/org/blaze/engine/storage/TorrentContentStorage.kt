@@ -10,6 +10,7 @@ import bt.net.buffer.ByteBufferView
 import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Optional
 
 /**
  * Decides where a torrent's bytes land on disk: exactly inside the download's own folder.
@@ -42,6 +43,12 @@ internal class TorrentContentStorage(
     // the user sees, which may well differ once a magnet's `dn` or a rename has had its say.
     override fun getUnit(torrent: Torrent, torrentFile: TorrentFile): StorageUnit =
         CachedFileUnit(cache, FileCacheKey(torrentContentPath(root, torrentFile.pathElements), torrentFile.size))
+
+    // The same absolute path `getUnit` writes through - which is exactly what the fork's fast-resume
+    // machinery needs to fingerprint files (size + mtime) across sessions. `torrentContentPath`
+    // already returns an absolute normalized path, so this satisfies the interface contract directly.
+    override fun locationOf(torrent: Torrent, torrentFile: TorrentFile): Optional<Path> =
+        Optional.of(torrentContentPath(root, torrentFile.pathElements))
 
     override fun flush() = cache.flush()
 

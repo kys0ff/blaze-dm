@@ -39,15 +39,27 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
 
 ## 1. Torrent (`bt` 1.10)
 
-### TOR-1 — No fast resume; full re-hash on every restart — **B**, M, risk: medium
-- **Evidence**: `PROGRESS.md:204,240`; resume re-verifies every piece against embedded hashes; `HashingStrategy`/
-  `bt.portability`/`SampledHashingStrategy` **do not exist** in `bt-core-1.10` (`bt.data.digest` is only
-  `Digester`/`JavaSecurityDigester`/`SHA1Digester`). Portable marker hint is a count only, always re-verified
-  (`TorrentNetworkClient.kt:683-687`).
-- **Fix (fork, Phase 8b.1)**: persist per-torrent verified-piece bitfield + each file size+mtime; on restart trust
-  the bitfield only if size+mtime match, spot-check N random verified pieces, else full re-hash. Pluggable store.
-- **Blocked by**: TOR-8 (must measure restart on a swarm harness that actually transfers). *Unblocked in
-  Phase 8a — TOR-8 is fixed; measure on `SwarmHarness` / `LocalSwarmTransferTest`.*
+### TOR-1 — No fast resume; full re-hash on every restart — **B**, M, risk: medium — ✅ FIXED (Phase 8b.1)
+- **Evidence (pre-fix)**: resume re-verified every piece against embedded hashes on every start
+  (`DefaultChunkVerifier.java:101-108` upstream hashed all chunks regardless of existing bits).
+- **Fix (fork patch #4 + engine wiring, done)**: `bt.data.resume` — verified-piece bitfield + per-file
+  path/size/mtime fingerprints saved on clean session close only (`ChunkVerifier.onTorrentClosed` hook
+  fired by `DefaultDataDescriptor.close()`); on restart the state is trusted only after a fingerprint
+  gate and N random spot-checks (`Storage.locationOf` gives the real paths), and *every* rejection
+  falls back to the exact full re-hash — a crashed or dirtied session can never be trusted silently.
+  Pluggable `ResumeStore` interface; `FileResumeStore` writes atomically keyed by torrent ID.
+  Engine: `TorrentContentStorage.locationOf`, resume dir under the storage dir
+  (`<storage>/torrent-resume`) threaded through executor → `TorrentNetworkClient` → `Config`, and the
+  dir joined the runtime fingerprint so a shared runtime never runs with mismatched resume settings.
+  Fork default is OFF; Blaze production enables it.
+- **Measured (320 MiB fixture, 320×1 MiB pieces, 2 files, this machine, `TorrentFastResumeBenchmark`)**:
+  full re-hash 1396 ms first run / 447 ms cache-warm; warm fast-resume restart **10–15 ms** → ~30–45×
+  faster than an equally cache-warm full re-hash (~138× vs the first run).
+- **Tests**: 22 fork cases (`bt.data.resume` tests + location fidelity) and 5 engine swarm-integration
+  cases (`TorrentFastResumeTest` on the real harness): clean-stop save + trusted restart reads only its
+  spot-checks; same-size same-mtime tamper caught by spot-check and healed by re-download; truncation
+  fails the size gate; mtime touch alone forces the full re-hash; session killed mid-download restarts
+  to a byte-correct transfer.
 
 ### TOR-2 — No torrent preallocation / early free-space check — **B**, M, risk: medium
 - **Evidence**: `PROGRESS.md:203`; `bt` `FileSystemStorage`/`FileSystemStorageUnit` grow files on write, no sparse

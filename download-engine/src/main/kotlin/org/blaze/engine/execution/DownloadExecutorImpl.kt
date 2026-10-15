@@ -43,7 +43,8 @@ class DownloadExecutorImpl(
     private val retryPolicy: RetryPolicy,
     private val onMetadataResolved: (DownloadId, ByteArray) -> Unit,
     private val limiter: BandwidthLimiter = BandwidthLimiter(),
-    private val metrics: EngineMetrics = EngineMetrics()
+    private val metrics: EngineMetrics = EngineMetrics(),
+    private val torrentResumeDir: Path? = null
 ) : DownloadExecutor {
     private val logger = LoggerFactory.getLogger(DownloadExecutorImpl::class.java)
 
@@ -518,7 +519,8 @@ class DownloadExecutorImpl(
                 enableSeeding = settings.enableSeeding,
                 seedTimeLimitMinutes = settings.seedTimeLimitMinutes,
                 unlimitedSeeding = settings.unlimitedSeeding,
-                seedRatioLimit = settings.seedRatioLimit
+                seedRatioLimit = settings.seedRatioLimit,
+                torrentResumeDir = torrentResumeDir
             )
             networkClient.download(request).collect { event ->
                 when (event) {
