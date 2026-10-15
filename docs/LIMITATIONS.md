@@ -46,7 +46,8 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
   (`TorrentNetworkClient.kt:683-687`).
 - **Fix (fork, Phase 8b.1)**: persist per-torrent verified-piece bitfield + each file size+mtime; on restart trust
   the bitfield only if size+mtime match, spot-check N random verified pieces, else full re-hash. Pluggable store.
-- **Blocked by**: TOR-8 (must measure restart on a swarm harness that actually transfers).
+- **Blocked by**: TOR-8 (must measure restart on a swarm harness that actually transfers). *Unblocked in
+  Phase 8a — TOR-8 is fixed; measure on `SwarmHarness` / `LocalSwarmTransferTest`.*
 
 ### TOR-2 — No torrent preallocation / early free-space check — **B**, M, risk: medium
 - **Evidence**: `PROGRESS.md:203`; `bt` `FileSystemStorage`/`FileSystemStorageUnit` grow files on write, no sparse
@@ -77,7 +78,8 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
 - **Evidence**: `PROGRESS.md:195,328`; the localhost `bt`↔`bt` swarm transfers 0 bytes, so peer strictness can't be
   reproduced; changing 250 would be tuning on an unlabeled guess.
 - **Reopen trigger**: TOR-8 fixed (a swarm harness that completes a real MiB-scale transfer, with injectable
-  latency/throttle) → then measure 100 vs 250 vs adaptive.
+  latency/throttle) → then measure 100 vs 250 vs adaptive. *The harness half landed in Phase 8a (real transfer
+  works); injectable latency/throttle is still missing, so the trigger is not yet fully met.*
 
 ### TOR-7 — Pause/teardown latency ~0.5–1 s (polling in `awaitTorrentSettled`) — **B**, M, risk: medium
 - **Evidence**: `TorrentNetworkClient.kt:596-638` runs `Thread.sleep` settle loops (NATURAL_SETTLE_MS=250, poll 25 ms,
@@ -86,12 +88,20 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
 - **Fix (fork, Phase 8b.5)**: expose a real "session stopped/unregistered" completion signal so the polling is removed;
   target < 100 ms pause on an idle torrent; re-verify the "Torrent already registered" race stays closed.
 
-### TOR-8 — Local swarm harness completes 0 bytes (blocks every torrent measurement) — **A**, M, risk: low
-- **Evidence**: `TorrentSwarmBenchmark.kt:74` has one seeder + one leecher in a single `BtRuntime` relying on
-  **LAN multicast discovery**; in-process peers do not reliably meet over multicast on loopback, so `downloaded` stays 0.
-- **Fix (Phase 8a, must-do first)**: add a static/explicit peer source so the leecher connects straight to
-  `127.0.0.1:<seeder port>` with no tracker/DHT/multicast; deterministic test that transfers a few MiB across multiple
-  files and verifies SHA-256. This is the yardstick for TOR-1/5/6/7.
+### TOR-8 — Local swarm harness completes 0 bytes (blocks every torrent measurement) — **A**, M, risk: low — ✅ FIXED (Phase 8a)
+- **Evidence**: `TorrentSwarmBenchmark.kt:74` had one seeder + one leecher in a single `BtRuntime` relying on
+  **LAN multicast discovery**; `downloaded` stayed 0.
+- **Real cause (found in Phase 8a, worse than flaky — structurally impossible)**: one `BtRuntime` owns exactly one
+  acceptor (`ServiceModule.java:272-277` binds `config.acceptorAddress:acceptorPort`) and one local identity
+  (`PeerRegistry.java:81`). An in-process peer discovered by any source therefore carries the *same* address:port as
+  the registry's own local peer, and `PeerRegistry.addPeer` drops it as `isLocal` (`PeerRegistry.java:222,250-252`).
+  Multicast availability was beside the point.
+- **Fix (Phase 8a, done)**: `SwarmHarness` runs seeder and leecher in **two** `BtRuntime`s with separate loopback
+  acceptor ports, and gives the leecher a static `PeerSourceFactory` (bt's documented extension point —
+  `ServiceModuleExtender.addPeerSourceFactory`) pointing at `127.0.0.1:<seeder port>`; no tracker, DHT or multicast.
+  `LocalSwarmTransferTest` completes a real ~3.6 MiB **multi-file** transfer and verifies every file's SHA-256.
+  `TorrentSwarmBenchmark` now measures for real (32 MiB in 3.15 s = **10.14 MiB/s**, loopback, this machine).
+  This is the yardstick for TOR-1/5/6/7. No fork patch was needed.
 
 ### TOR-9 — Preview vs real metadata cache key mismatch (orphan leak + no reuse) — **A**, S, risk: low — ✅ FIXED (Phase 7.5)
 - **Evidence**: real path writes `cache/${id.value}.torrent` (`DownloadManager.kt:332`) and cleanup deletes the same
