@@ -20,6 +20,7 @@ import bt.BtException;
 import bt.tracker.AnnounceKey;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
@@ -42,12 +43,16 @@ class DefaultTorrent implements Torrent {
     private boolean isPrivate;
     private Optional<Instant> creationDate;
     private Optional<String> createdBy;
+    private List<String> webSeedUrls;
+    private List<String> httpSeedUrls;
 
     DefaultTorrent(TorrentSource source) {
         this.source = source;
         this.announceKey = Optional.empty();
         this.creationDate = Optional.empty();
         this.createdBy = Optional.empty();
+        this.webSeedUrls = Collections.emptyList();
+        this.httpSeedUrls = Collections.emptyList();
     }
 
     @Override
@@ -131,6 +136,28 @@ class DefaultTorrent implements Torrent {
     @Override
     public Optional<String> getCreatedBy() {
         return createdBy;
+    }
+
+    @Override
+    public List<String> getWebSeedUrls() {
+        return webSeedUrls;
+    }
+
+    @Override
+    public List<String> getHttpSeedUrls() {
+        return httpSeedUrls;
+    }
+
+    void setWebSeedUrls(List<String> webSeedUrls) {
+        this.webSeedUrls = webSeedUrls == null || webSeedUrls.isEmpty()
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(webSeedUrls));
+    }
+
+    void setHttpSeedUrls(List<String> httpSeedUrls) {
+        this.httpSeedUrls = httpSeedUrls == null || httpSeedUrls.isEmpty()
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(httpSeedUrls));
     }
 
     void setAnnounceKey(AnnounceKey announceKey) {

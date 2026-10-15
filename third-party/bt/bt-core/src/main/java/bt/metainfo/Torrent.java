@@ -19,6 +19,7 @@ package bt.metainfo;
 import bt.tracker.AnnounceKey;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -91,4 +92,28 @@ public interface Torrent {
      * @since 1.5
      */
     Optional<String> getCreatedBy();
+
+    /**
+     * Web seed base URLs from the {@code url-list} entry (BEP-19).
+     * Each URL serves the whole torrent over ordinary HTTP; a piece is fetched with
+     * {@code GET {url}/{path}?piece={index}&range={start}-{end}}.
+     *
+     * @return Web seed URLs, empty if the torrent declares none
+     * @since 1.0 (blaze fork)
+     */
+    default List<String> getWebSeedUrls() {
+        return Collections.emptyList();
+    }
+
+    /**
+     * HTTP/FTP seed URLs from the {@code httpseeds} entry (BEP-17).
+     * Each URL serves the torrent as a byte-addressable stream; a piece is fetched with a
+     * {@code Range: bytes={start}-{end}} request over the concatenated torrent.
+     *
+     * @return HTTP seed URLs, empty if the torrent declares none
+     * @since 1.0 (blaze fork)
+     */
+    default List<String> getHttpSeedUrls() {
+        return Collections.emptyList();
+    }
 }

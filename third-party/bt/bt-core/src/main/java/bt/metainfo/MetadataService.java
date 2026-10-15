@@ -217,6 +217,17 @@ public class MetadataService implements IMetadataService {
                 torrent.setCreatedBy(new String(createdBy, StandardCharsets.UTF_8));
             }
 
+            // BEP-19 web seeds: url-list. It may live at the root or inside the info dictionary
+            // (the latter is covered by the info hash, so it is preferred when both are present).
+            List<String> webSeeds = extractUrlList(infoMap.get(MetadataConstants.WEB_SEED_LIST_KEY));
+            if (webSeeds.isEmpty()) {
+                webSeeds = extractUrlList(root.get(MetadataConstants.WEB_SEED_LIST_KEY));
+            }
+            torrent.setWebSeedUrls(webSeeds);
+
+            // BEP-17 HTTP/FTP seeds: httpseeds, always at the root level.
+            torrent.setHttpSeedUrls(extractUrlList(root.get(MetadataConstants.HTTP_SEED_KEY)));
+
             AnnounceKey announceKey = null;
             // TODO: support for private torrents with multiple trackers
             if (!isPrivate && root.containsKey(MetadataConstants.ANNOUNCE_LIST_KEY)) {
@@ -254,5 +265,36 @@ public class MetadataService implements IMetadataService {
         }
 
         return torrent;
+    }
+
+    /**
+     * Extracts a list of URL strings from a bencoded entry that is either a list of strings
+     * (the BEP-17 / BEP-19 spelling) or, for tolerance, a single string. Returns an empty list
+     * when the entry is absent or of an unexpected shape.
+     */
+    @SuppressWarnings("rawtypes")
+    private static List<String> extractUrlList(BEObject<?> element) {
+        List<String> urls = new ArrayList<>();
+        if (element == null) {
+            return urls;
+        }
+        if (element instanceof BEString) {
+            String single = ((BEString) element).getValueAsString();
+            if (single != null && !single.isEmpty()) {
+                urls.add(single);
+            }
+            return urls;
+        }
+        if (element instanceof BEList) {
+            for (Object item : (List) element.getValue()) {
+                if (item instanceof BEString) {
+                    String url = ((BEString) item).getValueAsString();
+                    if (url != null && !url.isEmpty()) {
+                        urls.add(url);
+                    }
+                }
+            }
+        }
+        return urls;
     }
 }

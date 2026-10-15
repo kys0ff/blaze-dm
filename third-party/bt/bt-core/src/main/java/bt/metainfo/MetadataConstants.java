@@ -71,6 +71,16 @@ public class MetadataConstants {
 
 
     /**
+     * <a href="https://www.bittorrent.org/beps/bep_0019.html">BEP-0019</a>
+     */
+    public static final String WEB_SEED_LIST_KEY = "url-list";
+
+    /**
+     * <a href="https://www.bittorrent.org/beps/bep_0017.html">BEP-0017</a>
+     */
+    public static final String HTTP_SEED_KEY = "httpseeds";
+
+    /**
      * Not in protocol definition, but seems to be widely used
      */
     public static final String CREATION_DATE_KEY = "creation date";
