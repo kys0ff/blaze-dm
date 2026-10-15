@@ -1,0 +1,30 @@
+blaze-dm `bt` fork
+Copyright (c) 2016–2021 Andrei Tomashpolskiy and individual contributors.
+
+This directory (`third-party/bt/`) contains a vendored fork of the "Bt" BitTorrent
+client library, originally developed by Andrei Tomashpolskiy:
+
+    https://github.com/atomashpolskiy/bt
+
+The upstream project is licensed under the Apache License, Version 2.0 (see the
+`LICENSE` file in this directory). Every vendored Java source file retains its
+original Apache license header and copyright notice.
+
+Fork provenance
+---------------
+- Upstream version vendored: 1.10 (the sources of the Maven artifacts
+  `com.github.atomashpolskiy:bt-bencoding:1.10` and `:bt-core:1.10`, extracted from
+  the resolved `-sources.jar` files and imported unmodified).
+- Modules vendored here: `bt-bencoding`, `bt-core` (re-namespaced to Maven group
+  `org.blaze`; the Java packages remain `bt.*` so the fork is a drop-in replacement).
+- Modules intentionally NOT vendored: `bt-dht` and `bt-http-tracker-client` stay as
+  their upstream Maven artifacts. `bt-dht` shades a native `libmldht` engine and
+  `bt-http-tracker-client` wraps the Apache HTTP client; neither hosts any Round-2
+  feature, and both link against the fork through the unchanged `bt.*` API. Each is
+  declared in `download-engine` with the upstream `bt-core`/`bt-bencoding` transitively
+  excluded, so only this fork is on the classpath.
+- blaze-dm modifies these sources for the download manager; every change is recorded
+  in `PATCHES.md` in this directory, one reviewable commit per change.
+
+This product includes software developed at the above project. It is not the upstream
+project, and the upstream project does not endorse this fork.

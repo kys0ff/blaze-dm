@@ -17,6 +17,12 @@ dependencyResolutionManagement {
 
 rootProject.name = "blaze-dm"
 
+// Vendored `bt` fork (Apache-2.0). bt-bencoding + bt-core are imported here as their own Gradle subprojects
+// so Round-2 torrent features can be added in reviewable commits (see third-party/bt/PATCHES.md). Java packages
+// stay `bt.*`; only the Maven coordinates are re-namespaced to org.blaze.
+include(":third-party:bt:bt-bencoding")
+include(":third-party:bt:bt-core")
+
 include(":download-engine")
 include(":download-api")
 include(":download-service")
