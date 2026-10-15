@@ -52,6 +52,24 @@ class TorrentPerformanceConfigTest {
     }
 
     @Test
+    fun `adaptive depth is available but stays off at the fixed ceiling by default`() {
+        // TOR-5: the fork can adapt per-connection request depth to the measured bandwidth-delay
+        // product, but we keep the production default at the fixed 250 because the only controlled
+        // instrument (the loopback latency proxy) shows fixed >= adaptive and cannot demonstrate a
+        // win - so we do not ship a measured-slower default. The knob exists and is exercised by
+        // AdaptiveRequestDepthTest when explicitly enabled.
+        val config = configured(peers = 100)
+
+        assertTrue(!config.isAdaptiveRequestDepthEnabled, "adaptive depth must stay opt-in")
+        assertTrue(config.maxOutstandingRequests >= 200, "fixed depth should still pipeline aggressively")
+        assertTrue(config.minRequestDepth >= 1, "min depth too small: ${config.minRequestDepth}")
+        assertTrue(
+            config.minRequestDepth < config.maxOutstandingRequests,
+            "min ${config.minRequestDepth} must sit below the ceiling ${config.maxOutstandingRequests}",
+        )
+    }
+
+    @Test
     fun `the disk queue is bounded so a slow drive throttles the peers`() {
         // The library default is Int.MAX_VALUE: on a disk slower than the network that means
         // unbounded buffering in memory rather than backpressure on the swarm.

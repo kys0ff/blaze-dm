@@ -115,18 +115,36 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
 - **Fix**: no implementation until Gate (d). Phase 8c produces a µTP design + effort estimate and a libtorrent-binding
   comparison memo. LEDBAT + socket sharing with DHT + bt connection abstraction make this the single largest item.
 
-### TOR-5 — Fixed outstanding-request depth (250), not adaptive — **B**, M, risk: low
-- **Evidence**: `TorrentRuntimeProvider.kt:177` sets `config.maxOutstandingRequests = 250`; `Config.java:109` default
-  is also 250, so this is the library default, not a Blaze over-set (`PROGRESS.md:195`). Test pins `>= 200`
-  (`TorrentPerformanceConfigTest.kt:51`).
-- **Fix (fork, Phase 8b.4)**: per-peer adaptive depth from measured throughput×RTT (bandwidth-delay product), bounded.
+### TOR-5 — Fixed outstanding-request depth (250), not adaptive — **B**, M, risk: low — ✅ IMPLEMENTED, kept opt-in (Phase 8b.4)
+- **Evidence**: `TorrentRuntimeProvider.kt:178` sets `config.maxOutstandingRequests = 250`; `Config.java:113` default
+  is also 250, so this is the library default, not a Blaze over-set (`PROGRESS.md:195`). It is a single fixed value
+  for every peer, consumed once at `RequestProducer.java:105` (`pendingRequests.size() <= maxOutstandingRequests`).
+- **Fix (fork #8, done)**: `bt.torrent.messaging.RequestWindow` sizes each connection's outstanding-request bound from
+  the measured bandwidth-delay product (`ceil(throughput × RTT / blockSize)`), slow-start doubling while the window is
+  the bottleneck then additive-increase/decrease toward the BDP, bounded by `[minRequestDepth, maxOutstandingRequests]`.
+  RTT is request-issue→block-arrival latency (`RequestProducer`/`PieceConsumer`), throughput is delivered-byte deltas per
+  cycle. Disabled it is the exact upstream fixed path and allocates nothing. `Config` gains `adaptiveRequestDepthEnabled`
+  (default OFF) + `minRequestDepth` (default 8).
+- **Measured (loopback latency/throttle proxy, `RequestDepthBenchmark`, 8 MiB, this machine 2026-10-15)**: high-latency
+  ~40 ms RTT unthrottled — fixed **1.11 MiB/s** (7.23 s) vs adaptive 0.87 MiB/s (9.20 s); throttled ~20 ms RTT + 4 MiB/s
+  cap — fixed **1.36 MiB/s** (5.87 s) vs adaptive 1.20 MiB/s (6.65 s).
+- **Decision**: the capability is implemented and tested, but the production default STAYS the fixed 250
+  (`TorrentRuntimeProvider.kt`) because the controlled result is fixed ≥ adaptive — a measured regression must not be
+  shipped. The instrument is also biased: the proxy adds a per-chunk *service* delay a deep queue overlaps, so it models
+  throughput-shaping but not propagation latency and cannot demonstrate an adaptive win. Flip `Config.isAdaptiveRequestDepthEnabled`
+  on when a real-WAN benchmark (heterogeneous RTT/bandwidth) justifies changing the default.
+- **Tests**: `RequestWindowTest` (8 deterministic cases — BDP responsiveness, slow start, bounds, reset) pins the logic
+  without any network; `AdaptiveRequestDepthTest` completes a real multi-file transfer (~2.4 MiB) over a ~50 ms-RTT,
+  3 MiB/s-capped loopback link with the window enabled, verifying every file's SHA-256.
 
-### TOR-6 — `maxOutstandingRequests` tuning is unmeasurable on the current harness — **D**, —, risk: n/a
-- **Evidence**: `PROGRESS.md:195,328`; the localhost `bt`↔`bt` swarm transfers 0 bytes, so peer strictness can't be
-  reproduced; changing 250 would be tuning on an unlabeled guess.
-- **Reopen trigger**: TOR-8 fixed (a swarm harness that completes a real MiB-scale transfer, with injectable
-  latency/throttle) → then measure 100 vs 250 vs adaptive. *The harness half landed in Phase 8a (real transfer
-  works); injectable latency/throttle is still missing, so the trigger is not yet fully met.*
+### TOR-6 — `maxOutstandingRequests` tuning was unmeasurable on the harness — **D**, —, risk: n/a — ✅ MEASURED, default unchanged (Phase 8b.4)
+- **Evidence**: `PROGRESS.md:195,328`; the earlier localhost `bt`↔`bt` swarm transferred 0 bytes, so peer behavior and
+  depth effects could not be reproduced; changing 250 would have been tuning on an unlabeled guess.
+- **Reopen trigger — now met**: Phase 8a made the swarm complete a real MiB-scale transfer; Phase 8b.4 added the missing
+  half with `LatencyProxy` (injectable per-hop latency + bandwidth cap). With that, fixed-250 vs adaptive was measured
+  (numbers in TOR-5). Result: the harness cannot demonstrate a benefit to moving off 250, so the default is left at the
+  library value for the same reason as before — no tuning on evidence that does not exist on this instrument. Closed with
+  that honest verdict rather than re-opened as a to-do.
 
 ### TOR-7 — Pause/teardown latency ~0.5–1 s (polling in `awaitTorrentSettled`) — **B**, M, risk: medium
 - **Evidence**: `TorrentNetworkClient.kt:596-638` runs `Thread.sleep` settle loops (NATURAL_SETTLE_MS=250, poll 25 ms,

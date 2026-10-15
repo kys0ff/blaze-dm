@@ -176,6 +176,18 @@ internal fun applyPerformanceConfig(
     // mistaken for a protocol error on the inbound path.
     config.maxTransferBlockSize = 128 * 1024
     config.maxOutstandingRequests = 250
+    // TOR-5: the fork now supports a per-connection adaptive request depth sized by the measured
+    // bandwidth-delay product (fork patch #8). It is OFF by default here: the only controlled
+    // instrument we can build (the loopback latency/throttle proxy in RequestDepthBenchmark) shows
+    // fixed-250 >= adaptive, because the proxy adds a per-chunk *service* delay that a deep queue
+    // overlaps - it cannot faithfully model propagation latency, so it cannot demonstrate a win.
+    // Shipping a measured-slower default would violate the same rule that kept 250 untouched before
+    // (docs/LIMITATIONS.md TOR-5/TOR-6: never re-tune request depth on an unmeasurable guess). The
+    // capability is implemented and tested (RequestWindowTest determinism; AdaptiveRequestDepthTest
+    // completes a real transfer with it on); flip Config.isAdaptiveRequestDepthEnabled when a real
+    // WAN benchmark justifies changing the default.
+    config.isAdaptiveRequestDepthEnabled = false
+    config.minRequestDepth = 8
 
     // Backpressure on the write path: the library default is an unbounded queue, which on a disk
     // slower than the network turns into unbounded memory growth instead of throttling the peers.
