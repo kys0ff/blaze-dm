@@ -15,7 +15,10 @@ java {
 }
 
 dependencies {
-    // Upstream runtime deps, unchanged (versions match what the 1.10 POM resolved on the classpath).
-    api("com.google.guava:guava:30.1-jre")
+    // Upstream runtime deps. Guava bumped from upstream's 30.1-jre (fork patch #3, TOR-12 housekeeping):
+    // 30.1's AbstractFuture calls the now terminally-deprecated sun.misc.Unsafe.objectFieldOffset, which spams
+    // a JDK 24+ startup WARNING; measured on JBR 25 with a SettableFuture probe, 33.4.8 never selects that helper
+    // and prints no warning. Everything else stays as the 1.10 POM resolved.
+    api("com.google.guava:guava:33.4.8-jre")
     implementation("org.yaml:snakeyaml:1.17")
 }
