@@ -138,7 +138,15 @@ public class PieceConsumer {
 
     private boolean checkBlockIsExpected(ConnectionState connectionState, Piece piece) {
         Object key = Mapper.mapper().buildKey(piece.getPieceIndex(), piece.getOffset(), piece.getLength());
-        return connectionState.getPendingRequests().remove(key);
+        boolean expected = connectionState.getPendingRequests().remove(key);
+        if (expected) {
+            // TOR-5: fold the request -> response latency into the adaptive window (no-op when disabled).
+            RequestWindow window = connectionState.getRequestWindow();
+            if (window != null) {
+                window.onBlockArrived(key, System.nanoTime());
+            }
+        }
+        return expected;
     }
 
     private /*nullable*/CompletableFuture<BlockWrite> addBlock(Peer peer, ConnectionState connectionState, Piece piece) {

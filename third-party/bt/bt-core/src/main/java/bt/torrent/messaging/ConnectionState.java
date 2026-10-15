@@ -56,6 +56,10 @@ public class ConnectionState {
     private Queue<Request> requestQueue;
     private Optional<Assignment> assignment;
 
+    // TOR-5: per-connection adaptive request-depth window, owned by RequestProducer/PieceConsumer.
+    // Null when adaptive pipelining is disabled (the fixed-depth default).
+    private RequestWindow requestWindow;
+
     ConnectionState() {
         this.choking = true;
         this.peerChoking = true;
@@ -258,6 +262,14 @@ public class ConnectionState {
 
     Optional<Assignment> getCurrentAssignment() {
         return assignment;
+    }
+
+    RequestWindow getRequestWindow() {
+        return requestWindow;
+    }
+
+    void setRequestWindow(RequestWindow requestWindow) {
+        this.requestWindow = requestWindow;
     }
 
     void setCurrentAssignment(Assignment assignment) {

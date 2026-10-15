@@ -66,6 +66,8 @@ public class Config {
     private Duration mseWaitBetweenReads;
     private int numberOfPeersToRequestFromTracker;
     private int maxOutstandingRequests;
+    private boolean adaptiveRequestDepthEnabled;
+    private int minRequestDepth;
     private int networkBufferSize;
     private int hashingBufferSize;
     private boolean autoResumeEnabled;
@@ -111,6 +113,8 @@ public class Config {
         this.mseWaitBetweenReads = Duration.ofSeconds(1);
         this.numberOfPeersToRequestFromTracker = 50;
         this.maxOutstandingRequests = 250;
+        this.adaptiveRequestDepthEnabled = false; // off by default: fixed depth, exactly upstream behavior
+        this.minRequestDepth = 8;
         this.networkBufferSize = 1 * 1024 * 1024; // 1 MB
         this.hashingBufferSize = SHA1Digester.DEFAULT_BUFFER_SIZE;
         this.autoResumeEnabled = false; // off by default: re-verifies everything, like before
@@ -158,6 +162,8 @@ public class Config {
         this.mseWaitBetweenReads = config.getMseWaitBetweenReads();
         this.numberOfPeersToRequestFromTracker = config.getNumberOfPeersToRequestFromTracker();
         this.maxOutstandingRequests = config.getMaxOutstandingRequests();
+        this.adaptiveRequestDepthEnabled = config.isAdaptiveRequestDepthEnabled();
+        this.minRequestDepth = config.getMinRequestDepth();
         this.networkBufferSize = config.getNetworkBufferSize();
         this.hashingBufferSize = config.getHashingBufferSize();
         this.autoResumeEnabled = config.isAutoResumeEnabled();
@@ -715,6 +721,48 @@ public class Config {
      */
     public int getMaxOutstandingRequests() {
         return maxOutstandingRequests;
+    }
+
+    /**
+     * Replace the fixed {@link #setMaxOutstandingRequests(int) outstanding-request depth} with a
+     * per-connection adaptive depth derived from the measured bandwidth-delay product (throughput
+     * &times; RTT / block size). {@code maxOutstandingRequests} becomes the upper bound; {@code
+     * minRequestDepth} the lower bound. Off by default, so the historical fixed-depth behavior is
+     * preserved unless explicitly enabled.
+     *
+     * @param adaptiveRequestDepthEnabled true to adapt request depth per peer
+     * @since 1.10 (blaze fork)
+     */
+    public void setAdaptiveRequestDepthEnabled(boolean adaptiveRequestDepthEnabled) {
+        this.adaptiveRequestDepthEnabled = adaptiveRequestDepthEnabled;
+    }
+
+    /**
+     * @since 1.10 (blaze fork)
+     */
+    public boolean isAdaptiveRequestDepthEnabled() {
+        return adaptiveRequestDepthEnabled;
+    }
+
+    /**
+     * Lower bound on the adaptive per-connection request depth. Ignored when adaptive depth is
+     * disabled. Clamped to at least 1 and never above {@code maxOutstandingRequests} by the consumer.
+     *
+     * @param minRequestDepth minimum outstanding requests when adapting, {@code >= 1}
+     * @since 1.10 (blaze fork)
+     */
+    public void setMinRequestDepth(int minRequestDepth) {
+        if (minRequestDepth < 1) {
+            throw new IllegalArgumentException("minRequestDepth must be >= 1");
+        }
+        this.minRequestDepth = minRequestDepth;
+    }
+
+    /**
+     * @since 1.10 (blaze fork)
+     */
+    public int getMinRequestDepth() {
+        return minRequestDepth;
     }
 
     /**

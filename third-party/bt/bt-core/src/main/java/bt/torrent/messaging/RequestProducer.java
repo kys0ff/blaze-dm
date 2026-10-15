@@ -25,6 +25,7 @@ import bt.protocol.Cancel;
 import bt.protocol.InvalidMessageException;
 import bt.protocol.Message;
 import bt.protocol.Request;
+import bt.runtime.Config;
 import bt.torrent.annotation.Produces;
 import bt.torrent.data.BlockWrite;
 import org.slf4j.Logger;
@@ -51,10 +52,20 @@ public class RequestProducer {
     private List<ChunkDescriptor> chunks;
     private final int maxOutstandingRequests;
 
-    public RequestProducer(DataDescriptor dataDescriptor, int maxOutstandingRequests) {
+    // TOR-5: when enabled, the effective depth per connection comes from an adaptive window bounded
+    // by [minRequestDepth, maxOutstandingRequests]; when disabled the fixed maxOutstandingRequests is
+    // used exactly as before, and no window object is ever allocated.
+    private final boolean adaptiveDepth;
+    private final int minRequestDepth;
+    private final int blockBytes;
+
+    public RequestProducer(DataDescriptor dataDescriptor, Config config) {
         this.bitfield = dataDescriptor.getBitfield();
         this.chunks = dataDescriptor.getChunkDescriptors();
-        this.maxOutstandingRequests = maxOutstandingRequests;
+        this.maxOutstandingRequests = config.getMaxOutstandingRequests();
+        this.adaptiveDepth = config.isAdaptiveRequestDepthEnabled();
+        this.minRequestDepth = Math.min(Math.max(1, config.getMinRequestDepth()), this.maxOutstandingRequests);
+        this.blockBytes = Math.max(1, config.getTransferBlockSize());
     }
 
     @Produces
@@ -62,16 +73,17 @@ public class RequestProducer {
 
         Peer peer = context.getPeer();
         ConnectionState connectionState = context.getConnectionState();
+        RequestWindow window = adaptiveDepth ? ensureWindow(connectionState) : null;
 
         if (!connectionState.getCurrentAssignment().isPresent()) {
-            resetConnection(connectionState, messageConsumer);
+            resetConnection(connectionState, messageConsumer, window);
             return;
         }
 
         Assignment assignment = connectionState.getCurrentAssignment().get();
         Queue<Integer> assignedPieces = assignment.getPieces();
         if (assignedPieces.isEmpty()) {
-            resetConnection(connectionState, messageConsumer);
+            resetConnection(connectionState, messageConsumer, window);
             if (LOGGER.isTraceEnabled()) {
                 LOGGER.trace("All pieces assigned to peer {} have been finished." +
                         " Will wait for the next assignment.", peer);
@@ -102,15 +114,34 @@ public class RequestProducer {
         }
 
         Queue<Request> requestQueue = connectionState.getRequestQueue();
-        while (!requestQueue.isEmpty() && connectionState.getPendingRequests().size() <= maxOutstandingRequests) {
+        int depth = (window != null) ? window.depth() : maxOutstandingRequests;
+        long issueNanos = (window != null) ? System.nanoTime() : 0L;
+        while (!requestQueue.isEmpty() && connectionState.getPendingRequests().size() <= depth) {
             Request request = requestQueue.poll();
             Object key = Mapper.mapper().buildKey(request.getPieceIndex(), request.getOffset(), request.getLength());
             messageConsumer.accept(request);
             connectionState.getPendingRequests().add(key);
+            if (window != null) {
+                window.onRequestIssued(key, issueNanos);
+            }
+        }
+        if (window != null) {
+            // Sample throughput and re-derive the depth once per cycle, after this cycle's issues.
+            window.onCycle(System.nanoTime(), connectionState.getDownloaded(),
+                    connectionState.getPendingRequests().size(), !requestQueue.isEmpty());
         }
     }
 
-    private void resetConnection(ConnectionState connectionState, Consumer<Message> messageConsumer) {
+    private RequestWindow ensureWindow(ConnectionState connectionState) {
+        RequestWindow window = connectionState.getRequestWindow();
+        if (window == null) {
+            window = new RequestWindow(minRequestDepth, maxOutstandingRequests, blockBytes);
+            connectionState.setRequestWindow(window);
+        }
+        return window;
+    }
+
+    private void resetConnection(ConnectionState connectionState, Consumer<Message> messageConsumer, RequestWindow window) {
         connectionState.getRequestQueue().clear();
         connectionState.getEnqueuedPieces().clear();
         if (!connectionState.getPendingRequests().isEmpty()) {
@@ -122,6 +153,9 @@ public class RequestProducer {
         }
         connectionState.getPendingRequests().clear();
         connectionState.getPendingWrites().clear();
+        if (window != null) {
+            window.reset();
+        }
     }
 
     private void addRequestsToQueue(ConnectionState connectionState, Integer pieceIndex) {
