@@ -608,25 +608,36 @@ class TorrentNetworkClient(
     /**
      * True once the runtime's torrent registry durably holds no descriptor at all for [torrent] -
      * i.e. the stopped session has been fully finalized and the same torrent can be registered
-     * again. bt finalizes a session only when its processing chain runs to completion, and a chain
-     * parked on peer discovery (a paused torrent with no peers, the common case) never gets there.
-     * So after a short grace period for the natural path we fire the library's own teardown signal,
-     * the synchronously-delivered TorrentStoppedEvent, which is what unregisters the torrent and
-     * lets every per-torrent service (registry, block cache, peer sources, connection handlers)
-     * release the session.
+     * again.
      *
-     * One cleanup round is not enough: the registry's `register()` inserts the descriptor *before*
-     * populating its data descriptor, on the dying session's executor thread - microseconds behind
-     * the metadata event that triggered our cancellation. A lone quiet observation can therefore
-     * catch a register still in flight, which lands its data descriptor after we returned. Each
-     * round demands quiet across a hold window instead, and re-fires the teardown if the
-     * descriptor surfaces late. Convergence is bounded by the round cap regardless.
+     * The fork now exposes that as a synchronous completion signal (patch #9,
+     * [TorrentRegistry.finalizeSession]): it gates the torrent and, because `bt` delivers the
+     * TorrentStoppedEvent in the calling thread, unregisters the descriptor *before returning*. A
+     * settled pause is therefore known with no polling and no hold window - which matters because the
+     * scheduler joins this job while holding the global queue mutex, so any slack here is felt as laggy
+     * pause/resume on *every* download. This is the common case: an idle torrent parked on peer
+     * discovery has long since passed its `register()`, so nothing re-adds it after the teardown.
+     *
+     * The bounded re-fire rounds below are kept only for the pathological fallback - a `register()`
+     * from the dying session's executor that lands during a very-early cancel, or a registry that does
+     * not support synchronous finalization - and they close the "Torrent already registered" race
+     * exactly as before. Convergence stays bounded by the round cap regardless.
      */
     private fun awaitTorrentSettled(runtime: BtRuntime, btClient: BtClient, torrent: Torrent?): Boolean {
         if (torrent == null) return true
         val registry = runCatching { runtime.service(TorrentRegistry::class.java) }.getOrNull() ?: return true
-        val eventSink = runCatching { runtime.service(EventSink::class.java) }.getOrNull()
         val torrentId = torrent.torrentId
+
+        // FAST PATH: ask the library to finalize synchronously. Returning true means the descriptor is
+        // provably gone and guarded against a late re-register, so there is nothing left to wait on.
+        val finalized = runCatching { registry.finalizeSession(torrentId) }.getOrDefault(false)
+        if (finalized && !btClient.isStarted) {
+            return true
+        }
+
+        // SLOW PATH (rare): synchronous finalization did not confirm. Re-fire the library's teardown and
+        // demand quiet across a hold window, re-checking that nothing re-registered in the interim.
+        val eventSink = runCatching { runtime.service(EventSink::class.java) }.getOrNull()
         repeat(SETTLE_ROUNDS) { round ->
             if (!awaitSettled(registry, torrentId, if (round == 0) NATURAL_SETTLE_MS else SETTLE_POLL_MS * 4)) {
                 // Parked chain: force the library's own teardown, synchronously delivered.

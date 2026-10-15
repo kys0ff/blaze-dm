@@ -62,10 +62,12 @@ class TorrentPauseResumeTest {
                 }
                 metadataSeen.await()
                 val pauseTime = measureTime { first.cancelAndJoin() }
+                println("TOR-7 pause teardown measured at $pauseTime (budget ${PAUSE_BUDGET_MS} ms; " +
+                    "pre-fork this path slept a fixed 250 ms grace + 100 ms hold = ~350 ms floor)")
                 assertTrue(
                     pauseTime.inWholeMilliseconds < PAUSE_BUDGET_MS,
-                    "pause teardown held the scheduler hostage for $pauseTime; it must force the " +
-                        "bt teardown instead of waiting out its slow natural path",
+                    "pause teardown held the scheduler hostage for $pauseTime; the fork's synchronous " +
+                        "finalizeSession must settle an idle torrent without sleeping on the old poll/hold path",
                 )
 
                 assertTrue(
@@ -95,8 +97,12 @@ class TorrentPauseResumeTest {
         }
 
     private companion object {
-        /** Teardown is ~250 ms of grace + a synchronous forced event; 1.2 s is generous slack. */
-        const val PAUSE_BUDGET_MS = 1_200L
+        /**
+         * TOR-7: after the fork's synchronous `finalizeSession`, an idle teardown does no sleeping -
+         * the measured cost is coroutine unwinding + a single non-cancellable dispatch, i.e. tens of
+         * ms. 200 ms is generous CI slack yet still proves the old ~350 ms sleep floor is gone.
+         */
+        const val PAUSE_BUDGET_MS = 200L
     }
 
     // ---- minimal bencoder; the fixture is a real, parseable single-file torrent. ----

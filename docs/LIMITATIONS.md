@@ -146,12 +146,21 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
   library value for the same reason as before — no tuning on evidence that does not exist on this instrument. Closed with
   that honest verdict rather than re-opened as a to-do.
 
-### TOR-7 — Pause/teardown latency ~0.5–1 s (polling in `awaitTorrentSettled`) — **B**, M, risk: medium
-- **Evidence**: `TorrentNetworkClient.kt:596-638` runs `Thread.sleep` settle loops (NATURAL_SETTLE_MS=250, poll 25 ms,
-  up to SETTLE_ROUNDS=4, plus 100 ms hold window); comment at `:707-709` notes it holds the **global queue mutex**, so
-  it is pause/resume latency for *every* download, not just torrents.
-- **Fix (fork, Phase 8b.5)**: expose a real "session stopped/unregistered" completion signal so the polling is removed;
-  target < 100 ms pause on an idle torrent; re-verify the "Torrent already registered" race stays closed.
+### TOR-7 — Pause/teardown latency ~0.5–1 s (polling in `awaitTorrentSettled`) — **B**, M, risk: medium — ✅ FIXED (Phase 8b.5)
+- **Evidence**: `TorrentNetworkClient.kt` ran `Thread.sleep` settle loops (NATURAL_SETTLE_MS=250, poll 25 ms,
+  up to SETTLE_ROUNDS=4, plus 100 ms hold window); the scheduler holds the **global queue mutex** while joining the
+  pause job, so it was pause/resume latency for *every* download, not just torrents — a ~350 ms floor per idle pause.
+- **Fix (fork #9, Phase 8b.5, done)**: `TorrentRegistry` gains `finalizeSession`/`beginSession` default methods;
+  `AdhocTorrentRegistry.finalizeSession` fires `EventSink.fireTorrentStopped` (the `EventBus` delivers synchronously in
+  the caller thread → it unregisters + closes the descriptor inline) and returns `true` only once the session is provably
+  gone, guarded per-id by 64 striped locks so a late `register` from the dying session is rejected rather than poisoning
+  the next one. `beginSession` (called only by a genuinely new session — `DefaultClient.doStartAsync` for magnets,
+  `FetchTorrentStage` for file/URL) lifts the guard so resume re-registers. `awaitTorrentSettled` now takes this fast path
+  and keeps the bounded poll only as a safety net.
+- **Measured**: `TorrentPauseResumeTest` idle pause teardown **~1.7 ms** (budget 200 ms) vs the pre-fork ~350 ms sleep
+  floor — comfortably below the spec's "well under 100 ms on an idle torrent"; the "Torrent already registered" resume
+  race stays closed (the test asserts an immediate resume of the same torrent starts cleanly). 5 fork unit cases in
+  `AdhocTorrentRegistryFinalizeTest`.
 
 ### TOR-8 — Local swarm harness completes 0 bytes (blocks every torrent measurement) — **A**, M, risk: low — ✅ FIXED (Phase 8a)
 - **Evidence**: `TorrentSwarmBenchmark.kt:74` had one seeder + one leecher in a single `BtRuntime` relying on
