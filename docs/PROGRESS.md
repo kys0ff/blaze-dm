@@ -1061,3 +1061,82 @@ existing `bt-core` with **no new dependency**, test-backed, and green. Every Pha
 `bt` APIs is corrected in place, and the real limitations (no fast resume, no preallocation, no web seeds, no
 µTP; request-depth tuning unmeasurable on the localhost harness) are stated plainly rather than faked. No public
 API or persisted format changed.
+
+---
+
+## Phase 6 – Unified state model and architecture documentation
+
+**Goal (PROMPT Phase 6).** A consistent download state model shared across HTTP/HLS/Torrent/Archive, KDoc on the
+public API, and an ARCHITECTURE.md. After the Phase-5 gate the user expanded this into an explicit request to unify
+the two state models and start emitting the dormant states, accepting that it reaches download-api / download-service
+and touches the persisted format.
+
+### 6a. Investigation - what the states actually do
+
+DownloadState lives in two places joined by a total mapper. The engine sealed interface
+(org.blaze.engine.api.DownloadState) maps to the public client/wire enum (org.blaze.download.api.DownloadState) via
+PublicStateMapping.toPublic(), an exhaustive when with no else, so adding an engine state is a compile error there,
+not a silent gap; the GUI has the same safety net in DownloadRepositoryImpl.toGuiState(). State is persisted to
+downloads.json as state::class.simpleName.uppercase() and read back by fromString whose else branch falls to Queued.
+That is what makes the format forward- and backward-compatible: an old reader sees an unknown name and degrades it to
+Queued, so no migration is needed.
+
+Grep of the engine showed Pausing, Resuming and Verifying were declared but never emitted. Cross-checking each against
+a real operation gave the honest split below - the crux being that three of the missing states have nothing to back
+them, so emitting them would fabricate a phase (forbidden).
+
+### 6b. Design decisions (all gated with the user)
+
+- Pausing: real window (DownloadScheduler.pause runs stopJobLocked, a ~0.25-1s torrent/DHT unwind, before Paused) -> EMIT.
+- Resuming: real (booting a task whose downloadedBytes > 0 is a continuation, not a cold Starting) -> EMIT.
+- Probing: real (HTTP client.probe, HLS resolveMediaPlaylist, Archive ZipCentralDirectory.inspect all run before any
+  media byte moves; Torrent's analog is the already-emitted ResolvingMetadata) -> NEW STATE, add + emit.
+- Merging: real (HLS assemble/remux and selective-Archive extract are post-transfer assembly, hidden inside Downloading)
+  -> NEW STATE, add + emit.
+- Verifying: NO backing operation anywhere (HTTP never checksums, torrent hashing runs continuously inside bt, HLS and
+  Archive do not verify) -> DOCUMENTED RESERVED, never emitted; emitting it would be a lie.
+- Completing: effectively instantaneous (partial->final rename), already folded into Completed -> MIRRORED into the
+  engine model so the two align 1:1, but never emitted.
+
+### 6c. Implementation
+
+- State model: added Probing, Merging, Completing to the engine interface and PROBING, MERGING to the public enum (the
+  enum serializes by name, so mid-enum insertion is wire-safe - pinned by a contract test). Updated isActive,
+  fromString, PublicStateMapping and the GUI toGuiState/isGuiActive. Verifying/Completing carry KDoc stating plainly
+  that the engine performs no such phase today.
+- Pausing/Resuming in DownloadScheduler: pause emits Pausing (only when the task is active) before the teardown, then
+  Paused; the boot snapshot in processQueueLocked is Resuming when bytes are already on disk, else Starting.
+- Probing/Merging threaded honestly at the real sites, never on a guessed schedule: HTTP gained an onProbing hook on
+  HttpDownloadCoordinator.download fired only where a probe actually runs (accelerated path or resuming a chunked
+  partial), never the plain single-stream path; HLS gained an onPhase(Probing|Merging) callback on HlsDownloader.download
+  and the executor now bridges progress and phase events through an UNLIMITED channel (not CONFLATED, so the rare
+  boundary events cannot be collapsed away); Archive emits them directly in executeArchive around inspect and extract.
+
+### 6d. Verification
+
+New tests: DownloadStateModelTest (persisted-name round-trip incl. degrade-to-Queued, isActive honesty),
+DownloadSchedulerStateTransitionTest (Pausing precedes Paused; partial->Resuming vs empty->Starting),
+PublicStateMappingTest (new/dormant map correctly; every engine state handled), an HLS onPhase ordering test, and
+API-contract assertions that PROBING/MERGING/COMPLETING are active, non-terminal and serialize by name.
+
+Result: download-engine 245/0, download-api 10/0, download-service 89/0, cli 10/0. All four touched modules compile,
+and the compile-forced exhaustive mappers prove no state falls through.
+
+One pre-existing, host-dependent GUI failure - not a Phase-6 regression. OsIntegrationCleanupTest (a report says what
+it did and admits when it did nothing) fails on Windows: describe() renders Path.of("/home/...").toString(), which
+yields backslash separators on this OS while the test asserts the forward-slash literal. It touches neither
+DownloadState nor any file changed here, and is a Linux-oriented cleanup assertion running on a Windows host; left
+untouched and reported rather than papered over.
+
+### 6e. Documentation
+
+Added docs/ARCHITECTURE.md (module map, end-to-end data flow, threading/IO model, the unified state-transition table,
+the tuning knobs with their defaults, and the benchmark findings recorded across Phases 2-5). Public state-model KDoc
+updated in both DownloadState files.
+
+### Phase 6 status: complete
+
+The state model is now unified and every phase the engine genuinely runs is surfaced - Probing/Merging for the
+fetch-assembly protocols, Pausing/Resuming for the scheduler's real windows - while Verifying/Completing are kept honest
+(defined, documented, never emitted) instead of faked. The change is additive and persisted-format compatible; the one
+suite exception is an unrelated Windows-path test stated plainly above.
