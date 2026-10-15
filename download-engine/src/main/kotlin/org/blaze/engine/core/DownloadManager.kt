@@ -76,7 +76,7 @@ class DownloadManager(
             tasks.update { it + (task.id to task) }
             persist()
             if (task.state == DownloadState.Completed) {
-                cleanupMetadata(task.id)
+                cleanupMetadata(task.id, task.request)
             }
         }
     )
@@ -329,11 +329,16 @@ class DownloadManager(
             try {
                 val cacheDir = repository.storageDir.resolve("cache")
                 storage.ensureDirectory(cacheDir)
-                val torrentFile = cacheDir.resolve("${id.value}.torrent")
+                // Key the cached metainfo by the same source-hash the preview path uses, so preview and the
+                // real download share ONE entry (the old per-id key orphaned every sha256-keyed preview file).
+                val torrentFile = cacheDir.resolve("${getCacheKey(request)}.torrent")
                 Files.write(torrentFile, bytes)
 
-                val origin = request.torrentSource.takeIf {
-                    it is TorrentSource.Magnet || it is TorrentSource.Url
+                // Preserve the user-facing locator: a magnet/url stays itself; an already-swapped File keeps
+                // the origin it was cached from, so the cache key and the shown source both stay stable.
+                val origin = when (val src = request.torrentSource) {
+                    is TorrentSource.Magnet, is TorrentSource.Url -> src
+                    is TorrentSource.File -> src.origin
                 }
                 val newRequest =
                     request.copy(torrentSource = TorrentSource.File(torrentFile, origin))
@@ -351,13 +356,22 @@ class DownloadManager(
             is DownloadRequest.Http -> request.url
             is DownloadRequest.Hls -> request.playlistUrl
             is DownloadRequest.Archive -> request.url
-            is DownloadRequest.Torrent -> when (val s = request.torrentSource) {
-                is TorrentSource.Magnet -> s.uri
-                is TorrentSource.File -> s.path.toAbsolutePath().toString()
-                is TorrentSource.Url -> s.url
-            }
+            is DownloadRequest.Torrent -> torrentSourceKeyString(request.torrentSource)
         }
         return sha256(sourceString)
+    }
+
+    /**
+     * The user-facing locator whose hash names a torrent's cache entry. A magnet/url is itself; a `.torrent`
+     * file resolves back through the [TorrentSource.File.origin] it was cached from, so the same source keeps
+     * one key whether it is seen as a magnet or as its cached file - and only an origin-less file (an import)
+     * falls back to its path.
+     */
+    private fun torrentSourceKeyString(source: TorrentSource): String = when (source) {
+        is TorrentSource.Magnet -> source.uri
+        is TorrentSource.Url -> source.url
+        is TorrentSource.File -> source.origin?.let { torrentSourceKeyString(it) }
+            ?: source.path.toAbsolutePath().toString()
     }
 
     /** A stable, filesystem-safe cache identity for a source string: its lowercase SHA-256 hex. */
@@ -367,12 +381,25 @@ class DownloadManager(
         return hashBytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun cleanupMetadata(id: DownloadId) {
+    private fun cleanupMetadata(id: DownloadId, request: DownloadRequest?) {
         scope.launch(Dispatchers.IO) {
             try {
-                val torrentFile =
-                    repository.storageDir.resolve("cache").resolve("${id.value}.torrent")
-                storage.delete(torrentFile)
+                val cacheDir = repository.storageDir.resolve("cache")
+                // Legacy per-id file (written before the keys were unified) belongs to this download alone.
+                storage.delete(cacheDir.resolve("${id.value}.torrent"))
+                val torrent = request as? DownloadRequest.Torrent ?: return@launch
+                val key = getCacheKey(torrent)
+                // The source-hash file is shared by every download of the same source (and is the file the
+                // preview path created). Drop it only when no other task still needs it: a not-yet-completed
+                // sibling (queued/paused/failed/active) can still resume and would have to re-resolve the
+                // swarm without it, while a completed one has already run its own cleanup and needs nothing.
+                val stillReferenced = tasks.value.values.any { other ->
+                    other.id != id &&
+                        other.request is DownloadRequest.Torrent &&
+                        other.state != DownloadState.Completed &&
+                        getCacheKey(other.request as DownloadRequest.Torrent) == key
+                }
+                if (!stillReferenced) storage.delete(cacheDir.resolve("$key.torrent"))
             } catch (e: Exception) {
                 logger.error("Failed to cleanup metadata", e)
             }
@@ -764,7 +791,7 @@ class DownloadManager(
         val task = tasks.value[id]
         scheduler.remove(id)
         tasks.update { it - id }
-        cleanupMetadata(id)
+        cleanupMetadata(id, task?.request)
 
         if (deleteFiles && task != null) {
             withContext(Dispatchers.IO) {

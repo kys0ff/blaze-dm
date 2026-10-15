@@ -16,8 +16,10 @@ import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.persistence.DownloadRecord
 import org.blaze.engine.persistence.DownloadRepository
 import org.blaze.engine.settings.EngineSettingsRepository
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -294,6 +296,133 @@ class DownloadManagerTest {
             tempDir.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun `test preview cache entry shares the download key and is cleaned up on completion`() = runTest {
+        // TOR-9: the preview path writes cache/<sha256(source)>.torrent while the old real path wrote
+        // cache/<id>.torrent, so the preview file was never cleaned (leak). Keys are now unified on the
+        // source hash, so completing the download must delete the very file the preview left behind.
+        val tempDir = Files.createTempDirectory("blaze-leak-test")
+        val storageDir = tempDir.resolve("storage")
+        Files.createDirectories(storageDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        var mockExecutor: MockExecutor? = null
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo,
+            executorFactory = {
+                val mock = MockExecutor()
+                mockExecutor = mock
+                mock
+            }
+        )
+
+        val magnet = "magnet:?xt=urn:btih:deadbeefdeadbeef"
+        val request = DownloadRequest.Torrent("LeakTest", TorrentSource.Magnet(magnet), Path.of("."))
+        val id = manager.enqueue(request)
+        manager.start(id)
+
+        withTimeout(5000.milliseconds) {
+            while (mockExecutor == null) delay(50.milliseconds)
+        }
+
+        // Simulate the entry a preview left in the cache, keyed exactly as the unified download path now keys it.
+        val cacheFile = storageDir.resolve("cache").resolve("${sha256Hex(magnet)}.torrent")
+        Files.createDirectories(cacheFile.parent)
+        Files.writeString(cacheFile, "preview-cached metainfo")
+        assertTrue(Files.exists(cacheFile))
+
+        val task =
+            DownloadTask(id, "LeakTest", request, DownloadState.Downloading, 1000L, 0L, 0L)
+        mockExecutor?.emit(task)
+        mockExecutor?.emit(task.copy(state = DownloadState.Completed))
+
+        try {
+            var deleted = false
+            (1..100).forEach { _ ->
+                if (!Files.exists(cacheFile)) {
+                    deleted = true
+                    return@forEach
+                }
+                delay(50.milliseconds)
+            }
+            assertTrue(deleted, "the shared source-hash cache entry must be removed on completion (no orphan)")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `test shared cache entry survives while another download of the same source is active`() = runTest {
+        // Two downloads of one magnet share a single cache entry. Completing the first must NOT pull the
+        // metainfo out from under the still-running second; only once both are done is it safe to delete.
+        val tempDir = Files.createTempDirectory("blaze-shared-cache-test")
+        val storageDir = tempDir.resolve("storage")
+        Files.createDirectories(storageDir)
+
+        val repository = DownloadRepository(storageDir)
+        val settingsRepo = EngineSettingsRepository(storageDir)
+        val executors = HashMap<DownloadId, MockExecutor>()
+        val manager = DownloadManager(
+            scope = backgroundScope,
+            repository = repository,
+            settingsRepository = settingsRepo,
+            executorFactory = { task -> MockExecutor().also { executors[task.id] = it } }
+        )
+
+        val magnet = "magnet:?xt=urn:btih:sharedshared"
+        val requestA = DownloadRequest.Torrent("A", TorrentSource.Magnet(magnet), Path.of("."))
+        val requestB = DownloadRequest.Torrent("B", TorrentSource.Magnet(magnet), Path.of("."))
+        val idA = manager.enqueue(requestA)
+        val idB = manager.enqueue(requestB)
+        manager.start(idA)
+        manager.start(idB)
+
+        withTimeout(5000.milliseconds) {
+            while (executors.size < 2) delay(50.milliseconds)
+        }
+
+        val cacheFile = storageDir.resolve("cache").resolve("${sha256Hex(magnet)}.torrent")
+        Files.createDirectories(cacheFile.parent)
+        Files.writeString(cacheFile, "shared metainfo")
+
+        val taskA = DownloadTask(idA, "A", requestA, DownloadState.Downloading, 1000L, 0L, 0L)
+        val taskB = DownloadTask(idB, "B", requestB, DownloadState.Downloading, 1000L, 0L, 0L)
+
+        try {
+            executors.getValue(idA).emit(taskA.copy(state = DownloadState.Completed))
+            // Let the first cleanup run; the file must still be there because B is only Downloading.
+            delay(300.milliseconds)
+            assertTrue(
+                Files.exists(cacheFile),
+                "the shared entry must survive while a sibling download of the same source is unfinished"
+            )
+
+            executors.getValue(idB).emit(taskB.copy(state = DownloadState.Completed))
+            var deleted = false
+            (1..100).forEach { _ ->
+                if (!Files.exists(cacheFile)) {
+                    deleted = true
+                    return@forEach
+                }
+                delay(50.milliseconds)
+            }
+            assertTrue(deleted, "once both downloads of the source are complete, the shared entry is cleaned up")
+        } finally {
+            manager.shutdown()
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    /** Mirrors the engine's cache identity: lowercase SHA-256 hex of the source string. */
+    private fun sha256Hex(source: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(source.toByteArray(StandardCharsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     @Test
     fun `test file indices are preserved in record`() = runTest {
