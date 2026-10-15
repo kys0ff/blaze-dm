@@ -940,8 +940,39 @@ byte-exactly after the init; a 404 on the init fails hard and writes no file; th
 offset-omitted byterange to the correct absolute windows. Full `:download-engine:test` = **230 tests,
 0 failures** (4 new on top of the 226 after §4a).
 
-### 4c. Optional ffmpeg remux — planned next
+### 4c. Optional external remux (this commit)
 
-- Optional, cleanly-detected ffmpeg remux path for streams that genuinely need multi-track remuxing; the
-  pure-JVM concatenation stays the default and never requires ffmpeg (opt-in setting, tests skip without
-  the binary).
+A stream whose container Blaze cannot byte-assemble was (correctly) refused as `Unsupported`. This adds an
+**opt-in**, cleanly-detected ffmpeg remux path for exactly those streams, without ever making ffmpeg a
+dependency or touching the default path.
+
+**Abstraction first.** `HlsDownloader` depends on a new `MediaRemuxer` interface (`isAvailable()` +
+`suspend remux(parts, destination): RemuxOutcome`), never on a concrete process. The real implementation
+`FfmpegRemuxer` locates the binary (explicit path from settings, else `ffmpeg` on PATH), probes availability
+with `ffmpeg -version` under a short timeout, and remuxes via the concat demuxer with `-c copy` (lossless,
+no transcode) through `ProcessBuilder`. Child-process output is drained on a daemon thread so the pipes
+can never deadlock it; a wall-clock timeout `destroyForcibly()`s a hung ffmpeg. The output is written to a
+`.remuxing` sibling and only moved onto the destination on a clean exit, so a failed remux leaves **no
+corrupt file** — honouring the correctness rule.
+
+**Strictly opt-in, off by default.** Two new `DownloadSettings` fields — `allowFfmpegRemux = false` and
+`ffmpegPath = null`. `DownloadExecutorImpl.executeHls` constructs a remuxer **only** when the setting is
+on, and passes it as the new (null-defaulted) `HlsDownloader.remuxer` constructor param. When the remuxer
+is null, or `isAvailable()` is false, the branch falls through to the *unchanged* honest `Unsupported`
+message — so a machine without ffmpeg, or a user who never enabled it, sees exactly the prior behaviour.
+MPEG-TS and single-track fMP4 always take the pure-JVM concat path and never reach the remuxer.
+
+**Verification:** `HlsRemuxTest` — a fake `MediaRemuxer` pins the decision tree without needing the binary:
+available remuxer + needs-remux container → the already-fetched segments are handed over and the run
+succeeds; unavailable remuxer → honest `Unsupported` and `remux` never invoked; no remuxer wired → the
+prior `Unsupported` text stands; and an MPEG-TS stream with a remuxer available still concats without ever
+calling it. A final test drives the real `FfmpegRemuxer` (availability probe + graceful handling of
+un-remuxable input, leaving no corrupt destination) and **returns early when ffmpeg is absent**, so the
+suite has no ffmpeg dependency. Full `:download-engine:test` = **235 tests, 0 failures** (5 new on top of
+the 230 after §4b).
+
+### Phase 4 status: complete
+
+Tier-A segment resilience, single-track fMP4 assembly, and the opt-in external remux are all delivered,
+test-backed, and green. No public API was broken (every addition is a default-valued param or an off-by
+default setting). The engine remains pure-JVM by default; ffmpeg is never bundled or required.

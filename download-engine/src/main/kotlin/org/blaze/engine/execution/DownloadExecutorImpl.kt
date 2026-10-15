@@ -10,6 +10,7 @@ import org.blaze.engine.api.*
 import org.blaze.engine.archive.HttpRemoteByteSource
 import org.blaze.engine.archive.RemoteZipExtractor
 import org.blaze.engine.archive.ZipCentralDirectory
+import org.blaze.engine.hls.FfmpegRemuxer
 import org.blaze.engine.hls.HlsDownloader
 import org.blaze.engine.metrics.EngineMetrics
 import org.blaze.engine.network.BandwidthLimiter
@@ -268,11 +269,16 @@ class DownloadExecutorImpl(
                 userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
                 maxRedirects = settings.maxRedirects
             )
+            // Remuxing is strictly opt-in and off by default: no external tool is even looked for unless
+            // the user turned it on. When enabled, the remuxer is still only *used* if ffmpeg is genuinely
+            // present (checked lazily in the downloader); the pure-JVM concat path never depends on this.
+            val remuxer = if (settings.allowFfmpegRemux) FfmpegRemuxer(settings.ffmpegPath ?: "ffmpeg") else null
             val downloader = HlsDownloader(
                 client = client,
                 storage = storage,
                 limiter = limiter,
                 maxConcurrency = settings.hlsMaxConcurrentSegments,
+                remuxer = remuxer,
             )
 
             // Segment progress is emitted by a callback running inside the downloader's own coroutine

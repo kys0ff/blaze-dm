@@ -66,6 +66,18 @@ data class DownloadSettings(
      * Defaults to the pre-existing 4 so turning the knob on changes throughput only when asked.
      */
     val hlsMaxConcurrentSegments: Int = 4,
+
+    /**
+     * Opt-in: allow an external ffmpeg (located at runtime, never bundled) to remux HLS streams whose
+     * container Blaze cannot assemble by pure-JVM byte-concatenation. **Off by default** - the default
+     * path is pure-JVM and never needs ffmpeg; MPEG-TS and single-track fragmented-MP4 always concat.
+     * When on, a needs-remux stream is only handed over if the ffmpeg binary is actually found, otherwise
+     * the honest "unsupported" outcome still stands. Blaze never transcodes or bypasses protection here.
+     */
+    val allowFfmpegRemux: Boolean = false,
+
+    /** Explicit path to the ffmpeg executable; null means search the OS PATH for `ffmpeg`. */
+    val ffmpegPath: String? = null,
     val globalSpeedLimitEnabled: Boolean = false,
     val globalSpeedLimitKbps: Long = 10240, // default 10 MB/s
 

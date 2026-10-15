@@ -37,7 +37,9 @@ import kotlin.time.Duration.Companion.milliseconds
  * processed video when the essence cannot actually be decrypted. Reliable assembly by simple concatenation
  * is claimed for MPEG-TS and for single-track fragmented-MP4 (whose `#EXT-X-MAP` init segment is prepended
  * to the fragments to form a valid ISOBMFF file with no remuxing); any other container that needs remuxing
- * is reported as unsupported rather than concatenated into a file that only looks done. Temporary segment
+ * is reported as unsupported rather than concatenated into a file that only looks done — unless an optional
+ * [MediaRemuxer] (the opt-in ffmpeg path) is wired and its tool is present, in which case the already-fetched
+ * segments are handed to it and only a successful remux yields a file. Temporary segment
  * files are always cleaned up, on success, failure or cancellation.
  */
 class HlsDownloader(
@@ -46,6 +48,13 @@ class HlsDownloader(
     private val limiter: BandwidthLimiter,
     private val maxConcurrency: Int = 4,
     private val maxPlaylistBytes: Long = 32L * 1024 * 1024,
+    /**
+     * Optional external remuxer for containers that cannot be assembled by byte-concatenation. Null by
+     * default, so the pure-JVM path is unchanged and never requires an external tool; when one is wired
+     * (the opt-in ffmpeg setting is on) a needs-remux stream is handed to it only if its binary is
+     * actually present, otherwise the honest unsupported refusal stands.
+     */
+    private val remuxer: MediaRemuxer? = null,
 ) {
     private val logger = LoggerFactory.getLogger(HlsDownloader::class.java)
 
@@ -139,6 +148,24 @@ class HlsDownloader(
             val initMapUri = media.initMapUri
             val fmp4 = container == HlsContainer.Fmp4 && initMapUri != null
             if (container != HlsContainer.MpegTs && !fmp4) {
+                // Byte-concatenation cannot make a valid file from this container. The pure-JVM path ends
+                // here; remuxing is an *opt-in*, external step. Only when a remuxer was wired AND its tool
+                // is genuinely present do we hand the already-fetched segments over. Absent or unavailable,
+                // the honest refusal below is unchanged - Blaze never fakes a processed video and never
+                // requires an external binary.
+                val remuxer = this.remuxer
+                if (remuxer != null && remuxer.isAvailable()) {
+                    val parts = (0 until segments.size).map { segmentPath(tempDir, it) }
+                    val remuxed = remuxer.remux(parts, destination)
+                    cleanup(tempDir)
+                    return when (remuxed) {
+                        is RemuxOutcome.Success -> Outcome.Success(Files.size(destination))
+                        is RemuxOutcome.Failure -> Outcome.Unsupported(
+                            "this stream needs remuxing and the external remuxer produced no playable " +
+                                    "file: ${remuxed.reason}"
+                        )
+                    }
+                }
                 cleanup(tempDir)
                 return Outcome.Unsupported(
                     "only MPEG-TS and single-track fragmented-MP4 HLS streams can be assembled into a " +
