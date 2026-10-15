@@ -7,6 +7,7 @@ import bt.bencoding.serializers.BEParser
 import bt.bencoding.types.BEList
 import bt.bencoding.types.BEMap
 import bt.bencoding.types.BEString
+import bt.data.InsufficientStorageException
 import bt.event.EventSink
 import bt.metainfo.MetadataConstants
 import bt.metainfo.Torrent
@@ -35,7 +36,9 @@ import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.portable.PortableManifest
 import org.blaze.engine.portable.PortableTorrentFile
 import org.blaze.engine.portable.TorrentPortableFile
+import org.blaze.engine.settings.TorrentPreallocation
 import org.blaze.engine.storage.TorrentContentStorage
+import org.blaze.engine.storage.toForkMode
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -65,6 +68,8 @@ import kotlin.time.Duration.Companion.seconds
  * @param seedRatioLimit stop seeding once uploaded/downloaded reaches this share ratio; 0 disables the ratio cap.
  * @param torrentResumeDir directory for fast-resume state (verified bitfield + file fingerprints); null
  * keeps every restart on the full re-hash path (fork PATCH-4, TOR-1).
+ * @param preallocation how much of each torrent file's length to reserve before the transfer
+ * (fork PATCH-5, TOR-2); NONE - the default - keeps the historical grow-on-write behavior.
  */
 class TorrentNetworkClient(
     private val peerDiscoveryTimeout: Duration = 120.seconds,
@@ -76,6 +81,7 @@ class TorrentNetworkClient(
     private val unlimitedSeeding: Boolean = false,
     private val seedRatioLimit: Double = 0.0,
     private val torrentResumeDir: Path? = null,
+    private val preallocation: TorrentPreallocation = TorrentPreallocation.NONE,
     private val runtimeProvider: TorrentRuntimeProvider = TorrentRuntimeProvider.GLOBAL
 ) {
     private val logger = LoggerFactory.getLogger(TorrentNetworkClient::class.java)
@@ -123,8 +129,10 @@ class TorrentNetworkClient(
             Files.createDirectories(destination)
             // Blaze's storage, not bt's: `FileSystemStorage` would root a multi-file torrent at
             // `<destination>/<name from the metainfo>` and give the download a second folder level
-            // inside the one the service already made for it.
-            val storage = TorrentContentStorage(destination)
+            // inside the one the service already made for it. The preallocation mode (TOR-2) rides
+            // along: when not NONE, every unit is sized to its file's full length - and the volume
+            // is checked for the room - before `bt` starts pulling pieces.
+            val storage = TorrentContentStorage(destination, preallocation = preallocation.toForkMode())
 
             // Shared with every other torrent in the app: one DHT node, one acceptor, and no
             // re-bootstrap when a download is retried or started right after another finished.
@@ -396,13 +404,7 @@ class TorrentNetworkClient(
             throw e
         } catch (e: Exception) {
             logger.error("Torrent download failed due to an exception", e)
-            send(
-                TorrentNetworkEvent.Error(
-                    DownloadError.NetworkFailure(
-                        e.message ?: "Torrent error"
-                    )
-                )
-            )
+            send(TorrentNetworkEvent.Error(e.toTorrentDownloadError()))
         }
     }
         // UNLIMITED so trySend() from bt's threads can never drop MetadataResolved / Completed / Error.
@@ -712,6 +714,23 @@ class TorrentNetworkClient(
 
 /** Monotonic milliseconds; never wall-clock, so an NTP correction cannot fake a timeout. */
 private fun nowMs(): Long = System.nanoTime() / 1_000_000
+
+/**
+ * A rejected preallocation (TOR-2) is a disk-space verdict, not a network blip: surface it as
+ * [DownloadError.DiskFull] so the retry policy refuses to re-kick a download that cannot fit on
+ * the volume. The exception arrives wrapped in whatever the descriptor/session machinery throws,
+ * so the whole cause chain is searched rather than just the top exception.
+ */
+internal fun Throwable.toTorrentDownloadError(): DownloadError {
+    var cause: Throwable? = this
+    while (cause != null) {
+        if (cause is InsufficientStorageException) {
+            return DownloadError.DiskFull
+        }
+        cause = cause.cause
+    }
+    return DownloadError.NetworkFailure(message ?: "Torrent error")
+}
 
 /** Grace period for bt to finalize a stopped session on its own before the cleanup is forced.
  *  Deliberately tiny: the scheduler holds the global queue mutex while joining this teardown, so

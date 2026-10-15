@@ -1,12 +1,16 @@
 package org.blaze.engine.storage
 
+import bt.data.InsufficientStorageException
+import bt.data.PreallocationMode
 import bt.data.Storage
 import bt.data.StorageUnit
 import bt.data.file.FileCacheKey
 import bt.data.file.OpenFileCache
+import bt.data.file.Preallocation
 import bt.metainfo.Torrent
 import bt.metainfo.TorrentFile
 import bt.net.buffer.ByteBufferView
+import org.blaze.engine.settings.TorrentPreallocation
 import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,10 +34,17 @@ import java.util.Optional
  * the flushing - is delegated to `bt`'s own [OpenFileCache] instead of being reinvented. Even the
  * naming follows the library's rules: [torrentContentPath] reproduces them exactly, so a download
  * already on disk is still found under the name it was written with.
+ *
+ * [preallocation] (TOR-2) reserves each file's full length when its unit is first opened, through
+ * the fork's shared [Preallocation] utility - so Blaze's storage and `bt`'s own file storage give
+ * identical promises, including the idempotence that keeps fast-resume fingerprints (size + mtime)
+ * valid across restarts and the up-front free-space check that throws
+ * [InsufficientStorageException] before a byte of the transfer is attempted.
  */
 internal class TorrentContentStorage(
     private val root: Path,
     maxOpenFiles: Int = DEFAULT_MAX_OPEN_FILES,
+    private val preallocation: PreallocationMode = PreallocationMode.NONE,
 ) : Storage {
 
     private val cache = OpenFileCache(maxOpenFiles)
@@ -41,8 +52,11 @@ internal class TorrentContentStorage(
     // The metainfo's `torrent.name` is deliberately not consulted: it is the library's cue for the
     // root folder of a multi-file torrent, and Blaze has already chosen that folder - under the name
     // the user sees, which may well differ once a magnet's `dn` or a rename has had its say.
-    override fun getUnit(torrent: Torrent, torrentFile: TorrentFile): StorageUnit =
-        CachedFileUnit(cache, FileCacheKey(torrentContentPath(root, torrentFile.pathElements), torrentFile.size))
+    override fun getUnit(torrent: Torrent, torrentFile: TorrentFile): StorageUnit {
+        val path = torrentContentPath(root, torrentFile.pathElements)
+        Preallocation.apply(path, torrentFile.size, preallocation)
+        return CachedFileUnit(cache, FileCacheKey(path, torrentFile.size))
+    }
 
     // The same absolute path `getUnit` writes through - which is exactly what the fork's fast-resume
     // machinery needs to fingerprint files (size + mtime) across sessions. `torrentContentPath`
@@ -119,6 +133,13 @@ internal fun torrentContentPath(root: Path, pathElements: List<String>): Path {
         "Torrent path ${pathElements.joinToString("/")} escapes its folder"
     }
     return normalized
+}
+
+/** The engine setting speaks its own enum; this is the only place the fork's type appears. */
+internal fun TorrentPreallocation.toForkMode(): PreallocationMode = when (this) {
+    TorrentPreallocation.NONE -> PreallocationMode.NONE
+    TorrentPreallocation.SPARSE -> PreallocationMode.SPARSE
+    TorrentPreallocation.FULL -> PreallocationMode.FULL
 }
 
 /** Joins the metainfo's path elements into one safe relative name. */

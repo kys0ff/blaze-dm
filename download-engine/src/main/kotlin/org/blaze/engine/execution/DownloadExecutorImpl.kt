@@ -520,7 +520,8 @@ class DownloadExecutorImpl(
                 seedTimeLimitMinutes = settings.seedTimeLimitMinutes,
                 unlimitedSeeding = settings.unlimitedSeeding,
                 seedRatioLimit = settings.seedRatioLimit,
-                torrentResumeDir = torrentResumeDir
+                torrentResumeDir = torrentResumeDir,
+                preallocation = settings.torrentPreallocation
             )
             networkClient.download(request).collect { event ->
                 when (event) {

@@ -16,6 +16,7 @@
 
 package bt.data.file;
 
+import bt.data.PreallocationMode;
 import bt.data.Storage;
 import bt.data.StorageUnit;
 import bt.metainfo.Torrent;
@@ -70,6 +71,7 @@ public class FileSystemStorage implements Storage {
     private final OpenFileCache cache;
     private final Path rootDirectory;
     private final PathNormalizer pathNormalizer;
+    private final PreallocationMode preallocationMode;
 
     /**
      * Create a file-system based storage inside a given directory.
@@ -92,14 +94,29 @@ public class FileSystemStorage implements Storage {
      * @param maxOpenFiles  the max number of open files this storage can use for efficiency
      */
     public FileSystemStorage(Path rootDirectory, int maxOpenFiles) {
+        this(rootDirectory, maxOpenFiles, PreallocationMode.NONE);
+    }
+
+    /**
+     * Construct a new FileSystemStorage that reserves each file's full length up front.
+     *
+     * @param rootDirectory     the root directory to store files
+     * @param maxOpenFiles      the max number of open files this storage can use for efficiency
+     * @param preallocationMode how (and whether) to preallocate each torrent file; {@link
+     *                          PreallocationMode#NONE} keeps the historical grow-on-write behavior
+     * @since 1.10 (blaze fork)
+     */
+    public FileSystemStorage(Path rootDirectory, int maxOpenFiles, PreallocationMode preallocationMode) {
         this.cache = new OpenFileCache(maxOpenFiles);
         this.rootDirectory = rootDirectory;
         this.pathNormalizer = new PathNormalizer(rootDirectory.getFileSystem());
+        this.preallocationMode = preallocationMode;
     }
 
     @Override
     public StorageUnit getUnit(Torrent torrent, TorrentFile torrentFile) {
         Path location = resolveLocation(torrent, torrentFile);
+        Preallocation.apply(location, torrentFile.getSize(), preallocationMode);
         return new FileSystemStorageUnit(cache, location.getParent(), location.getFileName().toString(),
                 torrentFile.getSize());
     }

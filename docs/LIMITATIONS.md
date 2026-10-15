@@ -61,12 +61,31 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
   fails the size gate; mtime touch alone forces the full re-hash; session killed mid-download restarts
   to a byte-correct transfer.
 
-### TOR-2 — No torrent preallocation / early free-space check — **B**, M, risk: medium
-- **Evidence**: `PROGRESS.md:203`; `bt` `FileSystemStorage`/`FileSystemStorageUnit` grow files on write, no sparse
+### TOR-2 — No torrent preallocation / early free-space check — **B**, M, risk: medium — ✅ FIXED (Phase 8b.2)
+- **Evidence (pre-fix)**: `PROGRESS.md:203`; `bt` `FileSystemStorage`/`FileSystemStorageUnit` grow files on write, no sparse
   hint. (Note: **HTTP** preallocation *does* exist — `DefaultFileStorage.kt:47`, `setLength` sparse — so this is
   torrent-only.) No pre-flight free-space check on the torrent path.
-- **Fix (fork, Phase 8b.2)**: configurable none/sparse/full; fail early with a clear error if free space insufficient;
-  document NTFS vs APFS/ext4 differences.
+- **Fix (fork patch #5 + engine wiring, done)**: `bt.data.file.Preallocation` utility shared by `FileSystemStorage`
+  (new opt-in constructor overload) and Blaze's own `TorrentContentStorage` (new `preallocation` param): `NONE` keeps
+  the historical grow-on-write default, `SPARSE` extends each file to full length via one trailing-byte write (the
+  body is a hole), `FULL` zero-fills only the missing tail and preserves bytes a partial download already wrote.
+  SPARSE and FULL check `FileStore.getUsableSpace` **before** creating anything and throw
+  `bt.data.InsufficientStorageException` — an impossible download fails with a clear message instead of dying
+  mid-transfer. Every mode is idempotent (a file already at full size is not re-touched, mtime included), which is
+  what keeps PATCH-4's resume fingerprints valid across restarts with preallocation on. Engine: new
+  `DownloadSettings.torrentPreallocation`, default **NONE on purpose** — eager sizing would defeat the deliberate
+  absent-block `-1` answer (`TorrentContentStorage.kt` `CachedFileUnit.readBlock`) and neutralize the resume *size*
+  fingerprint; the failure surfaces as `DownloadError.DiskFull` via cause-chain mapping
+  (`TorrentNetworkClient.toTorrentDownloadError`), which `RetryPolicy.kt:21` already refuses to retry.
+  Platform behavior documented in `PreallocationMode` javadoc:
+  ext4/btrfs/APFS leave the extension as a metadata-only hole; NTFS allocates clusters on extension (the pure-JDK
+  route cannot set the sparse attribute), so the free-space check charges SPARSE there too — it still skips the
+  zero bytes FULL pays.
+- **Tests**: 9 fork cases (`PreallocationTest`) + 11 engine cases (`TorrentPreallocationTest`): mode semantics,
+  idempotence/mtime, existing-tail preservation, escape-path preallocation staying confined, correct write/read
+  offsets through a preallocated unit, rejected-impossible before file creation, and the DiskFull error surface.
+- **Known follow-up**: the mode is not yet surfaced in the GUI settings screen, so engine-default NONE is what
+  production runs until the toggle ships.
 
 ### TOR-3 — No web seeds (BEP 19 / BEP 17) — **B**, L, risk: medium
 - **Evidence**: `PROGRESS.md:188`; no `WebSeed`/`WebSeedService` in `bt-core-1.10`.

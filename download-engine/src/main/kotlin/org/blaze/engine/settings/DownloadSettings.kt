@@ -11,6 +11,24 @@ enum class FileConflictBehavior {
     RENAME
 }
 
+/**
+ * How much of a torrent's disk space is reserved before its transfer starts (TOR-2). Mirrors the
+ * fork's `bt.data.PreallocationMode`; kept as an engine enum so settings serialization never depends
+ * on a library type. See the fork's javadoc for the platform differences (NTFS charges a file
+ * extension to the volume, ext4/APFS leave it as a hole - the free-space check covers both).
+ */
+@Serializable
+enum class TorrentPreallocation {
+    /** Grow files as data arrives; a full disk surfaces mid-transfer, as before. */
+    NONE,
+
+    /** Extend each file to its full length up front, without writing zeros. */
+    SPARSE,
+
+    /** Write the whole length with zeros - a hard reservation, at the cost of a full-size write. */
+    FULL
+}
+
 @Serializable
 enum class ThemeMode {
     SYSTEM,
@@ -99,6 +117,14 @@ data class DownloadSettings(
     val httpUserAgent: String = DEFAULT_USER_AGENT,
     val maxRedirects: Int = 5,
     val maxPeerConnections: Int = 200,
+    /**
+     * Torrent preallocation mode (TOR-2). **Off by default on purpose**: Blaze's torrent storage
+     * reports an unwritten block as "absent" rather than zeros so `bt` never hashes a hole it did
+     * not download, and SPARSE/FULL sizing would also blunt the fast-resume file fingerprint gate
+     * (a preallocated file is always at its full size, so truncation stops being visible). The
+     * modes exist for users who want the early free-space verdict and a guaranteed reservation.
+     */
+    val torrentPreallocation: TorrentPreallocation = TorrentPreallocation.NONE,
     val enableSeeding: Boolean = false,
     val seedTimeLimitMinutes: Int = 30,
     /** Ignore the time limit and keep seeding until stopped manually. */
