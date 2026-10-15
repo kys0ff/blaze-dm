@@ -8,6 +8,7 @@ import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.storage.DefaultFileStorage
 import org.blaze.engine.support.TestStaticServer
 import java.nio.file.Files
+import java.util.Comparator
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
@@ -289,6 +290,47 @@ class HlsDownloaderIntegrationTest {
             }
         }
     }
+
+    @Test
+    fun `a crash-truncated segment is re-downloaded on resume while a proven-complete one is reused`(): Unit =
+        runBlocking {
+            // HLS-2 regression: the old resume path trusted any `Files.size > 0`, so a segment left
+            // half-written by a crash was silently concatenated into a corrupt file. The fix records a
+            // `.done` length marker and only reuses a segment whose marker matches its byte count.
+            TestStaticServer(
+                mapOf(
+                    "/master.m3u8" to master,
+                    "/media.m3u8" to plainMedia(),
+                    "/seg0.ts" to seg0Plain,
+                    "/seg1.ts" to seg1Plain,
+                )
+            ).use { server ->
+                val dest = Files.createTempFile("hls-resume", ".ts")
+                val tempDir = dest.resolveSibling("${dest.fileName}.hls-parts")
+                try {
+                    Files.createDirectories(tempDir)
+                    // Segment 0 survives as a truncated leftover with NO marker - exactly a mid-write crash.
+                    Files.write(tempDir.resolve("0.part"), seg0Plain.copyOfRange(0, seg0Plain.size / 2))
+                    // Segment 1 is complete AND carries a matching `.done` marker, so it must be reused.
+                    Files.write(tempDir.resolve("1.part"), seg1Plain)
+                    Files.writeString(tempDir.resolve("1.done"), seg1Plain.size.toString())
+
+                    val outcome = downloader(server).download(server.url("/master.m3u8"), dest, -1, emptyMap(), false)
+
+                    assertIs<HlsDownloader.Outcome.Success>(outcome, "expected success, got $outcome")
+                    assertContentEquals(
+                        seg0Plain + seg1Plain,
+                        Files.readAllBytes(dest),
+                        "the assembled file must contain a full segment 0, not the truncated leftover",
+                    )
+                    assertEquals(1, server.hitCount("/seg0.ts"), "the incomplete segment must be re-fetched once")
+                    assertEquals(0, server.hitCount("/seg1.ts"), "the proven-complete segment must NOT be re-fetched")
+                } finally {
+                    runCatching { Files.walk(tempDir).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) } }
+                    Files.deleteIfExists(dest)
+                }
+            }
+        }
 
     private fun downloader(server: TestStaticServer): HlsDownloader {
         val http = HttpClient(CIO)

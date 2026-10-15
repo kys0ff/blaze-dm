@@ -11,6 +11,7 @@ import org.blaze.engine.retry.Backoff
 import org.blaze.engine.storage.FileStorage
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -319,15 +320,18 @@ class HlsDownloader(
         val jobs = ArrayList<Job>()
 
         segments.forEachIndexed { index, segment ->
-            val target = segmentPath(tempDir, index)
-            // Already-on-disk segments with the right size are kept as-is: this is the resume path after
-            // a retry or restart, gated by the container check downstream, so a re-run does not re-fetch.
-            val existing = if (Files.exists(target)) Files.size(target) else 0L
-            if (existing > 0) {
+            // A segment is trusted as complete ONLY when its `.done` marker exists and the recorded length
+            // equals the on-disk byte count. A crash therefore can never leave a half-written segment that
+            // is silently concatenated into the output - the old `Files.size > 0` check could, and did.
+            if (segmentComplete(tempDir, index)) {
+                val existing = runCatching { Files.size(segmentPath(tempDir, index)) }.getOrDefault(0L)
                 bytesDone.addAndGet(existing)
                 onProgress(completed.incrementAndGet(), segments.size, bytesDone.get())
                 return@forEachIndexed
             }
+            // Not proven complete: discard any leftover from a crash (partial data, temp or marker) and
+            // re-fetch the whole segment, so nothing stale can be mistaken for done.
+            resetSegmentFiles(tempDir, index)
             jobs += launch {
                 if (failed.get() > 0) return@launch
                 semaphore.withPermit {
@@ -337,7 +341,10 @@ class HlsDownloader(
                         attempt++
                         when (val fetched = fetchSegment(segment, media.mediaSequence + index, headers, keyCache)) {
                             is Resource.Ok -> {
-                                Files.write(target, fetched.bytes)
+                                // Written to a temp name, then atomically renamed, then marked: the final
+                                // name only ever appears once the whole segment is on disk, and the marker
+                                // records the exact length so a mismatch on a later resume forces a re-fetch.
+                                commitSegment(tempDir, index, fetched.bytes)
                                 bytesDone.addAndGet(fetched.bytes.size.toLong())
                                 onProgress(completed.incrementAndGet(), segments.size, bytesDone.get())
                                 return@withPermit
@@ -572,6 +579,45 @@ class HlsDownloader(
     }
 
     private fun segmentPath(tempDir: Path, index: Int): Path = tempDir.resolve("$index.part")
+
+    private fun segmentTempPath(tempDir: Path, index: Int): Path = tempDir.resolve("$index.part.tmp")
+
+    private fun segmentMarkerPath(tempDir: Path, index: Int): Path = tempDir.resolve("$index.done")
+
+    /**
+     * True only when the segment's `.done` marker exists and the byte length it records equals the size of the
+     * `.part` data file. This is the completeness proof on the resume path: a truncated data file (a crash
+     * mid-write, or a leftover from before this marker existed) fails the length check and is re-downloaded
+     * rather than trusted, which is exactly what the old `Files.size > 0` heuristic got wrong.
+     */
+    private fun segmentComplete(tempDir: Path, index: Int): Boolean {
+        val data = segmentPath(tempDir, index)
+        val marker = segmentMarkerPath(tempDir, index)
+        if (!Files.exists(data) || !Files.exists(marker)) return false
+        val expected = runCatching { Files.readString(marker).trim().toLongOrNull() }.getOrNull() ?: return false
+        return runCatching { Files.size(data) }.getOrDefault(-1L) == expected
+    }
+
+    /** Persistently write a fully-fetched segment so its final name implies completeness: temp -> rename -> marker. */
+    private fun commitSegment(tempDir: Path, index: Int, bytes: ByteArray) {
+        val temp = segmentTempPath(tempDir, index)
+        val final = segmentPath(tempDir, index)
+        runCatching { Files.deleteIfExists(temp) }
+        Files.write(temp, bytes)
+        try {
+            Files.move(temp, final, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(temp, final, StandardCopyOption.REPLACE_EXISTING)
+        }
+        // Marker last: if the process dies before it lands, the segment simply re-downloads on the next run.
+        Files.writeString(segmentMarkerPath(tempDir, index), bytes.size.toString())
+    }
+
+    private fun resetSegmentFiles(tempDir: Path, index: Int) {
+        runCatching { Files.deleteIfExists(segmentPath(tempDir, index)) }
+        runCatching { Files.deleteIfExists(segmentTempPath(tempDir, index)) }
+        runCatching { Files.deleteIfExists(segmentMarkerPath(tempDir, index)) }
+    }
 
     companion object {
         private const val MAX_PLAYLIST_HOPS = 4
