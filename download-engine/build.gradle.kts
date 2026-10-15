@@ -27,10 +27,18 @@ dependencies {
     // the same reason it was previously not the production pick.
     implementation(libs.ktor.client.okhttp)
     
-    // BitTorrent
-    implementation(libs.bt.core)
-    implementation(libs.bt.http.tracker.client)
-    implementation(libs.bt.dht)
+    // BitTorrent. bt-core + bt-bencoding are the vendored fork (see third-party/bt/PATCHES.md). The DHT and
+    // HTTP-tracker modules stay on their upstream artifacts (they wrap native/shaded code and hold no Round-2
+    // feature), but each excludes the upstream bt-core/bencoding so they bind to the fork's identical `bt.*` API.
+    implementation(project(":third-party:bt:bt-core"))
+    implementation(libs.bt.http.tracker.client) {
+        exclude(group = "com.github.atomashpolskiy", module = "bt-core")
+        exclude(group = "com.github.atomashpolskiy", module = "bt-bencoding")
+    }
+    implementation(libs.bt.dht) {
+        exclude(group = "com.github.atomashpolskiy", module = "bt-core")
+        exclude(group = "com.github.atomashpolskiy", module = "bt-bencoding")
+    }
     
     // Testing
     testImplementation(kotlin("test"))
