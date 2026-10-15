@@ -22,6 +22,9 @@ import java.nio.file.Path
  */
 object RequestMapper {
 
+    /** Container extensions that already name the assembled stream file, so `.ts` is not doubled on. */
+    private val STREAM_OUTPUT_EXTENSIONS = setOf("ts", "mpg", "mpeg", "m2ts")
+
     /**
      * @param destinationDir the already-validated absolute directory to write into.
      */
@@ -30,6 +33,8 @@ object RequestMapper {
             is DownloadSource.Url -> http(source.url, request, destinationDir)
             is DownloadSource.Magnet -> torrentMagnet(source.uri, request, destinationDir)
             is DownloadSource.TorrentFile -> torrentFile(source.path, request, destinationDir)
+            is DownloadSource.Hls -> hls(source, request, destinationDir)
+            is DownloadSource.RemoteArchive -> archive(source, request, destinationDir)
         }
 
     /**
@@ -89,6 +94,81 @@ object RequestMapper {
             headers = request.effectiveHeaders(),
             segmentCount = request.connections?.coerceAtLeast(0) ?: 0,
         )
+    }
+
+    /**
+     * Routes a declared HLS source to the engine's stream handler. The source type - not the `.m3u8`
+     * suffix - is what selected this branch, so the caller has already validated the playlist. The URL is
+     * scheme-checked like any HTTP source; the resolved name comes from the requested filename or the
+     * playlist's last path segment (suffix trimmed of `.m3u8`), and [DownloadRequest.Hls.destination] is
+     * the single assembled output file. Auth headers travel only with the in-memory transfer.
+     */
+    private fun hls(
+        source: DownloadSource.Hls,
+        request: NewDownloadRequest,
+        dir: Path,
+    ): DownloadRequest.Hls {
+        val trimmed = requireHttpUrl(source.url)
+        val name = request.filename?.takeIf { it.isNotBlank() } ?: deriveHlsName(trimmed)
+        return DownloadRequest.Hls(
+            name = name,
+            playlistUrl = trimmed,
+            destination = dir.resolve(name),
+            headers = request.effectiveHeaders(),
+            variantIndex = source.variantIndex,
+            drmAcknowledged = source.drmAcknowledged,
+        )
+    }
+
+    /**
+     * Routes a declared remote-ZIP source to the archive handler. When [DownloadSource.RemoteArchive.selectedEntries]
+     * is null the destination is the archive file itself (a full download); when entries are chosen the
+     * destination is the extraction folder, so the engine writes the selected members beneath it, confined.
+     */
+    private fun archive(
+        source: DownloadSource.RemoteArchive,
+        request: NewDownloadRequest,
+        dir: Path,
+    ): DownloadRequest.Archive {
+        val trimmed = requireHttpUrl(source.url)
+        val name = request.filename?.takeIf { it.isNotBlank() } ?: deriveHttpName(trimmed)
+        // Full download: [destination] is the archive file path. Selection: the same resolved path is
+        // the extraction root the engine writes the chosen members beneath, confined.
+        return DownloadRequest.Archive(
+            name = name,
+            url = trimmed,
+            destination = dir.resolve(name),
+            headers = request.effectiveHeaders(),
+            selectedEntries = source.selectedEntries,
+        )
+    }
+
+    private fun requireHttpUrl(url: String): String {
+        val trimmed = url.trim()
+        val scheme = runCatching { URI(trimmed).scheme?.lowercase() }.getOrNull()
+        if (scheme != "http" && scheme != "https") {
+            throw org.blaze.download.api.DownloadApiException(
+                ApiErrorCode.INVALID_URL,
+                "only http and https URLs are supported",
+            )
+        }
+        return trimmed
+    }
+
+    /** Last path segment of a playlist URL, minus the `.m3u8` suffix; "…/master.m3u8" → "master". */
+    private fun deriveHlsName(url: String): String {
+        val segment = url.substringBefore('?').substringAfterLast('/')
+        val decoded = runCatching { URLDecoder.decode(segment, StandardCharsets.UTF_8).ifBlank { segment } }
+            .getOrDefault(segment)
+        val stripped =
+            if (decoded.endsWith(".m3u8", ignoreCase = true)) decoded.dropLast(".m3u8".length) else decoded
+        val base = stripped.ifBlank { "stream" }
+        // The `.m3u8` ending names the playlist, not the assembled file. Blaze only ever concatenates
+        // MPEG-TS segments into one file, so the output is given a `.ts` extension unless the derived name
+        // already carries a stream-container suffix - otherwise a numeric playlist like
+        // "…/1096000-1280x720.m3u8" would land as an extension-less file no media player can open.
+        val extension = base.substringAfterLast('.', "")
+        return if (extension.lowercase() in STREAM_OUTPUT_EXTENSIONS) base else "$base.ts"
     }
 
     private fun torrentMagnet(uri: String, request: NewDownloadRequest, dir: Path): DownloadRequest.Torrent {

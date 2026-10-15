@@ -9,25 +9,15 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.withContext
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.SelectedFile
+import org.blaze.domain.repository.*
 import org.blaze.domain.repository.DownloadFile
-import org.blaze.domain.repository.DownloadMetadata
-import org.blaze.domain.repository.DownloadRepository
-import org.blaze.domain.repository.PortableInfo
-import org.blaze.domain.repository.PortableKind
-import org.blaze.domain.repository.TorrentPreview
-import org.blaze.download.api.DownloadDto
-import org.blaze.download.api.DownloadFileHint
-import org.blaze.download.api.DownloadPriority
-import org.blaze.download.api.DownloadSource
-import org.blaze.download.api.DownloadState as ApiState
-import org.blaze.download.api.NewDownloadRequest
-import org.blaze.download.api.PortableInfoDto
-import org.blaze.download.api.DownloadsApi
+import org.blaze.download.api.*
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import org.blaze.domain.models.DownloadState as GuiState
+import org.blaze.download.api.DownloadState as ApiState
 
 /**
  * The GUI's view onto the download subsystem - implemented entirely against the application-level
@@ -117,6 +107,44 @@ class DownloadRepositoryImpl(
         api.create(request)
     }
 
+    override suspend fun inspectHls(
+        url: String,
+        variantIndex: Int,
+        credentials: Map<String, String>,
+    ): HlsInspectionDto = api.inspectHls(url, variantIndex, credentials)
+
+    override suspend fun inspectArchive(
+        url: String,
+        credentials: Map<String, String>,
+    ): ArchiveInspectionDto = api.inspectArchive(url, credentials)
+
+    override suspend fun addDownloadWithSource(
+        source: DownloadSource,
+        savePath: String,
+        name: String?,
+        totalSize: Long?,
+        scheduledAt: Long?,
+        priority: DownloadPriority?,
+        credentials: Map<String, String>,
+    ) {
+        val destinationDir = Path.of(savePath)
+        withContext(Dispatchers.IO) {
+            if (Files.notExists(destinationDir)) Files.createDirectories(destinationDir)
+        }
+        api.create(
+            NewDownloadRequest(
+                source = source,
+                destination = savePath,
+                filename = name?.takeIf { it.isNotBlank() },
+                autoStart = true,
+                expectedSizeBytes = totalSize,
+                scheduledAtEpochMs = scheduledAt,
+                priority = priority,
+                credentials = credentials,
+            )
+        )
+    }
+
     override suspend fun getDestinationPath(url: String, savePath: String, name: String?): String =
         resolvePreview(url, savePath, name).toAbsolutePath().toString()
 
@@ -154,8 +182,8 @@ class DownloadRepositoryImpl(
 
     private fun PortableInfoDto.toPortableInfo() = PortableInfo(
         kind = when (this.kind) {
-            org.blaze.download.api.PortableKindDto.HTTP -> PortableKind.HTTP
-            org.blaze.download.api.PortableKindDto.TORRENT -> PortableKind.TORRENT
+            PortableKindDto.HTTP -> PortableKind.HTTP
+            PortableKindDto.TORRENT -> PortableKind.TORRENT
         },
         suggestedName = suggestedName,
         source = source,
@@ -192,13 +220,15 @@ class DownloadRepositoryImpl(
             error = error,
             selectedFiles = selected?.mapIndexed { index, f -> SelectedFile(path = f.path, size = f.size, index = index) },
             resumeSupported = sourceSupportsResume,
+            restarts = restarts,
             priority = priority,
         )
     }
 
     private fun ApiState.toGuiState(): GuiState = when (this) {
         ApiState.QUEUED -> GuiState.QUEUED
-        ApiState.STARTING, ApiState.DOWNLOADING, ApiState.RESUMING,
+        ApiState.STARTING, ApiState.PROBING, ApiState.DOWNLOADING, ApiState.MERGING,
+        ApiState.RESUMING,
         ApiState.VERIFYING, ApiState.RESOLVING_METADATA, ApiState.COMPLETING -> GuiState.DOWNLOADING
         ApiState.PAUSED, ApiState.PAUSING -> GuiState.PAUSED
         ApiState.COMPLETED -> GuiState.COMPLETED
@@ -208,6 +238,7 @@ class DownloadRepositoryImpl(
 
     private fun ApiState.isGuiActive(): Boolean =
         this == ApiState.DOWNLOADING || this == ApiState.QUEUED || this == ApiState.STARTING ||
+            this == ApiState.PROBING || this == ApiState.MERGING ||
             this == ApiState.RESUMING || this == ApiState.VERIFYING || this == ApiState.RESOLVING_METADATA
 
     companion object {
@@ -256,12 +287,34 @@ internal fun resolvePreview(url: String, savePath: String, name: String?): Path 
             dir.resolve(explicit ?: deriveMagnetName(source.uri))
         is DownloadSource.Url ->
             dir.resolve(explicit ?: deriveHttpName(source.url))
+        is DownloadSource.Hls ->
+            dir.resolve(explicit ?: deriveHlsOutputName(source.url))
+
+        is DownloadSource.RemoteArchive ->
+            dir.resolve(explicit ?: deriveHttpName(source.url))
     }
 }
 
 /** `.torrent` is a source marker, not part of the display name; the ending is stripped case-insensitively. */
 private fun removeTorrentSuffix(name: String): String =
     if (name.endsWith(".torrent", ignoreCase = true)) name.dropLast(".torrent".length) else name
+
+/**
+ * The name the assembled HLS file actually gets, mirroring the service's `RequestMapper.deriveHlsName`: the
+ * playlist's `.m3u8` ending names the *source*, not the output, so it is trimmed and a `.ts` container
+ * extension is applied unless the base already carries one. Keeps the "Save as" preview from promising an
+ * extension-less file a media player cannot open.
+ */
+private fun deriveHlsOutputName(url: String): String {
+    val raw = deriveHttpName(url)
+    val stripped = if (raw.endsWith(".m3u8", ignoreCase = true)) raw.dropLast(".m3u8".length) else raw
+    val base = stripped.ifBlank { "stream" }
+    val extension = base.substringAfterLast('.', "")
+    return if (extension.lowercase() in HLS_OUTPUT_EXTENSIONS) base else "$base.ts"
+}
+
+/** Container extensions that already name the assembled stream, so `.ts` is not doubled on. */
+private val HLS_OUTPUT_EXTENSIONS = setOf("ts", "mpg", "mpeg", "m2ts")
 
 private fun deriveHttpName(url: String): String {
     val decoded = runCatching { URLDecoder.decode(url, StandardCharsets.UTF_8).ifBlank { url } }.getOrDefault(url)

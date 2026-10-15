@@ -1,19 +1,7 @@
 package org.blaze.presentation.screens.downloads.components
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -21,30 +9,18 @@ import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.ToolWindowHeader
-import org.blaze.presentation.components.ToolWindowOptionsButton
-import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.components.panel.ToolWindowMoveTo
-import org.blaze.presentation.components.panel.ToolWindowResize
-import org.blaze.presentation.components.panel.ToolWindowViewMode
-import org.blaze.presentation.screens.downloads.ResumeSupport
-import org.blaze.presentation.screens.downloads.isWaitingForPeers
-import org.blaze.presentation.screens.downloads.pauseLosesProgress
-import org.blaze.presentation.screens.downloads.percentDone
-import org.blaze.presentation.screens.downloads.resumeSupport
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeTypography
+import org.blaze.presentation.screens.downloads.*
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSize
 import org.blaze.presentation.util.formatSpeed
 import org.blaze.presentation.util.toFriendlyMessage
+import org.island.theme.ui.IslandLayout
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.IslandTypography
+import org.island.ui.toolbar.IslandToolbarIconButton
+import org.island.ui.toolwindow.*
 import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.ui.component.SimpleTabContent
-import org.jetbrains.jewel.ui.component.TabData
-import org.jetbrains.jewel.ui.component.TabStrip
-import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
+import org.jetbrains.jewel.ui.component.*
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.theme.defaultTabStyle
 import org.jetbrains.jewel.ui.typography
@@ -83,7 +59,6 @@ fun DownloadDetailsPanel(
             title = strings.downloads.dialogs.details.title,
             actions = {
                 ToolWindowOptionsButton(
-                    options = pane.options,
                     viewMode = viewMode,
                     moveTo = moveTo,
                     groupTabs = groupTabs,
@@ -94,7 +69,7 @@ fun DownloadDetailsPanel(
                 )
                 // A tool window is *hidden*, not closed: the IDE draws the horizontal-line glyph for that
                 // and keeps the X for closing an editor. `General.Close` here read as "destroy the pane".
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.General.HideToolWindow,
                     tooltip = pane.hide,
                     onClick = onHide,
@@ -103,7 +78,7 @@ fun DownloadDetailsPanel(
         )
         if (download == null) {
             Box(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(BlazeLayout.ContentPaddingLarge),
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(IslandLayout.ContentPaddingLarge),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -126,7 +101,7 @@ fun DownloadDetailsPanel(
 
 /**
  * The Details pane's tool-window "more" button lives in the shared
- * [org.blaze.presentation.components.ToolWindowOptionsButton]; the Server Logs window mounts the same
+ * [org.island.ui.toolwindow.ToolWindowOptionsButton]; the Server Logs window mounts the same
  * menu, so it is no longer duplicated here.
  */
 @Composable
@@ -147,9 +122,9 @@ private fun DetailsBody(
         if (advisories.isNotEmpty()) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(
-                    start = BlazeLayout.ContentPadding,
-                    end = BlazeLayout.ContentPadding,
-                    top = BlazeLayout.ContentPadding,
+                    start = IslandLayout.ContentPadding,
+                    end = IslandLayout.ContentPadding,
+                    top = IslandLayout.ContentPadding,
                 ),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -166,7 +141,7 @@ private fun DetailsBody(
             VerticallyScrollableContainer(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 Column(
                     modifier = Modifier.fillMaxWidth()
-                        .padding(BlazeLayout.ContentPaddingLarge),
+                        .padding(IslandLayout.ContentPaddingLarge),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     GeneralTab(download)
@@ -175,7 +150,7 @@ private fun DetailsBody(
                             text = filesLabel,
                             // The grouped view's one section heading, i.e. a group header - the exempt
                             // family. Routed through the shared style so its weight is audited.
-                            style = BlazeTypography.emphasizedHeader,
+                            style = IslandTypography.emphasizedHeader,
                             color = JewelTheme.globalColors.text.normal,
                         )
                         FilesTab(files.map { it.path to it.size })
@@ -206,13 +181,13 @@ private fun DetailsBody(
             TabStrip(
                 tabs = tabs,
                 style = JewelTheme.defaultTabStyle,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = BlazeLayout.ContentPadding),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = IslandLayout.ContentPadding),
             )
 
             VerticallyScrollableContainer(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 Column(
                     modifier = Modifier.fillMaxWidth()
-                        .padding(BlazeLayout.ContentPaddingLarge),
+                        .padding(IslandLayout.ContentPaddingLarge),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     when (tabIndex) {
@@ -256,7 +231,7 @@ private fun GeneralTab(download: Download) {
     when (download.resumeSupport()) {
         ResumeSupport.SUPPORTED -> DetailRow(details.resumeSupport) { Text(advisories.resumeSupported) }
         ResumeSupport.UNSUPPORTED -> DetailRow(details.resumeSupport) {
-            Text(advisories.cannotResume, color = BlazeColors.warning)
+            Text(advisories.cannotResume, color = IslandSemanticColors.warning)
         }
         ResumeSupport.UNKNOWN -> Unit
     }
@@ -308,7 +283,7 @@ private fun GeneralTab(download: Download) {
 
     download.error?.let { error ->
         DetailRow(details.error) {
-            Text(text = error.toFriendlyMessage(strings), color = BlazeColors.error)
+            Text(text = error.toFriendlyMessage(strings), color = IslandSemanticColors.error)
         }
     }
 }

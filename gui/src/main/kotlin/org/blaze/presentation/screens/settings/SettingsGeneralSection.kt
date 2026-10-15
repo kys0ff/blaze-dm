@@ -1,29 +1,27 @@
 package org.blaze.presentation.screens.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.engine.settings.ThemeMode
 import org.blaze.i18n.BlazeLocale
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.screens.settings.state.SettingsState
+import org.island.theme.ui.IslandFontFamilies
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.ui.component.CheckboxRow
-import org.jetbrains.jewel.ui.component.Link
-import org.jetbrains.jewel.ui.component.RadioButtonRow
-import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.*
+import org.jetbrains.jewel.ui.theme.simpleListItemStyle
 
 /**
  * General category: appearance, system integration (tray, autostart, clipboard monitoring) and
- * startup/queue behavior. Each option only appears when the environment can actually honour it —
+ * startup/queue behavior. Each option only appears when the environment can actually honor it —
  * the same rule the rest of the shell follows (no tray on a desktop without one, no autostart on
  * an OS we cannot register with).
  *
@@ -31,7 +29,6 @@ import org.jetbrains.jewel.ui.component.Text
  * search index and this screen are the same source: a row shown here is searchable, and a row the search
  * offers is guaranteed to exist here.
  */
-@OptIn(ExperimentalJewelApi::class)
 @Composable
 internal fun GeneralSection(
     state: SettingsState,
@@ -74,6 +71,73 @@ internal fun GeneralSection(
                     )
                 }
             }
+        }
+    }
+
+    SettingsGroup("typography", strings) {
+        // The two font pickers are Jewel dropdowns listing Blaze's bundled families plus every
+        // OS-installed one, each row previewed in its own face. Family names stay endonyms (Inter,
+        // JetBrains Mono, Roboto…) like the language row; only the "system" option is translated.
+        SettingRow("general.uiFont") {
+            Text(text = strings.settings.uiFontLabel)
+            val uiChoices = remember(strings.settings.fontSystemOption) {
+                IslandFontFamilies.uiChoices(strings.settings.fontSystemOption)
+            }
+            FontDropdown(
+                choices = uiChoices,
+                selectedId = state.appSettings.uiFontFamilyId,
+                onSelect = { id -> onEvent(SettingsEvent.UpdateUiFontFamily(id)) },
+            )
+            Text(
+                text = strings.settings.uiFontDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+            )
+        }
+
+        SettingRow("general.monoFont") {
+            Text(text = strings.settings.monoFontLabel)
+            val monoChoices = remember(strings.settings.fontSystemMonoOption) {
+                IslandFontFamilies.monoChoices(strings.settings.fontSystemMonoOption)
+            }
+            FontDropdown(
+                choices = monoChoices,
+                selectedId = state.appSettings.monoFontFamilyId,
+                onSelect = { id -> onEvent(SettingsEvent.UpdateMonoFontFamily(id)) },
+            )
+            Text(
+                text = strings.settings.monoFontDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+            )
+        }
+
+        SettingRow("general.uiTextScale") {
+            Text(text = strings.settings.uiTextScaleLabel)
+            val percent = state.appSettings.uiTextScalePercent
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { onEvent(SettingsEvent.UpdateUiTextScalePercent(percent - 5)) },
+                    enabled = percent > IslandFontFamilies.MinTextScalePercent,
+                ) {
+                    Text(strings.settings.textScaleDecreaseAction)
+                }
+                Text(text = "$percent%", style = JewelTheme.defaultTextStyle)
+                OutlinedButton(
+                    onClick = { onEvent(SettingsEvent.UpdateUiTextScalePercent(percent + 5)) },
+                    enabled = percent < IslandFontFamilies.MaxTextScalePercent,
+                ) {
+                    Text(strings.settings.textScaleIncreaseAction)
+                }
+            }
+            Text(
+                text = strings.settings.uiTextScaleDesc,
+                style = infoStyle,
+                color = JewelTheme.globalColors.text.info,
+            )
         }
     }
 
@@ -276,5 +340,41 @@ private fun NamedItemRow(
             modifier = Modifier.weight(1f),
         )
         Link(text = actionLabel, onClick = onAction)
+    }
+}
+
+/**
+ * A Jewel `ListComboBox` over the catalogue's font [choices], showing the [selectedId] family and
+ * emitting [onSelect] with the chosen id. Each row — and the closed control's label — is drawn in its
+ * own typeface, so the picker previews the fonts rather than merely naming them; the list is lazy, so
+ * the (potentially long) set of OS families costs nothing until opened. An unknown/unsaved [selectedId]
+ * falls back to the first entry, matching the theme's own lenient resolution.
+ */
+@OptIn(ExperimentalJewelApi::class)
+@Composable
+private fun FontDropdown(
+    choices: List<IslandFontFamilies.FontChoice>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+) {
+    val selectedIndex = choices.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
+    ListComboBox(
+        items = choices,
+        selectedIndex = selectedIndex,
+        onSelectedItemChange = { index -> onSelect(choices[index].id) },
+        itemKeys = { _, choice -> choice.id },
+        modifier = Modifier.width(280.dp),
+        maxPopupHeight = 320.dp,
+    ) { choice, isSelected, isActive ->
+        val contentColor by JewelTheme.simpleListItemStyle.colors.contentFor(ListItemState(isSelected, isActive))
+        SimpleListItem(selected = isSelected, active = isActive) {
+            Text(
+                text = choice.label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = contentColor,
+                style = JewelTheme.defaultTextStyle.copy(fontFamily = choice.family),
+            )
+        }
     }
 }

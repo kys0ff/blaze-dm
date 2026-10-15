@@ -1,25 +1,16 @@
 package org.blaze.presentation.screens.main
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.blaze.data.AppSettingsRepository
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
-import org.blaze.domain.repository.DownloadFile
-import org.blaze.domain.repository.DownloadMetadata
-import org.blaze.domain.repository.DownloadRepository
-import org.blaze.domain.repository.PortableInfo
-import org.blaze.domain.repository.TorrentPreview
+import org.blaze.domain.repository.*
+import org.blaze.domain.usecase.GetDownloadsUseCase
 import org.blaze.download.api.DownloadPriority
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
-import org.blaze.domain.usecase.GetDownloadsUseCase
 import org.blaze.presentation.screens.extensions.ExtensionsWindowModel
 import org.blaze.presentation.screens.serverlog.ServerLogWindowModel
 import org.blaze.resolver.core.LinkResolverRegistry
@@ -28,11 +19,7 @@ import org.blaze.resolver.core.PluginLoader
 import org.blaze.security.ConsentService
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * The shell model's own state is a pure reduce over its events and a projection over the downloads and
@@ -108,10 +95,10 @@ class MainScreenModelTest {
         val live = MutableStateFlow(initial)
         override val downloads: Flow<List<Download>> get() = live
 
-        override suspend fun fetchMetadata(url: String, credentials: Map<String, String>): DownloadMetadata? =
+        override suspend fun fetchMetadata(url: String, credentials: Map<String, String>): DownloadMetadata =
             throw NotImplementedError()
 
-        override suspend fun prepareTorrentFromUrl(url: String, credentials: Map<String, String>): TorrentPreview? =
+        override suspend fun prepareTorrentFromUrl(url: String, credentials: Map<String, String>): TorrentPreview =
             throw NotImplementedError()
 
         override suspend fun addDownload(
@@ -123,6 +110,20 @@ class MainScreenModelTest {
         override suspend fun getDestinationPath(url: String, savePath: String, name: String?): String =
             throw NotImplementedError()
 
+        override suspend fun inspectHls(
+            url: String, variantIndex: Int, credentials: Map<String, String>,
+        ): org.blaze.download.api.HlsInspectionDto = throw NotImplementedError()
+
+        override suspend fun inspectArchive(
+            url: String, credentials: Map<String, String>,
+        ): org.blaze.download.api.ArchiveInspectionDto = throw NotImplementedError()
+
+        override suspend fun addDownloadWithSource(
+            source: org.blaze.download.api.DownloadSource, savePath: String, name: String?,
+            totalSize: Long?, scheduledAt: Long?, priority: DownloadPriority?,
+            credentials: Map<String, String>,
+        ) = throw NotImplementedError()
+
         override suspend fun pauseDownload(id: String) = throw NotImplementedError()
         override suspend fun resumeDownload(id: String) = throw NotImplementedError()
         override suspend fun cancelDownload(id: String) = throw NotImplementedError()
@@ -132,7 +133,7 @@ class MainScreenModelTest {
         override suspend fun pauseAll() = throw NotImplementedError()
         override suspend fun resumeAll() = throw NotImplementedError()
         override suspend fun clearCompleted() = throw NotImplementedError()
-        override suspend fun detectPortable(artifactPath: String): PortableInfo? = throw NotImplementedError()
+        override suspend fun detectPortable(artifactPath: String): PortableInfo = throw NotImplementedError()
         override suspend fun importPortable(artifactPath: String, destinationDir: String): Boolean =
             throw NotImplementedError()
     }

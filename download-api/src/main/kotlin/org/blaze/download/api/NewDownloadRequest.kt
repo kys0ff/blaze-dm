@@ -27,6 +27,37 @@ sealed interface DownloadSource {
     @Serializable
     @SerialName("torrentFile")
     data class TorrentFile(val path: String) : DownloadSource
+
+    /**
+     * An HTTP Live Streaming playlist (`http(s)` `.m3u8`) routed to the built-in HLS handler.
+     *
+     * Declaring the source as an HLS playlist - rather than a plain [Url] - is what selects the handler, so
+     * Blaze never decides from a file extension alone: the caller (a resolver, the Add Download inspector,
+     * or an explicit user choice) has already validated the playlist structure. [variantIndex] selects a
+     * master-playlist variant (-1 = highest advertised bandwidth); [drmAcknowledged] records that the user
+     * accepted a potential-DRM warning - it only lets a supported download proceed, never bypasses DRM.
+     */
+    @Serializable
+    @SerialName("hls")
+    data class Hls(
+        val url: String,
+        val variantIndex: Int = -1,
+        val drmAcknowledged: Boolean = false,
+    ) : DownloadSource
+
+    /**
+     * A remote ZIP archive the client wants inspected and, when byte ranges allow, selectively extracted.
+     *
+     * [selectedEntries] names the members to retrieve; null means "download the whole archive". The engine
+     * verifies range support before fetching anything, so an unsupported host falls back to a full download
+     * rather than silently pulling the entire archive for a partial request.
+     */
+    @Serializable
+    @SerialName("archive")
+    data class RemoteArchive(
+        val url: String,
+        val selectedEntries: List<String>? = null,
+    ) : DownloadSource
 }
 
 /**
@@ -114,6 +145,8 @@ data class NewDownloadRequest(
         is DownloadSource.Url -> "Url(${source.url.originOf()})"
         is DownloadSource.Magnet -> "Magnet(${source.uri.take(24)}...)"
         is DownloadSource.TorrentFile -> "TorrentFile(${source.filenameHint()})"
+        is DownloadSource.Hls -> "Hls(${source.url.originOf()})"
+        is DownloadSource.RemoteArchive -> "RemoteArchive(${source.url.originOf()})"
     }
 }
 

@@ -32,5 +32,12 @@ data class DownloadTask(
      * transfer itself. Null while unknown: a paused download whose value is still null may or may
      * not continue where it stopped, and no client should claim otherwise.
      */
-    val resumeSupported: Boolean? = null
+    val resumeSupported: Boolean? = null,
+    /**
+     * How many times the engine has genuinely thrown away downloaded bytes and restarted the
+     * transfer from byte 0 (a refused range, an unusable resume record). It only ever moves forward,
+     * so a client can detect a real lost-progress event by watching it increment - and stays silent
+     * for the byte-counter dips of a chunk retry or a pause/resume re-anchor, which never touch it.
+     */
+    val restarts: Int = 0
 )

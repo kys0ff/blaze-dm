@@ -39,6 +39,22 @@ sealed interface DownloadsEvent {
         /** Ephemeral auth headers for this transfer only; forwarded to the engine, never stored. */
         val credentials: Map<String, String> = emptyMap(),
     ) : DownloadsEvent
+
+    /**
+     * Queues a download whose handler is decided by validated inspection rather than a bare URL: an HLS
+     * playlist (with the chosen variant and DRM acknowledgment) or a remote archive (with the chosen
+     * entry selection). [source] is the typed [org.blaze.download.api.DownloadSource] the dialog built.
+     */
+    data class AddDownloadTyped(
+        val source: org.blaze.download.api.DownloadSource,
+        val savePath: String,
+        val name: String? = null,
+        val totalSize: Long? = null,
+        val scheduledAt: Long? = null,
+        val priority: DownloadPriority? = null,
+        /** Ephemeral auth headers for this transfer only; forwarded to the engine, never stored. */
+        val credentials: Map<String, String> = emptyMap(),
+    ) : DownloadsEvent
     data class Pause(val id: String) : DownloadsEvent
     data class Resume(val id: String) : DownloadsEvent
     data class Remove(val id: String, val deleteFile: Boolean) : DownloadsEvent

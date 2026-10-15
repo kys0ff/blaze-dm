@@ -2,16 +2,12 @@ package org.blaze.presentation.screens.serverlog
 
 import kotlinx.coroutines.runBlocking
 import org.blaze.data.AppSettingsRepository
-import org.blaze.presentation.components.panel.ToolWindowLayoutAction
-import org.blaze.presentation.components.panel.ToolWindowMoveTo
-import org.blaze.presentation.components.panel.ToolWindowResize
-import org.blaze.presentation.components.panel.ToolWindowViewMode
+import org.island.ui.toolwindow.ToolWindowLayoutAction
+import org.island.ui.toolwindow.ToolWindowMoveTo
+import org.island.ui.toolwindow.ToolWindowResize
+import org.island.ui.toolwindow.ToolWindowViewMode
 import java.nio.file.Files
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * Covers the Server Logs window's reduce-only presentation state and its write-back into the persisted

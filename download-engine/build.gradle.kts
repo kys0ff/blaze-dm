@@ -19,10 +19,13 @@ dependencies {
     // Ktor for HTTP downloads
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
-    // Production HTTP engine: unlike CIO, the JDK HttpClient pools and reuses keep-alive
-    // connections (and speaks HTTP/2), so a segmented download does not open a fresh
-    // TCP+TLS socket per chunk. CIO stays on the classpath for the tests that want it.
-    implementation(libs.ktor.client.java)
+    // Production HTTP engine. HttpEngineBenchmark + docs/PROGRESS.md Phase 3 sect.1 measured
+    // Java (the previous pick) vs CIO vs OkHttp on the same 32 MiB segmented workload: OkHttp
+    // wins every unthrottled cell (1.2-2.1x Java) and matches or beats Java under a per-conn
+    // cap, with 3x fewer threads at conn=16 (69 vs 214) and about half the GC pause. CIO is
+    // disqualified by opening a fresh socket per request (serverConnections=34 at conn=4),
+    // the same reason it was previously not the production pick.
+    implementation(libs.ktor.client.okhttp)
     
     // BitTorrent
     implementation(libs.bt.core)
@@ -33,11 +36,14 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.ktor.client.mock)
+    // HttpEngineBenchmark keeps the Java engine on the test classpath so before/after
+    // comparisons against the new production engine (OkHttp) can still be run.
+    testImplementation(libs.ktor.client.java)
     testImplementation(libs.slf4j.simple)
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(25)
 }
 
 /**

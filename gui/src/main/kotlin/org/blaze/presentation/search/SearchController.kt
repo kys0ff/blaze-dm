@@ -1,39 +1,46 @@
 package org.blaze.presentation.search
 
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import org.blaze.domain.models.Download
+import org.blaze.i18n.BlazeStrings
+import org.blaze.i18n.EnStrings
 import org.blaze.presentation.application.AppCommand
 import org.blaze.presentation.application.AppCommandBus
+import org.blaze.presentation.components.BlazeIslandStrings
+import org.island.ui.search.IslandSearchController
+import org.island.ui.search.SearchHit
+import org.island.ui.search.SearchProvider
+import org.island.ui.text.IslandUiStrings
 
 /**
- * The single, window-level brain behind Search Everywhere. There is exactly one of these (a Koin
- * singleton), and the three entry points — the title-bar icon, the hamburger item and Ctrl/Cmd+K — all
- * route into it, which is precisely what was missing before: those entry points fired a "focus the
- * in-list filter" command with no popup to open, so clicking search looked like nothing happened.
+ * The single, window-level brain behind Blaze's Search Everywhere. There is exactly one of these (a
+ * Koin singleton), and the three entry points — the title-bar icon, the hamburger item and Ctrl/Cmd+K —
+ * all route into it.
  *
- * It owns only *interaction state* (open, query, tab, how it was opened) and *activation*. The actual
- * result candidates are built at composition time from live sources: the downloads snapshot the
- * downloads screen pushes in, the static [AppActions] registry and the [org.blaze.presentation.screens.settings.SettingsRegistry].
- * Keeping the data sources out of the controller means the popup always ranks against current state
- * without the controller depending on i18n or a screen model it cannot resolve (the screens are Koin
- * *factories*, one instance per screen).
+ * It is Blaze's view of the generic [IslandSearchController]: the app's three result families
+ * (downloads, actions, settings) are registered as [SearchProvider]s, and this wrapper keeps the
+ * app-side capabilities the popup cannot know about — the live download snapshot the downloads screen
+ * pushes in, the per-screen activation callback, the pending settings focus hand-off, and the
+ * context-aware default tab ([fromSettings]).
  */
 class SearchController(private val commandBus: AppCommandBus) {
 
-    /** Whether the popup is on screen. Drives both the full-window [Popup] host and the shortcut toggle. */
-    var isOpen by mutableStateOf(false)
-        private set
+    /** The generic controller the island popup renders; Blaze's three families are its providers. */
+    val island = IslandSearchController(
+        providers = listOf(DownloadsProvider(), ActionsProvider(), SettingsProvider()),
+    )
+
+    /** Whether the popup is on screen. Drives both the full-window popup host and the shortcut toggle. */
+    val isOpen: Boolean get() = island.isOpen
 
     /** The current query, matched per keystroke (no debounce) so results stay live under fast typing. */
-    var query by mutableStateOf("")
-        private set
+    val query: String get() = island.query
 
     /** The active tab; [SearchTab.All] interleaves every kind under section headers. */
-    var tab by mutableStateOf(SearchTab.All)
-        private set
+    val tab: SearchTab
+        get() = SearchTab.entries.first { it.tabId == island.tabId }
 
     /**
      * Whether the popup was opened from *inside* the Settings window. When true the default tab is
@@ -46,8 +53,9 @@ class SearchController(private val commandBus: AppCommandBus) {
     // ── Pluggable sources / activation, registered by the screens that own the capability ──────────
 
     /**
-     * The live download list, pushed in by the downloads screen whenever it changes. The popup ranks
-     * against this snapshot rather than reaching into a per-screen model it cannot resolve.
+     * The live download list, pushed in by the downloads screen whenever it changes. [DownloadsProvider]
+     * reads it as snapshot state, so the popup re-ranks against it without this controller reaching
+     * into a per-screen model it cannot resolve.
      */
     var downloads by mutableStateOf<List<Download>>(emptyList())
         private set
@@ -66,49 +74,6 @@ class SearchController(private val commandBus: AppCommandBus) {
      */
     var pendingSettingFocus by mutableStateOf<String?>(null)
 
-    // ── Result navigation ──────────────────────────────────────────────────────────────────────────
-    // The ranked hits and the highlighted row live here (not only in the popup composable) so the
-    // popup's single keyboard handler can move and activate them without reaching back into a child's
-    // local state. The popup publishes the hits each time it recomputes them.
-
-    /** The currently ranked results, in the order they are shown; the keyboard walks this list. */
-    var hits: List<SearchHit> by mutableStateOf(emptyList())
-        private set
-
-    /** The index into [hits] the keyboard/hover currently points at. */
-    var highlighted by mutableIntStateOf(0)
-        private set
-
-    /** Publishes the freshly ranked [hits], pulling the highlight back in range if the list shrank. */
-    fun publishHits(newHits: List<SearchHit>) {
-        hits = newHits
-        if (highlighted >= newHits.size) highlighted = 0
-    }
-
-    fun moveDown() {
-        if (hits.isNotEmpty()) highlighted = (highlighted + 1) % hits.size
-    }
-
-    fun moveUp() {
-        if (hits.isNotEmpty()) highlighted = (highlighted - 1 + hits.size) % hits.size
-    }
-
-    /** Steps the highlight by a page (positive down, negative up), clamped rather than wrapping. */
-    fun page(delta: Int) {
-        if (hits.isEmpty()) return
-        highlighted = (highlighted + delta).coerceIn(0, hits.lastIndex)
-    }
-
-    /** Sets the highlight directly (a pointer hover). */
-    fun highlight(index: Int) {
-        if (index in hits.indices) highlighted = index
-    }
-
-    /** Activates the highlighted result, if any. */
-    fun activateSelected() {
-        hits.getOrNull(highlighted)?.let { activate(it) }
-    }
-
     /** Publishes the current download list into the controller (called from the downloads screen). */
     fun submitDownloads(downloads: List<Download>) {
         this.downloads = downloads
@@ -126,10 +91,10 @@ class SearchController(private val commandBus: AppCommandBus) {
     /** Opens the popup. [tab] pins the initial tab; otherwise the context ([fromSettings]) decides it. */
     fun open(tab: SearchTab? = null, fromSettings: Boolean = false) {
         this.fromSettings = fromSettings
-        this.tab = tab ?: if (fromSettings) SearchTab.Settings else SearchTab.All
-        query = ""
-        highlighted = 0
-        isOpen = true
+        island.open(
+            tabId = tab?.tabId,
+            defaultTabId = if (fromSettings) SearchTab.Settings.tabId else SearchTab.All.tabId,
+        )
     }
 
     /** Toggles the popup (the Ctrl/Cmd+K chord). */
@@ -137,50 +102,65 @@ class SearchController(private val commandBus: AppCommandBus) {
         if (isOpen) close() else open(fromSettings = fromSettings)
     }
 
-    fun close() {
-        isOpen = false
-        query = ""
-        highlighted = 0
-        hits = emptyList()
-    }
+    fun close() = island.close()
 
-    fun updateQuery(value: String) {
-        query = value
-        highlighted = 0
-    }
+    fun updateQuery(value: String) = island.updateQuery(value)
 
-    fun selectTab(value: SearchTab) {
-        tab = value
-        highlighted = 0
-    }
+    // ── Providers ──────────────────────────────────────────────────────────────────────────────────
 
-    /** Steps the tab forward or back, wrapping at the ends (Tab / Shift+Tab, Ctrl+Down / Ctrl+Up). */
-    fun cycleTab(delta: Int) {
-        val tabs = SearchTab.entries
-        val next = (tab.ordinal + delta + tabs.size) % tabs.size
-        tab = tabs[next]
-        highlighted = 0
-    }
+    /** The Blaze strings behind the island contract (providers label and match through them). */
+    private fun blazeOf(strings: IslandUiStrings): BlazeStrings =
+        (strings as? BlazeIslandStrings)?.blaze ?: EnStrings
 
-    // ── Activation ─────────────────────────────────────────────────────────────────────────────────
+    /** The download list, exactly as the on-screen table shows it. */
+    private inner class DownloadsProvider : SearchProvider {
+        override val id = SearchKind.Download.groupId
 
-    /**
-     * Runs the chosen result, then closes the popup. Actions re-raise their [AppCommand] on the shared
-     * bus — so a search activation and a menu click of the same action take the exact same path — while
-     * downloads and settings hand off to the screens that own that navigation.
-     */
-    fun activate(hit: SearchHit) {
-        when (hit.kind) {
-            SearchKind.Download -> activateDownload(hit.id)
-            SearchKind.Action -> hit.id.toAppCommand()?.let { commandBus.send(it) }
-            SearchKind.Setting -> {
-                pendingSettingFocus = hit.id
-                commandBus.send(AppCommand.OpenSettings)
+        override fun tabLabel(strings: IslandUiStrings) = blazeOf(strings).search.tabDownloads
+
+        override fun sectionTitle(strings: IslandUiStrings) = blazeOf(strings).search.sectionDownloads
+
+        override fun candidates(query: String, strings: IslandUiStrings) =
+            if (query.isBlank()) {
+                // The at-rest Downloads tab previews the most recent rows, like the IDE's tool-window lists.
+                SearchSources.downloadCandidates(downloads.take(SearchSources.BLANK_DOWNLOAD_LIMIT), blazeOf(strings))
+            } else {
+                SearchSources.downloadCandidates(downloads, blazeOf(strings))
             }
-        }
-        close()
+
+        override fun onActivate(hit: SearchHit) = activateDownload(hit.id)
     }
 
-    private fun String.toAppCommand(): AppCommand? =
-        runCatching { AppCommand.valueOf(this) }.getOrNull()
+    /** The hamburger menu's command registry — activating a result re-raises the very same command. */
+    private inner class ActionsProvider : SearchProvider {
+        override val id = SearchKind.Action.groupId
+
+        override fun tabLabel(strings: IslandUiStrings) = blazeOf(strings).search.tabActions
+
+        override fun sectionTitle(strings: IslandUiStrings) = blazeOf(strings).search.sectionActions
+
+        override fun candidates(query: String, strings: IslandUiStrings) =
+            SearchSources.actionCandidates(blazeOf(strings))
+
+        override fun onActivate(hit: SearchHit) {
+            runCatching { AppCommand.valueOf(hit.id) }.getOrNull()?.let(commandBus::send)
+        }
+    }
+
+    /** Every registered settings option, matched against its label, English alias and keywords. */
+    private inner class SettingsProvider : SearchProvider {
+        override val id = SearchKind.Setting.groupId
+
+        override fun tabLabel(strings: IslandUiStrings) = blazeOf(strings).search.tabSettings
+
+        override fun sectionTitle(strings: IslandUiStrings) = blazeOf(strings).search.sectionSettings
+
+        override fun candidates(query: String, strings: IslandUiStrings) =
+            SearchSources.settingCandidates(blazeOf(strings))
+
+        override fun onActivate(hit: SearchHit) {
+            pendingSettingFocus = hit.id
+            commandBus.send(AppCommand.OpenSettings)
+        }
+    }
 }

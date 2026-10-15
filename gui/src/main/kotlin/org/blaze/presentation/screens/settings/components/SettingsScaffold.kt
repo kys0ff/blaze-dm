@@ -2,15 +2,7 @@ package org.blaze.presentation.screens.settings.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,15 +10,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.BlazeStrings
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.DialogButton
-import org.blaze.presentation.components.ToolWindowSearchField
-import org.blaze.presentation.components.dialogButtonOrder
+import org.blaze.presentation.components.AppMetrics
 import org.blaze.presentation.screens.settings.SettingsNavItem
 import org.blaze.presentation.screens.settings.SettingsRegistry
 import org.blaze.presentation.screens.settings.state.SettingsCategory
-import org.blaze.presentation.theme.BlazeColors
-import org.jetbrains.jewel.foundation.ExperimentalJewelApi
+import org.island.foundation.DialogButton
+import org.island.foundation.dialogButtonOrder
+import org.island.theme.ui.IslandSemanticColors
+import org.island.ui.toolwindow.ToolWindowSearchField
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.DefaultButton
@@ -50,7 +41,6 @@ import org.jetbrains.jewel.ui.component.Text
  * in it. So the filter is [SettingsRegistry.categoryMatches] over the very same registry the content pane
  * hides rows with — the sidebar and the section can never disagree about what a query matches.
  */
-@OptIn(ExperimentalJewelApi::class)
 @Composable
 internal fun SettingsSidebar(
     selected: SettingsCategory,
@@ -62,7 +52,7 @@ internal fun SettingsSidebar(
 ) {
     Column(
         modifier = Modifier
-            .width(BlazeLayout.SettingsNavWidth)
+            .width(AppMetrics.SettingsNavWidth)
             .fillMaxHeight()
             .background(JewelTheme.globalColors.panelBackground)
             .padding(vertical = 8.dp),
@@ -73,7 +63,7 @@ internal fun SettingsSidebar(
             placeholder = strings.settings.searchPlaceholder,
             clearDescription = strings.settings.clearSearch,
             onQueryChange = onQueryChange,
-            fieldWidth = BlazeLayout.SettingsNavWidth,
+            fieldWidth = AppMetrics.SettingsNavWidth,
         )
         Spacer(Modifier.height(6.dp))
 
@@ -120,7 +110,7 @@ internal fun NothingFoundPanel(strings: BlazeStrings, onClear: () -> Unit) {
         )
         Text(
             text = strings.settings.clearSearch,
-            color = BlazeColors.accent,
+            color = IslandSemanticColors.accent,
             modifier = Modifier
                 .clickable(onClick = onClear)
                 .semantics { testTag = "settings_clear_search" }
@@ -138,7 +128,6 @@ internal fun NothingFoundPanel(strings: BlazeStrings, onClear: () -> Unit) {
  * pointer rests in. Only the button *kind* is fixed per action, so OK stays accent-filled wherever it
  * lands.
  */
-@OptIn(ExperimentalJewelApi::class)
 @Composable
 internal fun SettingsButtonBar(
     okEnabled: Boolean,

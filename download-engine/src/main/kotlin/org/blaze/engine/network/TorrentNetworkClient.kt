@@ -555,9 +555,11 @@ class TorrentNetworkClient(
     }.getOrDefault(false)
 
     /**
-     * bt only ships an HTTP(S) tracker module here. udp:// and wss:// announce URLs (which is what most
-     * public torrents, e.g. the WebTorrent Big Buck Bunny one, list) are silently unusable, so the swarm
-     * then depends entirely on DHT/PEX. Logging it makes "0 peers" much easier to diagnose.
+     * Logs which announce URLs in the torrent are usable by the wired tracker clients. HTTP(S) comes
+     * from bt's tracker module and `udp://` from the UDP tracker factory we register on the runtime
+     * (bt ships the client in bt-core but never auto-wires it). Anything else - e.g. `wss://` - is
+     * unusable here, so the swarm would then depend entirely on DHT/PEX; logging it makes "0 peers"
+     * much easier to diagnose.
      */
     private fun logTrackers(torrent: Torrent) {
         val urls = buildList {
@@ -565,10 +567,12 @@ class TorrentNetworkClient(
                 if (key.isMultiKey) key.trackerUrls.forEach { addAll(it) } else add(key.trackerUrl)
             }
         }
-        val usable = urls.filter { it.startsWith("http://") || it.startsWith("https://") }
-        logger.debug("Trackers: {} total, {} HTTP(S) usable: {}", urls.size, usable.size, urls)
+        val usable = urls.filter {
+            it.startsWith("http://") || it.startsWith("https://") || it.startsWith("udp://")
+        }
+        logger.debug("Trackers: {} total, {} usable (HTTP/HTTPS/UDP): {}", urls.size, usable.size, urls)
         if (usable.isEmpty()) {
-            logger.warn("No HTTP(S) tracker in torrent; peers can only come from DHT / peer exchange.")
+            logger.warn("No usable HTTP(S)/UDP tracker in torrent; peers can only come from DHT / peer exchange.")
         }
     }
 

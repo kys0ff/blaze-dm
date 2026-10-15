@@ -253,6 +253,49 @@ object ArStrings : BlazeStrings {
                 override val confirm = "تنزيل الصفحة على أي حال"
             }
 
+            override val hls = object : BlazeStrings.Downloads.Dialogs.Hls {
+                override val qualityTitle = "اختر الجودة"
+                override val estimatedSize = "الحجم التقريبي"
+                override val noSizeEstimate = "الحجم غير معروف حتى يبدأ التنزيل"
+                override val defaultQuality = "الأفضل المتاح"
+                override val notAStream = "هذا الرابط ليس تدفقًا يستطيع Blaze تشغيله أو حفظه."
+                override fun variantLabel(resolution: String?, bandwidthMbps: String?): String {
+                    val parts =
+                        listOfNotNull(resolution?.takeIf { it.isNotBlank() }, bandwidthMbps?.takeIf { it.isNotBlank() })
+                    return if (parts.isEmpty()) defaultQuality else parts.joinToString(" · ")
+                }
+            }
+
+            override val drmWarning = object : BlazeStrings.Downloads.Dialogs.DrmWarning {
+                override val title = "احتمال وجود حماية بصيغة DRM"
+                override val message =
+                    "قد يستخدم هذا التدفق حماية DRM أو آلية أخرى لحماية المحتوى. قد يكون تنزيل المحتوى المحمي أو " +
+                            "نسخه مقيّدًا بالقوانين السارية أو بإذنك أو بشروط مقدّم المحتوى. أنت مسؤول عن التأكد من أن لديك " +
+                            "إذنًا بتنزيل هذا المحتوى وأن استخدامك يمتثل للمتطلبات المعمول بها."
+                override val detail =
+                    "المتابعة تحاول فقط إجراء تنزيل عادي عبر الطرق التي يدعمها Blaze؛ فهي لا تضمن النجاح، ولا تتجاوز " +
+                            "DRM أبدًا، ولا تكسر ضوابط الوصول، ولا تستخرج المفاتيح المحمية."
+                override val uncertainNote =
+                    "لم يستطع Blaze تصنيف حماية هذا التدفق بثقة؛ فقد تكون محمية بصيغة DRM أو لا."
+                override val advice =
+                    "إن لم تكن متأكدًا من السماح لك بتنزيل هذا التدفق، فراجع الوثائق الرسمية لدى المقدّم أو شروط الخدمة."
+                override val continueAction = "المتابعة بتنزيل عادي"
+            }
+
+            override val archive = object : BlazeStrings.Downloads.Dialogs.Archive {
+                override val entriesTitle = "محتويات الأرشيف"
+                override fun estimatedSelected(size: String) = "المحدَّد: $size"
+                override val selectiveUnsupported =
+                    "لا يقدّم هذا الخادم أجزاءً منفردة من الأرشيف، لذا يستطيع Blaze تنزيل الملف الكامل فقط. يمكنك " +
+                            "استخراج الأعضاء التي تريدها منه لاحقًا."
+                override val downloadWholeArchive = "تنزيل الأرشيف بالكامل"
+                override val notExtractable = "لا يمكن استخراجها"
+                override val hint = "حدّد الملفات أو المجلدات لاستخراج تلك الأعضاء فقط."
+                override fun unavailable(reason: String) =
+                    if (reason.isBlank()) "هذا المصدر ليس أرشيفًا يستطيع Blaze فتحه."
+                    else "هذا المصدر ليس أرشيفًا يستطيع Blaze فتحه: $reason"
+            }
+
             override val details = object : BlazeStrings.Downloads.Dialogs.Details {
                 override val title = "تفاصيل التنزيل"
                 override val name = "الاسم"
@@ -589,6 +632,20 @@ object ArStrings : BlazeStrings {
         override val themeSystemOption = "متابعة النظام"
         override val themeLightOption = "فاتحة"
         override val themeDarkOption = "داكنة"
+        override val typographyHeader = "الخطوط"
+        override val uiFontLabel = "خط الواجهة"
+        override val uiFontDesc =
+            "يُعيد تنسيق كل نص في Blaze عند التطبيق؛ خط Inter هو خط التصميم نفسه، بينما يمنح JetBrains Mono الواجهة مظهر خط الأكواد في محرر IntelliJ."
+        override val monoFontLabel = "خط العرض الثابت"
+        override val monoFontDesc =
+            "المستخدم في لوحة سجلات الخادم والنصوص ثابتة العرض الأخرى؛ JetBrains Mono هو الافتراضي."
+        override val uiTextScaleLabel = "حجم نص الواجهة"
+        override val uiTextScaleDesc =
+            "يتغير كل نص في التطبيق كنسبة مئوية من حجمه التصميمي (60%–160%) دون أي تغيير في أحجام التخطيط."
+        override val fontSystemOption = "افتراضي النظام"
+        override val fontSystemMonoOption = "ثابت العرض الافتراضي للنظام"
+        override val textScaleDecreaseAction = "−"
+        override val textScaleIncreaseAction = "+"
         override val startupHeader = "سلوك بدء التشغيل وقائمة الانتظار"
         override val resumeOnStartupLabel = "استئناف التنزيلات تلقائيًا عند بدء تشغيل التطبيق"
         override val startQueuedOnStartupLabel = "بدء التنزيلات المنتظرة تلقائيًا عند بدء تشغيل التطبيق"

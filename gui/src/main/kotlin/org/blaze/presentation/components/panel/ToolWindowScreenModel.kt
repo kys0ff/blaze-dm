@@ -9,6 +9,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.island.ui.toolwindow.ToolWindowLayout
+import org.island.ui.toolwindow.ToolWindowLayoutAction
+import org.island.ui.toolwindow.ToolWindowLayoutStore
+import org.island.ui.toolwindow.reduceToolWindowLayout
 import kotlin.time.Duration.Companion.milliseconds
 
 /**

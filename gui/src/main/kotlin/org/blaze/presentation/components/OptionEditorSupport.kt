@@ -1,17 +1,13 @@
 package org.blaze.presentation.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.BlazeStrings
-import org.blaze.presentation.theme.BlazeColors
+import org.island.theme.ui.IslandSemanticColors
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Outline
@@ -88,6 +84,6 @@ fun OptionFieldHint(text: String, isError: Boolean) {
     Text(
         text = text,
         style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
-        color = if (isError) BlazeColors.error else JewelTheme.globalColors.text.info,
+        color = if (isError) IslandSemanticColors.error else JewelTheme.globalColors.text.info,
     )
 }

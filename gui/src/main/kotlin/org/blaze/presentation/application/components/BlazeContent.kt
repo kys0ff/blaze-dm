@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.navigator.Navigator
 import org.blaze.presentation.screens.main.MainScreen
-import org.blaze.presentation.theme.blazeAmbientBodyFrame
+import org.island.theme.ui.blazeAmbientBodyFrame
 
 /**
  * The window body: everything below the title bar.

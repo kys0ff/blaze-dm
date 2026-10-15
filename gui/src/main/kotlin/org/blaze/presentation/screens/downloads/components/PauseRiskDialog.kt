@@ -8,12 +8,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.StandardDialogButtons
 import org.blaze.presentation.screens.downloads.percentDone
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.Text
+import org.island.ui.dialog.*
 
 /**
  * Confirmation for pausing a download the source cannot resume.
@@ -36,7 +35,7 @@ fun PauseRiskDialog(
     val percent = download.percentDone()
     var doNotAskAgain by remember { mutableStateOf(false) }
 
-    BaseDialog(onDismiss = onDismiss, width = 440.dp, title = risk.title) {
+    IslandDialog(onDismiss = onDismiss, width = 440.dp, title = risk.title) {
         Text(text = risk.message(download.name))
 
         AdvisoryCallout(text = risk.detail(percent), tone = AdvisoryTone.WARNING)

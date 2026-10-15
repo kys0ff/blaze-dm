@@ -17,8 +17,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.components.ExtensionIcon
-import org.blaze.presentation.components.BaseDialog
-import org.blaze.presentation.components.StandardDialogButtons
 import org.blaze.resolver.core.LinkResolverRegistry
 import org.blaze.resolver.core.LoadedResolver
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
@@ -26,6 +24,7 @@ import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.RadioButtonRow
 import org.jetbrains.jewel.ui.component.Text
 import org.koin.compose.koinInject
+import org.island.ui.dialog.*
 
 /**
  * JetBrains-style picker shown when several installed handlers can process a page link.
@@ -47,7 +46,7 @@ fun HandlerChoiceDialog(
     var selected by remember { mutableStateOf(handlers.firstOrNull()?.id) }
     val selectedHandler = handlers.firstOrNull { it.id == selected }
 
-    BaseDialog(onDismiss = onDismiss, title = dStrings.handlerChoiceTitle) {
+    IslandDialog(onDismiss = onDismiss, title = dStrings.handlerChoiceTitle) {
         Text(
             text = dStrings.handlerChoicePrompt,
             style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),

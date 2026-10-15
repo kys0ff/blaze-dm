@@ -21,7 +21,7 @@ data class AppSettings(
     /** Register Blaze to start automatically when the user logs in. */
     val runAtStartup: Boolean = false,
     /**
-     * Open Blaze hidden in the tray instead of showing the window when it starts. Only honoured when
+     * Open Blaze hidden in the tray instead of showing the window when it starts. Only honored when
      * the tray is actually available ([trayEnabled] and a platform that offers a tray); otherwise the
      * window opens normally so the app is never left unreachable with no way back. Off by default.
      */
@@ -85,9 +85,9 @@ data class AppSettings(
     val detailsSplitFraction: Float = 0.68f,
     /** Confirm before pausing a download whose progress would be discarded. On by default. */
     val warnBeforeDiscardingProgress: Boolean = true,
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowViewMode] the pane presents in. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowViewMode] the pane presents in. */
     val detailsViewMode: String = "DOCK_PINNED",
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowMoveTo] the pane docks to. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowMoveTo] the pane docks to. */
     val detailsMoveTo: String = "RIGHT_TOP",
     /** Whether the pane's tabs are grouped into one continuous view instead of a tab strip. */
     val groupDetailsTabs: Boolean = false,
@@ -105,9 +105,9 @@ data class AppSettings(
     val serverLogVisible: Boolean = false,
     /** Fraction of the content|log split given to the content, persisted across launches. */
     val serverLogSplitFraction: Float = 0.65f,
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowViewMode] the log window presents in. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowViewMode] the log window presents in. */
     val serverLogViewMode: String = "DOCK_PINNED",
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowMoveTo] the log window docks to. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowMoveTo] the log window docks to. */
     val serverLogMoveTo: String = "BOTTOM_RIGHT",
     val serverLogInnerSplitFraction: Float = 0.50f,
     val serverLogFloatingOffsetX: Float = 80f,
@@ -124,15 +124,33 @@ data class AppSettings(
     val extensionsVisible: Boolean = false,
     /** Fraction of the content|extensions split given to the content, persisted across launches. */
     val extensionsSplitFraction: Float = 0.65f,
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowViewMode] the window presents in. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowViewMode] the window presents in. */
     val extensionsViewMode: String = "DOCK_PINNED",
-    /** Name of the [org.blaze.presentation.components.panel.ToolWindowMoveTo] the window docks to. */
+    /** Name of the [org.island.ui.toolwindow.ToolWindowMoveTo] the window docks to. */
     val extensionsMoveTo: String = "LEFT_TOP",
     val extensionsInnerSplitFraction: Float = 0.50f,
     val extensionsFloatingOffsetX: Float = 120f,
     val extensionsFloatingOffsetY: Float = 120f,
     val extensionsFloatingWidthDp: Float = 420f,
     val extensionsFloatingHeightDp: Float = 480f,
+
+    // ── Typography ─────────────────────────────────────────────────────────────
+    // Font choices are persisted as catalogue id strings (see org.island.theme.ui.IslandFontFamilies),
+    // keeping this file's "primitives only" rule; an unknown id falls back to the default at render.
+
+    /**
+     * Interface font family id ("system", "inter", "jetbrains_mono"). Defaults to Inter — the
+     * family the New UI is designed around; JetBrains Mono gives the whole shell the IDE's
+     * coding-font look.
+     */
+    val uiFontFamilyId: String = "inter",
+    /** Monospace family id ("system", "inter", "jetbrains_mono") used by Server Logs and console text. */
+    val monoFontFamilyId: String = "jetbrains_mono",
+    /**
+     * Interface text size as a percentage of the design default (clamped to 60..160). Scales every
+     * sp-driven text through the UI density's font scale without touching dp layout.
+     */
+    val uiTextScalePercent: Int = 100,
 
     // ── Chrome ─────────────────────────────────────────────────────────────────
     /**
@@ -193,7 +211,7 @@ data class AppSettings(
 /**
  * A keyboard chord as written to disk: a physical key ([keyCode]/[keyLocation] mirror `java.awt.event.KeyEvent`)
  * under the primary [ctrl] (Ctrl on Windows/Linux, Command on macOS), [shift] and [alt] modifiers.
- * [KeymapPersistence] converts to and from the presentation [org.blaze.presentation.components.BlazeKeymap.Binding].
+ * [KeymapPersistence] converts to and from the presentation [org.blaze.presentation.components.IslandKeyBinding].
  */
 @Serializable
 data class StoredKeyBinding(

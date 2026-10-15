@@ -1,11 +1,7 @@
 package org.blaze.presentation.screens.downloads.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -15,8 +11,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeTypography
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.IslandTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -38,8 +34,8 @@ fun AdvisoryChip(
     modifier: Modifier = Modifier,
 ) {
     val color: Color = when (tone) {
-        AdvisoryTone.WARNING -> BlazeColors.warning
-        AdvisoryTone.ERROR -> BlazeColors.error
+        AdvisoryTone.WARNING -> IslandSemanticColors.warning
+        AdvisoryTone.ERROR -> IslandSemanticColors.error
     }
 
     Row(
@@ -77,8 +73,8 @@ fun AdvisoryCallout(
     modifier: Modifier = Modifier,
 ) {
     val color: Color = when (tone) {
-        AdvisoryTone.WARNING -> BlazeColors.warning
-        AdvisoryTone.ERROR -> BlazeColors.error
+        AdvisoryTone.WARNING -> IslandSemanticColors.warning
+        AdvisoryTone.ERROR -> IslandSemanticColors.error
     }
 
     Row(
@@ -98,7 +94,7 @@ fun AdvisoryCallout(
         )
         Text(
             text = text,
-            style = BlazeTypography.chip,
+            style = IslandTypography.chip,
             color = color
         )
     }

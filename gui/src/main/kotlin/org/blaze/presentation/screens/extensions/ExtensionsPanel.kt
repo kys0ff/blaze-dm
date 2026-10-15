@@ -20,14 +20,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.components.BaseDialog
 import org.blaze.presentation.components.ExtensionIcon
-import org.blaze.presentation.components.StandardDialogButtons
 import org.blaze.presentation.components.ResolverOptionsDialog
-import org.blaze.presentation.components.ToolWindowHeader
-import org.blaze.presentation.components.ToolWindowOptionsButton
-import org.blaze.presentation.components.ToolbarIconButton
-import org.blaze.presentation.components.panel.ToolWindowLayoutAction
+import org.island.ui.toolwindow.ToolWindowHeader
+import org.island.ui.toolwindow.ToolWindowOptionsButton
+import org.island.ui.toolwindow.ToolWindowLayoutAction
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
@@ -37,6 +34,8 @@ import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.island.ui.dialog.*
+import org.island.ui.toolbar.*
 
 /**
  * The Extensions tool window: a live view of the installed link handlers that docks beside the
@@ -46,7 +45,7 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
  * intentionally stay in the Settings EXTENSIONS category.
  *
  * Docking (view mode, move-to, split size, hide) is hoisted to
- * [org.blaze.presentation.screens.main.MainScreen], which mounts this inside a [org.blaze.presentation.components.panel.ToolWindowSpec];
+ * [org.blaze.presentation.screens.main.MainScreen], which mounts this inside a [org.island.ui.toolwindow.ToolWindowSpec];
  * the pane draws its own [ToolWindowHeader] chrome and never decides where it sits — the host frames
  * it in an island.
  */
@@ -74,7 +73,6 @@ fun ExtensionsPanel(
             title = eStrings.title,
             actions = {
                 ToolWindowOptionsButton(
-                    options = pane.options,
                     viewMode = state.viewMode,
                     moveTo = state.moveTo,
                     onViewMode = { model.onLayoutEvent(ToolWindowLayoutAction.SetViewMode(it)) },
@@ -83,7 +81,7 @@ fun ExtensionsPanel(
                 )
                 // A tool window is *hidden*, not closed: the IDE draws the horizontal-line glyph for
                 // that and keeps the X for closing an editor.
-                ToolbarIconButton(
+                IslandToolbarIconButton(
                     key = AllIconsKeys.General.HideToolWindow,
                     tooltip = pane.hide,
                     onClick = onHide,
@@ -276,7 +274,7 @@ private fun RemoveExtensionDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    BaseDialog(onDismiss = onDismiss, title = title) {
+    IslandDialog(onDismiss = onDismiss, title = title) {
         Text(text = body)
         StandardDialogButtons(
             dismissText = cancelLabel,

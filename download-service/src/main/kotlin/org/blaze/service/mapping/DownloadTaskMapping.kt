@@ -6,10 +6,10 @@ import org.blaze.download.api.SourceInfo
 import org.blaze.download.api.SourceKind
 import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.api.DownloadTask
-import org.blaze.engine.api.DownloadState as EngineState
+import org.blaze.engine.api.TorrentSource
 import org.blaze.download.api.DownloadPriority as ApiPriority
 import org.blaze.engine.api.DownloadPriority as EnginePriority
-import org.blaze.engine.api.TorrentSource
+import org.blaze.engine.api.DownloadState as EngineState
 
 /**
  * Converts an engine [DownloadTask] into the client-safe [DownloadDto].
@@ -66,6 +66,7 @@ fun DownloadTask.toDto(): DownloadDto {
         // What the transfer proved about the source, not a state guess: null keeps "we don't know"
         // distinct from "this host cannot resume", which is what a client warns about.
         sourceSupportsResume = resumeSupported,
+        restarts = restarts,
         portable = false,
         files = files,
         priority = priority.toApi(),
@@ -92,6 +93,17 @@ private fun DownloadRequest.toSourceInfo(): SourceInfo = when (this) {
         }
         is TorrentSource.Url -> SourceInfo(SourceKind.TORRENT_URL, s.url)
     }
+    is DownloadRequest.Hls -> SourceInfo(
+        kind = SourceKind.HLS,
+        locator = playlistUrl,
+        mayRequireCredentials = headers.keys.any { it.equals("Authorization", true) || it.equals("Cookie", true) },
+    )
+
+    is DownloadRequest.Archive -> SourceInfo(
+        kind = SourceKind.ZIP_ARCHIVE,
+        locator = url,
+        mayRequireCredentials = headers.keys.any { it.equals("Authorization", true) || it.equals("Cookie", true) },
+    )
 }
 
 /** True when the task is in a terminal state, used by the event diff to decide completion emissions. */

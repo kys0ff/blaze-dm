@@ -3,13 +3,7 @@ package org.blaze.presentation.screens.downloads.components.add
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -22,14 +16,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.blaze.i18n.blazeStrings
 import org.blaze.download.api.DownloadPriority
+import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.screens.downloads.components.AdvisoryCallout
 import org.blaze.presentation.screens.downloads.components.AdvisoryTone
 import org.blaze.presentation.screens.downloads.components.label
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSize
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.IslandTypography
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
 import org.jetbrains.jewel.ui.component.OutlinedButton
@@ -90,7 +84,7 @@ fun AddDownloadMetadataView(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = dStrings.metadataResolved,
-            style = BlazeTypography.emphasizedHeader,
+            style = IslandTypography.emphasizedHeader,
         )
 
         Column(
@@ -134,7 +128,7 @@ fun AddDownloadMetadataView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(dStrings.files, style = BlazeTypography.emphasizedHeader)
+                    Text(dStrings.files, style = IslandTypography.emphasizedHeader)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             text = dStrings.selectAll,
@@ -237,12 +231,12 @@ private fun PriorityPicker(state: AddDownloadState) {
             val selected = state.priority == level
             Text(
                 text = level.label(p),
-                color = if (selected) BlazeColors.accent else JewelTheme.globalColors.text.info,
+                color = if (selected) IslandSemanticColors.accent else JewelTheme.globalColors.text.info,
                 style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp),
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
                     .background(
-                        if (selected) BlazeColors.accent.copy(alpha = 0.15f)
+                        if (selected) IslandSemanticColors.accent.copy(alpha = 0.15f)
                         else Color.Transparent
                     )
                     .clickable { state.priority = level }

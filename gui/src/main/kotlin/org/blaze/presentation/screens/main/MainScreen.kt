@@ -1,14 +1,6 @@
 package org.blaze.presentation.screens.main
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -27,35 +19,24 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.presentation.application.components.AboutDialog
+import org.blaze.presentation.components.AppMetrics
 import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BackgroundTasksStatusItem
 import org.blaze.presentation.components.BlazeIcons
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.SidebarItem
-import org.blaze.presentation.components.StatusBar
-import org.blaze.presentation.components.ToolWindowStripe
-import org.blaze.presentation.components.panel.ToolWindowLayout
-import org.blaze.presentation.components.panel.ToolWindowLayoutAction
-import org.blaze.presentation.components.panel.ToolWindowLayoutHost
-import org.blaze.presentation.components.panel.ToolWindowResize
 import org.blaze.presentation.components.panel.ToolWindowScreenModel
-import org.blaze.presentation.components.panel.ToolWindowSpec
-import org.blaze.presentation.screens.downloads.DetailsPanelScreenModel
-import org.blaze.presentation.screens.downloads.DownloadsEvent
-import org.blaze.presentation.screens.downloads.DownloadsScreen
-import org.blaze.presentation.screens.downloads.DownloadsScreenModel
-import org.blaze.presentation.screens.downloads.DownloadsState
-import org.blaze.presentation.screens.downloads.aggregateSpeed
-import org.blaze.presentation.screens.downloads.attention
+import org.blaze.presentation.screens.downloads.*
 import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
 import org.blaze.presentation.screens.extensions.ExtensionsPanel
 import org.blaze.presentation.screens.extensions.ExtensionsWindowModel
 import org.blaze.presentation.screens.serverlog.ServerLogPanel
 import org.blaze.presentation.screens.serverlog.ServerLogWindowModel
 import org.blaze.presentation.search.SearchController
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeTypography
 import org.blaze.presentation.util.formatSpeed
+import org.island.theme.ui.IslandLayout
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.IslandTypography
+import org.island.ui.StatusBar
+import org.island.ui.toolwindow.*
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
@@ -146,10 +127,12 @@ class MainScreen : Screen {
                                 }
                             },
                             panels = panels,
+                            paneMinWidth = AppMetrics.DetailsPaneMinWidth,
+                            contentMinWidth = AppMetrics.ListPaneMinWidth,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .padding(BlazeLayout.IslandGap),
+                                .padding(IslandLayout.IslandGap),
                         )
                     }
 
@@ -379,13 +362,13 @@ private fun MainStatusBar(
                     Icon(
                         key = BlazeIcons.SnailMode,
                         contentDescription = null,
-                        tint = BlazeColors.warning,
+                        tint = IslandSemanticColors.warning,
                         modifier = Modifier.size(12.dp),
                     )
                     Text(
                         text = strings.statusSummary.snailMode("${state.snailSpeedKbps} KB/s"),
-                        style = BlazeTypography.statusBar,
-                        color = BlazeColors.warning,
+                        style = IslandTypography.statusBar,
+                        color = IslandSemanticColors.warning,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

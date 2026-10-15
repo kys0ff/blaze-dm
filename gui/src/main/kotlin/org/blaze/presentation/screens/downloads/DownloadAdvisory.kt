@@ -89,7 +89,7 @@ sealed interface DownloadAdvisory {
     /** Left with an error; the view may delay it to skip an automatic retry's intermediate hop. */
     data class Failed(val download: Download) : DownloadAdvisory
 
-    /** Bytes went backwards: the engine had to restart the transfer, discarding progress. */
+    /** The engine genuinely restarted the transfer from byte 0, discarding progress. */
     data class Restarted(val download: Download, val lostPercent: Int) : DownloadAdvisory
 }
 
@@ -108,12 +108,14 @@ fun diffDownloadTransitions(previous: List<Download>, current: List<Download>): 
         when {
             !then.isFinished && now.isFinished -> DownloadAdvisory.Completed(now)
             then.state != DownloadState.FAILED && now.state == DownloadState.FAILED -> DownloadAdvisory.Failed(now)
-            // Bytes went backwards on a transfer that was still in flight: the engine had to restart
-            // it, discarding progress the user cared about. A finished row is excluded because redownloading it is the user asking for the file again, not lost work - the engine also
-            // zeroes a re-queued finished task's count, so no stale 100% -> 0 drop reaches here.
-            !then.isFinished && !now.isFinished &&
-                then.downloadedSize > 0 && now.downloadedSize < then.downloadedSize ->
-                // Never say "0%": a dropped counter that had already moved is still a loss worth naming.
+            // The engine proved, through its own restart counter, that it threw bytes away and went
+            // back to the start. We deliberately do NOT infer this from a dip in [Download.downloadedSize]:
+            // a chunk retry rolls a segmented transfer's byte count back before re-fetching it, and a
+            // pause/resume re-anchors it to the last checkpoint - neither is a restart, so reading one
+            // from the bytes alone warned about lost work that was never lost. A finished row is excluded
+            // because redownloading it is the user asking for the file again, not lost work.
+            !then.isFinished && !now.isFinished && now.restarts > then.restarts ->
+                // Never say "0%": bytes were already on the row for the engine to discard.
                 DownloadAdvisory.Restarted(now, then.percentDone().coerceAtLeast(1))
             else -> null
         }

@@ -23,6 +23,13 @@ data class Download(
      * measured answer justifies warning the user, so "unknown" must never render as "impossible".
      */
     val resumeSupported: Boolean? = null,
+    /**
+     * How many times the engine genuinely restarted the transfer from byte 0, discarding downloaded
+     * bytes. It only moves forward, so a lifecycle watcher tells a real lost-progress event apart
+     * from a transient byte-counter dip (a chunk retry or a pause/resume re-anchor) by watching it
+     * increment rather than guessing from the size.
+     */
+    val restarts: Int = 0,
     /** Scheduling importance; [DownloadPriority.NORMAL] matches the pre-priority FIFO behaviour. */
     val priority: DownloadPriority = DownloadPriority.NORMAL,
     val progress: Float = if (totalSize != null && totalSize > 0) {

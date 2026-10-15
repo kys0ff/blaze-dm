@@ -21,11 +21,12 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
-import org.blaze.presentation.theme.BlazeTheme
+import org.island.theme.ui.IslandTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.island.ui.menu.*
 
 /**
  * The submenu contract, tested with a real pointer and real keys.
@@ -37,7 +38,7 @@ import kotlin.test.assertTrue
  * in the step-C report). Jewel drives submenu state purely from per-item hover, and hover never
  * arrives, so the trap is not fixable from outside its menu code.
  *
- * It now pins [BlazeMenu]'s behavior, which owns the pointer itself and therefore has to keep all the
+ * It now pins [IslandMenu]'s behavior, which owns the pointer itself and therefore has to keep all the
  * IDE's escape routes: hovering a parent opens, travelling in keeps it open, travelling back closes it
  * and hands the highlight to the row under the cursor, another parent takes the submenu over, Left and
  * Escape peel one level, Right opens, Enter acts and closes, and the arrows wrap around skipping
@@ -71,12 +72,12 @@ class MenuSubmenuHoverTest {
 
     private fun ComposeUiTest.showBlazeMenu(host: MenuHost, entries: List<MenuEntry>) {
         setContent {
-            BlazeTheme(isDark = true) {
+            IslandTheme(isDark = true) {
                 // A real control holds the menu open, exactly as a row or a header button does, so
                 // dismissing is observed through the same `open` flag the app reads.
                 Box(Modifier.size(24.dp).padding(8.dp))
                 if (host.open) {
-                    BlazeMenu(
+                    IslandMenu(
                         entries = entries,
                         anchor = rememberMenuAnchorAt(Offset(20f, 40f)),
                         onDismissRequest = { host.open = false },
@@ -345,7 +346,7 @@ class MenuSubmenuHoverTest {
     }
 
     /**
-     * Which of [candidates] the menu holds the highlight on. [BlazeMenu] publishes the highlighted row
+     * Which of [candidates] the menu holds the highlight on. [IslandMenu] publishes the highlighted row
      * through the standard `Selected` semantics, so this reads the same fact an assistive technology
      * (and a user looking at the hover fill) sees.
      */
@@ -371,7 +372,7 @@ class MenuSubmenuHoverTest {
         onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
 
     private companion object {
-        /** A little past [300ms], which is the delay BlazeMenu waits before opening on hover. */
+        /** A little past [300ms], which is the delay IslandMenu waits before opening on hover. */
         const val HOVER_DELAY_MS = 450L
     }
 }

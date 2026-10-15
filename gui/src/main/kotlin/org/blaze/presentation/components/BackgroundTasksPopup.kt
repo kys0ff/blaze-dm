@@ -3,17 +3,7 @@ package org.blaze.presentation.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,17 +16,14 @@ import androidx.compose.ui.unit.dp
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.theme.BlazeColors
 import org.blaze.presentation.util.formatDuration
 import org.blaze.presentation.util.formatSpeed
+import org.island.theme.ui.IslandLayout
+import org.island.theme.ui.IslandSemanticColors
+import org.island.ui.toolbar.IslandToolbarIconButton
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
-import org.jetbrains.jewel.ui.component.Divider
-import org.jetbrains.jewel.ui.component.HorizontalProgressBar
-import org.jetbrains.jewel.ui.component.Icon
-import org.jetbrains.jewel.ui.component.IndeterminateHorizontalProgressBar
-import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
+import org.jetbrains.jewel.ui.component.*
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.typography
 
@@ -66,7 +53,7 @@ fun BackgroundTasksStatusItem(
         Icon(
             key = AllIconsKeys.Actions.Download,
             contentDescription = null,
-            tint = BlazeColors.accent,
+            tint = IslandSemanticColors.accent,
             modifier = Modifier.size(12.dp),
         )
         Text(
@@ -119,7 +106,7 @@ fun BackgroundTasksPopup(
             onDismiss = onDismiss,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 12.dp, bottom = BlazeLayout.StatusBarHeight + 8.dp),
+                .padding(end = 12.dp, bottom = IslandLayout.StatusBarHeight + 8.dp),
         )
     }
 }
@@ -146,7 +133,7 @@ private fun BackgroundTasksCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(BlazeLayout.ToolWindowHeaderHeight)
+                .height(IslandLayout.ToolWindowHeaderHeight)
                 .padding(start = 12.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -157,7 +144,7 @@ private fun BackgroundTasksCard(
                 color = JewelTheme.globalColors.text.normal,
                 maxLines = 1,
             )
-            ToolbarIconButton(
+            IslandToolbarIconButton(
                 key = AllIconsKeys.General.Close,
                 tooltip = strings.common.close,
                 onClick = onDismiss,
@@ -263,9 +250,9 @@ private fun BackgroundTaskRow(
             }
         }
         if (download.canPauseFromTasks()) {
-            ToolbarIconButton(key = AllIconsKeys.Actions.Pause, tooltip = s.pause, onClick = onPause)
+            IslandToolbarIconButton(key = AllIconsKeys.Actions.Pause, tooltip = s.pause, onClick = onPause)
         }
-        ToolbarIconButton(key = BlazeIcons.Stop, tooltip = s.cancel, onClick = onCancel)
+        IslandToolbarIconButton(key = BlazeIcons.Stop, tooltip = s.cancel, onClick = onCancel)
     }
 }
 

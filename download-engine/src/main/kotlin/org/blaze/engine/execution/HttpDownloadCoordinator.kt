@@ -1,15 +1,6 @@
 package org.blaze.engine.execution
 
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import org.blaze.engine.api.DownloadError
 import org.blaze.engine.api.DownloadRequest
@@ -18,11 +9,8 @@ import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.network.toDownloadError
 import org.blaze.engine.persistence.HttpResumeState
-import org.blaze.engine.portable.PortableFormat
-import org.blaze.engine.portable.PortableKind
-import org.blaze.engine.portable.PortableManifest
-import org.blaze.engine.portable.PortableStore
-import org.blaze.engine.portable.inspectPortableFile
+import org.blaze.engine.portable.*
+import org.blaze.engine.retry.Backoff
 import org.blaze.engine.retry.isRetryable
 import org.blaze.engine.settings.DownloadSettings
 import org.blaze.engine.storage.FileStorage
@@ -33,15 +21,9 @@ import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.util.BitSet
+import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicIntegerArray
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicLongArray
-import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.atomic.AtomicReferenceArray
+import java.util.concurrent.atomic.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -90,7 +72,15 @@ class HttpDownloadCoordinator(
 
     sealed interface Outcome {
         data class Success(val downloadedBytes: Long, val totalBytes: Long?) : Outcome
-        data class Failure(val error: DownloadError) : Outcome
+        data class Failure(
+            val error: DownloadError,
+            /**
+             * Millis the server asked us to wait before retrying, if a 429/503 carried a
+             * `Retry-After`. The task-level scheduler treats it as a lower bound on the next
+             * attempt's delay. Null when no hint was given.
+             */
+            val retryAfterMillis: Long? = null,
+        ) : Outcome
     }
 
     /**
@@ -101,6 +91,15 @@ class HttpDownloadCoordinator(
      * ranged requests a resume depends on. It is fired at most once per run and only with evidence
      * (a 206, an `Accept-Ranges` answer, an ignored `Range`), so a client can promise - or refuse to
      * promise - a resume without guessing.
+     *
+     * [onRestart] hears exactly once each time the transfer is forced back to byte 0 after discarding
+     * bytes already on disk - the *genuine* restarts (a refused range, an unusable resume record).
+     * It is deliberately not fired for a transient chunk retry or a pause/resume re-anchor, so a
+     * client can tell a real lost-progress event apart from a dip that self-corrects.
+     *
+     * [onProbing] hears once, just before a capability probe (HEAD / ranged GET) actually runs, so the
+     * caller can surface the pre-transfer "deciding how to fetch" phase. It is not fired on the plain
+     * single-stream path that never probes, so the phase is only claimed when the work is genuinely done.
      */
     suspend fun download(
         request: DownloadRequest.Http,
@@ -108,6 +107,8 @@ class HttpDownloadCoordinator(
         partial: Path,
         connections: Int,
         onRangeSupport: suspend (Boolean) -> Unit = {},
+        onRestart: suspend () -> Unit = {},
+        onProbing: suspend () -> Unit = {},
         onProgress: suspend (Progress) -> Unit
     ): Outcome = withContext(Dispatchers.IO) {
         val support = RangeSupportReporter(onRangeSupport)
@@ -119,6 +120,7 @@ class HttpDownloadCoordinator(
         val statePath = storage.getResumeStateFile(destination).toPath()
 
         if (settings.httpAccelerationEnabled && connections > 1) {
+            onProbing()
             val probe = client.probe(request)
             support.note(probe.rangeSupport)
             if (probe.status == RANGE_NOT_SATISFIABLE && resumeFrom > 0) {
@@ -126,9 +128,18 @@ class HttpDownloadCoordinator(
                 return@withContext Outcome.Success(resumeFrom, resumeFrom)
             }
             if (probe.acceptsRanges && probe.totalBytes >= settings.httpMinParallelSizeBytes) {
-                segmented(request, destination, partial, probe, connections, support, onProgress)
+                segmented(request, destination, partial, probe, connections, support, onRestart, onProgress)
             } else {
-                singleStream(request, destination, partial, resumeFrom, probe.totalBytes, support, onProgress)
+                singleStream(
+                    request,
+                    destination,
+                    partial,
+                    resumeFrom,
+                    probe.totalBytes,
+                    support,
+                    onRestart,
+                    onProgress
+                )
             }
         } else if (readResumeState(statePath) != null) {
             // A previous accelerated run left a chunked, *sparse* partial. Its file size is the
@@ -137,13 +148,23 @@ class HttpDownloadCoordinator(
             // contiguous prefix and finalize a corrupt file. The sidecar is the only trustworthy
             // record of which bytes really exist, so honor the chunk map even though the caller now
             // asked for a single connection: run the segmented path with however many workers fit.
+            onProbing()
             val probe = client.probe(request)
             support.note(probe.rangeSupport)
             if (probe.status == RANGE_NOT_SATISFIABLE && resumeFrom > 0) {
                 return@withContext Outcome.Success(resumeFrom, resumeFrom)
             }
             if (probe.acceptsRanges && probe.totalBytes > 0) {
-                segmented(request, destination, partial, probe, connections.coerceAtLeast(1), support, onProgress)
+                segmented(
+                    request,
+                    destination,
+                    partial,
+                    probe,
+                    connections.coerceAtLeast(1),
+                    support,
+                    onRestart,
+                    onProgress
+                )
             } else {
                 // The ranges the sidecar's bytes were read with can no longer be served; the chunk
                 // map is useless, so start clean instead of mis-resuming.
@@ -151,10 +172,12 @@ class HttpDownloadCoordinator(
                 support.note(false)
                 runCatching { storage.delete(statePath) }
                 runCatching { storage.delete(partial) }
-                singleStream(request, destination, partial, 0L, probe.totalBytes, support, onProgress)
+                // Bytes the sidecar vouched for are being thrown away: this is a genuine restart.
+                if (resumeFrom > 0) onRestart()
+                singleStream(request, destination, partial, 0L, probe.totalBytes, support, onRestart, onProgress)
             }
         } else {
-            singleStream(request, destination, partial, resumeFrom, -1L, support, onProgress)
+            singleStream(request, destination, partial, resumeFrom, -1L, support, onRestart, onProgress)
         }
     }
 
@@ -163,7 +186,7 @@ class HttpDownloadCoordinator(
     private sealed interface StreamOutcome {
         data object RangeIgnored : StreamOutcome
         data class Done(val downloadedBytes: Long, val totalBytes: Long?) : StreamOutcome
-        data class Failed(val error: DownloadError) : StreamOutcome
+        data class Failed(val error: DownloadError, val retryAfterMillis: Long? = null) : StreamOutcome
     }
 
     private suspend fun singleStream(
@@ -173,6 +196,7 @@ class HttpDownloadCoordinator(
         resumeFrom: Long,
         totalHint: Long,
         support: RangeSupportReporter,
+        onRestart: suspend () -> Unit,
         onProgress: suspend (Progress) -> Unit
     ): Outcome {
         var offset = resumeFrom
@@ -201,13 +225,15 @@ class HttpDownloadCoordinator(
                 support.note(false)
                 runCatching { storage.delete(partial) }
                 runCatching { storage.delete(statePath) }
+                // `offset > 0` here, so the bytes we are about to discard were real progress.
+                onRestart()
                 offset = 0L
                 restarted = true
                 continue
             }
             return when (result) {
                 is StreamOutcome.Done -> Outcome.Success(result.downloadedBytes, result.totalBytes)
-                is StreamOutcome.Failed -> Outcome.Failure(result.error)
+                is StreamOutcome.Failed -> Outcome.Failure(result.error, result.retryAfterMillis)
                 StreamOutcome.RangeIgnored -> Outcome.Failure(DownloadError.RangeUnsupported)
             }
         }
@@ -272,7 +298,7 @@ class HttpDownloadCoordinator(
                     )
                 )
 
-                is HttpNetworkClient.StreamResult.Failed -> StreamOutcome.Failed(result.error)
+                is HttpNetworkClient.StreamResult.Failed -> StreamOutcome.Failed(result.error, result.retryAfterMillis)
                 is HttpNetworkClient.StreamResult.Redirected -> StreamOutcome.Failed(
                     DownloadError.NetworkFailure("Unresolved redirect")
                 )
@@ -287,6 +313,16 @@ class HttpDownloadCoordinator(
 
     // ---------------------------------------------------------------- segmented
 
+    /**
+     * Drives the segmented transfer, transparently recovering from a mid-transfer file rotation.
+     *
+     * [segmentedOnce] fetches the pool for one probe's worth of validator. If an `If-Range` mismatch
+     * reveals the host rotated the representation while chunks were being written, it discards the
+     * mixed bytes and asks for a fresh probe; we re-probe and re-run the pool against the new
+     * validator exactly once. A second rotation is treated as a genuine give-up (the host will not
+     * hold still) rather than looping forever. This keeps a single `download()` call delivering a
+     * byte-exact file without depending on the task-level retry settings.
+     */
     private suspend fun segmented(
         request: DownloadRequest.Http,
         destination: Path,
@@ -294,8 +330,49 @@ class HttpDownloadCoordinator(
         probe: HttpNetworkClient.Probe,
         connections: Int,
         support: RangeSupportReporter,
+        onRestart: suspend () -> Unit,
         onProgress: suspend (Progress) -> Unit
     ): Outcome {
+        var currentProbe = probe
+        var rotations = 0
+        while (true) {
+            when (val step = segmentedOnce(request, destination, partial, currentProbe, connections, support, onRestart, onProgress)) {
+                is SegmentedTransfer.Finished -> return step.outcome
+                SegmentedTransfer.RetryFromProbe -> {
+                    if (rotations >= MAX_ROTATION_RESTARTS) {
+                        return Outcome.Failure(
+                            DownloadError.NetworkFailure("Source representation kept changing during the transfer")
+                        )
+                    }
+                    rotations++
+                    val fresh = client.probe(request)
+                    support.note(fresh.rangeSupport)
+                    if (!fresh.acceptsRanges || fresh.totalBytes < settings.httpMinParallelSizeBytes) {
+                        // The host stopped being segmentable; finish honestly on one stream from 0.
+                        return singleStream(request, destination, partial, 0L, fresh.totalBytes, support, onRestart, onProgress)
+                    }
+                    currentProbe = fresh
+                }
+            }
+        }
+    }
+
+    private sealed interface SegmentedTransfer {
+        data class Finished(val outcome: Outcome) : SegmentedTransfer
+        /** If-Range mismatch: the bytes on disk mix two representations and were discarded. */
+        data object RetryFromProbe : SegmentedTransfer
+    }
+
+    private suspend fun segmentedOnce(
+        request: DownloadRequest.Http,
+        destination: Path,
+        partial: Path,
+        probe: HttpNetworkClient.Probe,
+        connections: Int,
+        support: RangeSupportReporter,
+        onRestart: suspend () -> Unit,
+        onProgress: suspend (Progress) -> Unit
+    ): SegmentedTransfer {
         val total = probe.totalBytes
         val statePath = storage.getResumeStateFile(destination).toPath()
         val persisted = readResumeState(statePath)
@@ -328,12 +405,16 @@ class HttpDownloadCoordinator(
             )
             runCatching { storage.delete(statePath) }
             runCatching { storage.delete(partial) }
+            // A record of committed bytes is being discarded: this is a genuine restart.
+            onRestart()
         }
 
         if (plan.chunkCount < 2) {
             // Too small to split: the single stream inherits the probe's answer, which the caller
             // already heard - handing the reporter along lets a restart found below correct it.
-            return singleStream(request, destination, partial, sizeOf(partial), total, support, onProgress)
+            return SegmentedTransfer.Finished(
+                singleStream(request, destination, partial, sizeOf(partial), total, support, onRestart, onProgress)
+            )
         }
 
         val completed = CompletedChunks(plan.chunkCount)
@@ -377,7 +458,7 @@ class HttpDownloadCoordinator(
             storage.preallocate(partial, total)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            return Outcome.Failure(e.toFileSystemError())
+            return SegmentedTransfer.Finished(Outcome.Failure(e.toFileSystemError()))
         }
 
         // Lay out (or keep) the self-contained portable region. It lives strictly past the content
@@ -403,17 +484,27 @@ class HttpDownloadCoordinator(
             storage.openPositionedWriter(partial)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            return Outcome.Failure(e.toFileSystemError())
+            return SegmentedTransfer.Finished(Outcome.Failure(e.toFileSystemError()))
         }
 
         val workerCount = minOf(connections, plan.chunkCount)
         val counted = AtomicLong(base)
         val nextChunk = AtomicInteger(0)
         val reclaimed = ConcurrentLinkedQueue<Int>()
+        // Per-chunk earliest retry time (System.nanoTime domain). A requeued chunk is only handed
+        // back to a worker once `readyAt[chunk] <= now`; the head-of-queue worker `delay`s the
+        // remaining time, so an exponential backoff and any server `Retry-After` hint actually
+        // bite instead of the retry hammering the host immediately.
+        val readyAt = AtomicLongArray(plan.chunkCount)
         val chunkBytes = AtomicLongArray(plan.chunkCount)
         val chunkAttempts = AtomicIntegerArray(plan.chunkCount)
         val completedCount = AtomicInteger(completed.cardinality())
         val error = AtomicReference<DownloadError?>(null)
+        // Last server hint observed on a chunk failure. Kept separate from `error` because that
+        // field is set once (compare-and-set) but a subsequent retry on a different chunk can
+        // legitimately carry a stronger hint; the final Outcome.Failure surfaces whichever hint
+        // was most recently attached to the winning error.
+        val lastRetryHintMillis = AtomicLong(-1L)
         val lastActivity = AtomicLongArray(workerCount)
         val liveWorkers = AtomicInteger(0)
         // Per-slot handle to the worker's *currently running request only*. The watchdog cancels
@@ -421,6 +512,19 @@ class HttpDownloadCoordinator(
         // re-queued while the worker itself stays alive to pick up more work. Dropping the whole
         // worker job (the old behavior) shrank the pool on every stall and never grew it back.
         val inFlightStream = AtomicReferenceArray<Job?>(workerCount)
+        // Adaptive concurrency gate: starts at the full worker pool and sheds connections when the
+        // host answers 429 / 503, winning them back slowly (hysteresis). Null when disabled, in which
+        // case the worker's `window?.…` calls are all no-ops and behaviour is exactly as before.
+        val window = if (settings.httpAdaptiveConnectionsEnabled && workerCount > 1) {
+            ConnectionWindow(max = workerCount, onChange = { metrics.recordConnectionWindow(it) })
+        } else {
+            null
+        }
+        // Set when a chunk request carrying our `If-Range` validator comes back a whole-body 200,
+        // i.e. the host rotated the representation mid-transfer. The workers stop and segmentedOnce
+        // discards the (now mixed) partial and asks the caller for a clean re-fetch.
+        val rotated = AtomicBoolean(false)
+        val baselineValidator = probe.validator
         // Tail diagnostics: the moment the pool last had more than one connection alive. The span
         // from there to completion is how long the download spent waiting on a single connection -
         // the "last 1-5%" cost that chunked planning is supposed to bound.
@@ -444,13 +548,18 @@ class HttpDownloadCoordinator(
                                 completed = completed,
                                 nextChunk = nextChunk,
                                 reclaimed = reclaimed,
+                                readyAt = readyAt,
                                 chunkBytes = chunkBytes,
                                 chunkAttempts = chunkAttempts,
                                 counted = counted,
                                 completedCount = completedCount,
                                 error = error,
+                                lastRetryHintMillis = lastRetryHintMillis,
                                 lastActivity = lastActivity,
-                                inFlightStream = inFlightStream
+                                inFlightStream = inFlightStream,
+                                window = window,
+                                baselineValidator = baselineValidator,
+                                rotated = rotated
                             )
                         } finally {
                             liveWorkers.decrementAndGet()
@@ -476,6 +585,17 @@ class HttpDownloadCoordinator(
             runCatching { writer.close() }
         }
 
+        // A rotation detected mid-run means the partial on disk is a mix of two representations and
+        // can never be finalised. The writer is closed, so drop the poisoned partial plus its sidecar
+        // and let the caller re-probe and re-fetch from scratch. Progress really was lost -> restart.
+        if (rotated.get()) {
+            logger.warn("The representation of {} changed mid-transfer (If-Range mismatch); discarding and re-fetching", destination.fileName)
+            runCatching { storage.delete(statePath) }
+            runCatching { storage.delete(partial) }
+            onRestart()
+            return SegmentedTransfer.RetryFromProbe
+        }
+
         writeResumeState(statePath, total, plan.chunkSize, probe.validator, completed)
         // Refresh the embedded region at every stop boundary — pause, failure or clean completion.
         // The periodic saver only fires on a 15s tick, so a fast failure could otherwise leave the
@@ -489,8 +609,9 @@ class HttpDownloadCoordinator(
 
         val failure = error.get()
         val allDone = completedCount.get() >= plan.chunkCount
-        return when {
-            failure != null -> Outcome.Failure(failure)
+        val hint = lastRetryHintMillis.get().takeIf { it >= 0L }
+        return SegmentedTransfer.Finished(when {
+            failure != null -> Outcome.Failure(failure, hint)
             !allDone -> Outcome.Failure(DownloadError.NetworkFailure("Every connection stopped with chunks outstanding"))
             else -> {
                 // Crash-safe finalization order: content was force-flushed in the finally above, so
@@ -505,7 +626,7 @@ class HttpDownloadCoordinator(
                 onProgress(Progress(total, total))
                 Outcome.Success(total, total)
             }
-        }
+        })
     }
 
     private suspend fun worker(
@@ -517,17 +638,22 @@ class HttpDownloadCoordinator(
         completed: CompletedChunks,
         nextChunk: AtomicInteger,
         reclaimed: ConcurrentLinkedQueue<Int>,
+        readyAt: AtomicLongArray,
         chunkBytes: AtomicLongArray,
         chunkAttempts: AtomicIntegerArray,
         counted: AtomicLong,
         completedCount: AtomicInteger,
         error: AtomicReference<DownloadError?>,
+        lastRetryHintMillis: AtomicLong,
         lastActivity: AtomicLongArray,
-        inFlightStream: AtomicReferenceArray<Job?>
+        inFlightStream: AtomicReferenceArray<Job?>,
+        window: ConnectionWindow?,
+        baselineValidator: String?,
+        rotated: AtomicBoolean
     ) {
         try {
             while (error.get() == null && currentCoroutineContext().isActive) {
-                val chunk = claim(plan, completed, nextChunk, reclaimed, completedCount) ?: return
+                val chunk = claim(plan, completed, nextChunk, reclaimed, readyAt, completedCount) ?: return
                 if (completed.isDone(chunk)) continue
 
                 val start = plan.startOf(chunk)
@@ -535,6 +661,10 @@ class HttpDownloadCoordinator(
                 var position = start
                 lastActivity.set(index, System.nanoTime())
 
+                // Hold a connection slot only for the duration of the network request (never across
+                // the backoff `delay` inside claim, which would waste a permit). On the healthy path
+                // the window is wide and acquire() falls straight through.
+                window?.acquire()
                 val result = try {
                     // A child scope whose Job the watchdog can cancel without killing this worker.
                     supervisorScope {
@@ -546,6 +676,7 @@ class HttpDownloadCoordinator(
                                 start = start,
                                 end = end,
                                 onHead = {},
+                                ifRange = baselineValidator,
                                 sink = { buffer, length ->
                                     limiter.acquire(length)
                                     writer.writeAt(position, buffer, 0, length)
@@ -570,33 +701,91 @@ class HttpDownloadCoordinator(
                     if (!currentCoroutineContext().isActive) throw e
                     discard(chunk, chunkBytes, counted)
                     if (error.get() != null) return
-                    requeue(chunk, DownloadError.NetworkFailure("Stalled connection dropped"), chunkAttempts, reclaimed, error)
+                    requeue(
+                        chunk = chunk,
+                        cause = DownloadError.NetworkFailure("Stalled connection dropped"),
+                        chunkAttempts = chunkAttempts,
+                        reclaimed = reclaimed,
+                        readyAt = readyAt,
+                        error = error,
+                        lastRetryHintMillis = lastRetryHintMillis,
+                    )
                     continue
+                } finally {
+                    window?.release()
                 }
 
                 when (result) {
-                    is HttpNetworkClient.StreamResult.Success -> markDone(chunk, completed, completedCount)
+                    is HttpNetworkClient.StreamResult.Success -> {
+                        window?.noteSuccess()
+                        markDone(chunk, completed, completedCount)
+                    }
 
                     HttpNetworkClient.StreamResult.RangeIgnored -> {
-                        // A CDN that answers some requests with 200 cannot be segmented safely.
+                        // We asked for a range and got a 200 whole body back. Two very different
+                        // things cause that, and the `If-Range` validator we sent tells them apart.
                         discard(chunk, chunkBytes, counted)
-                        error.compareAndSet(null, DownloadError.RangeUnsupported)
+                        if (baselineValidator != null) {
+                            // Ranged reads were proven at probe time and this request carried the
+                            // transfer's validator, so a whole-body answer means the representation
+                            // changed under us (RFC 9110 §14.22). The bytes already written mix the
+                            // old and new file and must never be finalised: flag the rotation so
+                            // segmentedOnce discards everything and re-fetches against a fresh probe.
+                            rotated.set(true)
+                            error.compareAndSet(
+                                null,
+                                DownloadError.NetworkFailure("Source representation changed during the transfer"),
+                            )
+                        } else {
+                            // No validator to test with - a CDN that answers some requests with 200
+                            // simply cannot be segmented safely.
+                            error.compareAndSet(null, DownloadError.RangeUnsupported)
+                        }
                         return
                     }
 
                     is HttpNetworkClient.StreamResult.Truncated -> {
                         discard(chunk, chunkBytes, counted)
-                        requeue(chunk, result.error(), chunkAttempts, reclaimed, error)
+                        requeue(
+                            chunk = chunk,
+                            cause = result.error(),
+                            chunkAttempts = chunkAttempts,
+                            reclaimed = reclaimed,
+                            readyAt = readyAt,
+                            error = error,
+                            lastRetryHintMillis = lastRetryHintMillis,
+                        )
                     }
 
                     is HttpNetworkClient.StreamResult.Failed -> {
                         discard(chunk, chunkBytes, counted)
-                        requeue(chunk, result.error, chunkAttempts, reclaimed, error)
+                        // A 429 / 503 is the host asking us to slow down; shed a connection step so
+                        // the whole pool stops stacking pressure on the same rate limiter. Non-
+                        // throttling failures leave the window alone (chunk backoff handles those).
+                        if (result.throttled) window?.noteThrottle()
+                        requeue(
+                            chunk = chunk,
+                            cause = result.error,
+                            chunkAttempts = chunkAttempts,
+                            reclaimed = reclaimed,
+                            readyAt = readyAt,
+                            error = error,
+                            lastRetryHintMillis = lastRetryHintMillis,
+                            retryAfterMillis = result.retryAfterMillis,
+                        )
                     }
 
                     is HttpNetworkClient.StreamResult.Redirected -> {
                         discard(chunk, chunkBytes, counted)
-                        requeue(chunk, DownloadError.NetworkFailure("Redirect chain changed mid-transfer"), chunkAttempts, reclaimed, error)
+                        requeue(
+                            chunk = chunk,
+                            cause = DownloadError.NetworkFailure("Redirect chain changed mid-transfer"),
+                            chunkAttempts = chunkAttempts,
+                            reclaimed = reclaimed,
+                            readyAt = readyAt,
+                            error = error,
+                            lastRetryHintMillis = lastRetryHintMillis,
+                        )
                     }
                 }
             }
@@ -619,33 +808,66 @@ class HttpDownloadCoordinator(
         cause: DownloadError,
         chunkAttempts: AtomicIntegerArray,
         reclaimed: ConcurrentLinkedQueue<Int>,
-        error: AtomicReference<DownloadError?>
+        readyAt: AtomicLongArray,
+        error: AtomicReference<DownloadError?>,
+        lastRetryHintMillis: AtomicLong,
+        retryAfterMillis: Long? = null,
     ) {
         if (!cause.isRetryable()) {
             error.compareAndSet(null, cause)
             return
         }
         metrics.recordChunkRetry()
-        if (chunkAttempts.incrementAndGet(chunk) > MAX_CHUNK_ATTEMPTS) {
+        val attempt = chunkAttempts.incrementAndGet(chunk)
+        if (attempt > MAX_CHUNK_ATTEMPTS) {
             error.compareAndSet(null, cause)
+            // Preserve any hint the failing chunk carried so the task-level scheduler can honour
+            // it on the auto-retry path even though we exhausted the per-chunk budget here.
+            retryAfterMillis?.let { lastRetryHintMillis.set(it) }
             return
         }
+        val delayMillis = chunkBackoffMillis(attempt, retryAfterMillis)
+        if (retryAfterMillis != null) lastRetryHintMillis.set(retryAfterMillis)
+        readyAt.set(chunk, System.nanoTime() + delayMillis * 1_000_000L)
         reclaimed.offer(chunk)
     }
+
+    /**
+     * Delay before the [attempt]-th retry of a chunk. Equal-jitter exponential: half the window
+     * is a hard floor, the other half is picked uniformly. Full-jitter (picking anywhere in
+     * `[0, window]`) is theoretically better at decorrelating a thundering herd, but it also lets
+     * the schedule collapse to "immediate retry" with unlucky draws - which defeats the point of
+     * a backoff on a single-worker test and looks like the fix did not land. Equal-jitter keeps
+     * the decorrelation *and* the observable guarantee.
+     *
+     * When the server sent a `Retry-After` we honour it verbatim (already capped upstream in
+     * [HttpNetworkClient.parseRetryAfter]) instead of our own schedule; the host knows its own
+     * queue better than we do.
+     */
+    private fun chunkBackoffMillis(attempt: Int, retryAfterMillis: Long?): Long =
+        Backoff.equalJitterMillis(attempt, retryAfterMillis, CHUNK_BACKOFF_BASE_MS, CHUNK_BACKOFF_CAP_MS)
 
     private fun discard(chunk: Int, chunkBytes: AtomicLongArray, counted: AtomicLong) {
         counted.addAndGet(-chunkBytes.getAndSet(chunk, 0L))
     }
 
-    private fun claim(
+    private suspend fun claim(
         plan: HttpTransferPlanner.Plan,
         completed: CompletedChunks,
         nextChunk: AtomicInteger,
         reclaimed: ConcurrentLinkedQueue<Int>,
+        readyAt: AtomicLongArray,
         completedCount: AtomicInteger
     ): Int? {
         if (completedCount.get() >= plan.chunkCount) return null
-        reclaimed.poll()?.let { return it }
+        reclaimed.poll()?.let { chunk ->
+            // A requeued chunk carries the earliest retry time; sleep the remaining window here
+            // so the worker's stream starts after the backoff instead of immediately, which is
+            // the whole point of the schedule.
+            val waitNanos = readyAt.get(chunk) - System.nanoTime()
+            if (waitNanos > 0L) delay((waitNanos / 1_000_000L).milliseconds)
+            return chunk
+        }
         while (true) {
             val index = nextChunk.getAndIncrement()
             if (index >= plan.chunkCount) return null
@@ -849,6 +1071,23 @@ class HttpDownloadCoordinator(
         const val WATCHDOG_INTERVAL_MS = 2_000L
         const val MAX_CHUNK_ATTEMPTS = 4
         const val RANGE_NOT_SATISFIABLE = 416
+        /**
+         * How many times a segmented transfer may discard its bytes and re-fetch when an `If-Range`
+         * mismatch shows the host rotated the representation mid-transfer. One covers the ordinary
+         * "file swapped once while we were reading" case; past that the host is not holding still
+         * and we surface a failure rather than spin re-downloading.
+         */
+        const val MAX_ROTATION_RESTARTS = 1
         val RESUME_FLUSH_INTERVAL: Duration = 15.seconds
+
+        /**
+         * Chunk-retry backoff shape: equal-jitter exponential with base 1000 ms and cap 30 s.
+         * Four attempts (the existing MAX_CHUNK_ATTEMPTS) then span `[500,1000] /
+         * [1000,2000] / [2000,4000] / [4000,8000]` ms. The 30 s cap only bites if the budget
+         * grows past four; a real `Retry-After` from the server short-circuits the schedule
+         * entirely (see [chunkBackoffMillis]).
+         */
+        const val CHUNK_BACKOFF_BASE_MS = 1_000L
+        const val CHUNK_BACKOFF_CAP_MS = 30_000L
     }
 }

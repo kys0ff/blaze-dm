@@ -4,14 +4,7 @@ import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.blaze.data.AppSettingsRepository
 import org.blaze.domain.models.Download
@@ -19,22 +12,7 @@ import org.blaze.domain.models.DownloadState
 import org.blaze.domain.repository.DownloadMetadata
 import org.blaze.domain.repository.PortableInfo
 import org.blaze.domain.repository.TorrentPreview
-import org.blaze.domain.usecase.AddDownloadUseCase
-import org.blaze.domain.usecase.CancelDownloadUseCase
-import org.blaze.domain.usecase.ClearCompletedDownloadsUseCase
-import org.blaze.domain.usecase.DetectPortableDownloadUseCase
-import org.blaze.domain.usecase.FetchMetadataUseCase
-import org.blaze.domain.usecase.GetDestinationPathUseCase
-import org.blaze.domain.usecase.GetDownloadsUseCase
-import org.blaze.domain.usecase.ImportPortableDownloadUseCase
-import org.blaze.domain.usecase.PauseAllDownloadsUseCase
-import org.blaze.domain.usecase.PauseDownloadUseCase
-import org.blaze.domain.usecase.PrepareTorrentUseCase
-import org.blaze.domain.usecase.RemoveDownloadUseCase
-import org.blaze.domain.usecase.ResumeAllDownloadsUseCase
-import org.blaze.domain.usecase.ResumeDownloadUseCase
-import org.blaze.domain.usecase.RetryDownloadUseCase
-import org.blaze.domain.usecase.SetPriorityDownloadUseCase
+import org.blaze.domain.usecase.*
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.osintegration.ExternalOpenInbox
 import org.blaze.osintegration.ExternalOpenRequest
@@ -51,6 +29,9 @@ class DownloadsScreenModel(
     private val prepareTorrentUseCase: PrepareTorrentUseCase,
     private val addDownload: AddDownloadUseCase,
     private val getDestinationPath: GetDestinationPathUseCase,
+    private val inspectHlsUseCase: InspectHlsUseCase,
+    private val inspectArchiveUseCase: InspectArchiveUseCase,
+    private val addDownloadWithSourceUseCase: AddDownloadWithSourceUseCase,
     val settingsRepository: EngineSettingsRepository,
     private val appSettingsRepository: AppSettingsRepository,
     private val detailsPanelModel: DetailsPanelScreenModel,
@@ -343,6 +324,22 @@ class DownloadsScreenModel(
                 }
             }
 
+            is DownloadsEvent.AddDownloadTyped -> screenModelScope.launch {
+                try {
+                    addDownloadWithSourceUseCase(
+                        source = event.source,
+                        savePath = event.savePath,
+                        name = event.name,
+                        totalSize = event.totalSize,
+                        scheduledAt = event.scheduledAt,
+                        priority = event.priority,
+                        credentials = event.credentials,
+                    )
+                } catch (e: Exception) {
+                    fail("Failed to add download", e)
+                }
+            }
+
             is DownloadsEvent.SetPriority -> op("Failed to change priority") { setPriority(event.id, event.priority) }
             is DownloadsEvent.Pause -> op("Failed to pause download") { pauseDownload(event.id) }
             // A resume only makes sense for a row parked mid-flight. Handing a finished or failed
@@ -462,6 +459,25 @@ class DownloadsScreenModel(
 
     suspend fun resolveDestinationPath(url: String, savePath: String, name: String?): String =
         getDestinationPath(url, savePath, name)
+
+    /**
+     * Inspects an `.m3u8` playlist so the add-download dialog can classify its protection (and raise a
+     * potential-DRM warning) and offer a quality choice, without downloading any media.
+     */
+    suspend fun inspectHls(
+        url: String,
+        variantIndex: Int = -1,
+        credentials: Map<String, String> = emptyMap(),
+    ): org.blaze.download.api.HlsInspectionDto = inspectHlsUseCase(url, variantIndex, credentials)
+
+    /**
+     * Inspects a remote ZIP via byte ranges so the dialog can browse its entries and offer selective
+     * retrieval, without downloading the whole archive.
+     */
+    suspend fun inspectArchive(
+        url: String,
+        credentials: Map<String, String> = emptyMap(),
+    ): org.blaze.download.api.ArchiveInspectionDto = inspectArchiveUseCase(url, credentials)
 
     /**
      * Reads a moved file/folder as a candidate portable download and returns a display-only summary,

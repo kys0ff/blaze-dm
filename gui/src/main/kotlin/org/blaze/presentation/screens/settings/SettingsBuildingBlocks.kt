@@ -5,16 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -35,9 +26,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.theme.BlazeColors
-import org.blaze.presentation.theme.BlazeTypography
+import org.blaze.presentation.components.AppMetrics
+import org.island.theme.ui.IslandSemanticColors
+import org.island.theme.ui.IslandTypography
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Outline
@@ -63,9 +54,9 @@ internal fun SettingsSection(
             Text(
                 text = title,
                 // The one exemption the chrome's regular-weight rule grants inside Settings: a group
-                // header. It goes through [BlazeTypography.emphasizedHeader] so the weight is a single
+                // header. It goes through [IslandTypography.emphasizedHeader] so the weight is a single
                 // audited value instead of a per-call-site copy.
-                style = BlazeTypography.emphasizedHeader,
+                style = IslandTypography.emphasizedHeader,
             )
             Box(
                 modifier = Modifier
@@ -126,11 +117,11 @@ internal fun SettingsNavItem(
 
     val background = when {
         isSelected -> colors.backgroundSelectedActive
-        hovered -> BlazeColors.hover
+        hovered -> IslandSemanticColors.hover
         else -> Color.Transparent
     }
     val contentColor = if (isSelected) colors.contentSelectedActive else Color.Unspecified
-    val highlight = BlazeColors.accent
+    val highlight = IslandSemanticColors.accent
 
     Box(
         modifier = Modifier
@@ -140,7 +131,7 @@ internal fun SettingsNavItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(BlazeLayout.SettingsNavRowHeight)
+                .height(AppMetrics.SettingsNavRowHeight)
                 .clip(RoundedCornerShape(6.dp))
                 .background(background)
                 .hoverable(interaction)
@@ -171,7 +162,7 @@ internal fun SettingsNavItem(
                     modifier = Modifier
                         .size(7.dp)
                         .clip(CircleShape)
-                        .background(BlazeColors.error)
+                        .background(IslandSemanticColors.error)
                 )
             }
         }
@@ -240,7 +231,7 @@ internal fun NumberField(
         if (showError) {
             Text(
                 text = error,
-                color = BlazeColors.error,
+                color = IslandSemanticColors.error,
                 style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
             )
         }

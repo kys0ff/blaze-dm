@@ -5,7 +5,7 @@ import org.blaze.domain.models.DownloadState
 
 /**
  * A tool window the left stripe can raise over the downloads list. [stripeId] is the stripe's stable
- * key, matching the [org.blaze.presentation.components.SidebarItem.id] the shell renders, so the
+ * key, matching the [org.island.ui.toolwindow.SidebarItem.id] the shell renders, so the
  * selected entry and the panel it raises are always the same window.
  */
 enum class MainToolWindowId(val stripeId: String) {

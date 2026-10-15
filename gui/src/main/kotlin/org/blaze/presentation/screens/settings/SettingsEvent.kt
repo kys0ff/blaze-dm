@@ -45,6 +45,15 @@ sealed interface SettingsEvent {
     data class UpdateThemeMode(val mode: ThemeMode) : SettingsEvent
     /** UI language as a BlazeLocale code; buffered in the app-settings draft like the rest. */
     data class UpdateLanguage(val code: String) : SettingsEvent
+
+    /** Interface font family id from the IslandFontFamilies catalogue (app-settings draft). */
+    data class UpdateUiFontFamily(val id: String) : SettingsEvent
+
+    /** Monospace (console) font family id from the same catalogue (app-settings draft). */
+    data class UpdateMonoFontFamily(val id: String) : SettingsEvent
+
+    /** UI text size percentage; clamped into the catalogue's safe range when buffered. */
+    data class UpdateUiTextScalePercent(val percent: Int) : SettingsEvent
     /** The frame's ambient accent glow; also buffered in the app-settings draft. */
     data class UpdateAmbientGlowEnabled(val enabled: Boolean) : SettingsEvent
     

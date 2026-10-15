@@ -7,24 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.*
 import kotlinx.coroutines.launch
 import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
@@ -37,22 +24,12 @@ import org.blaze.osintegration.ExternalOpenRequest
 import org.blaze.osintegration.displaySource
 import org.blaze.platform.clipboard.SystemClipboard
 import org.blaze.presentation.components.BlazeKeymap
-import org.blaze.presentation.components.Island
-import org.blaze.presentation.components.notifications.NotificationType
-import org.blaze.presentation.screens.downloads.DownloadsEvent
-import org.blaze.presentation.screens.downloads.DownloadsState
-import org.blaze.presentation.screens.downloads.SelectionActions
-import org.blaze.presentation.screens.downloads.canCancel
-import org.blaze.presentation.screens.downloads.canPause
-import org.blaze.presentation.screens.downloads.canRemove
-import org.blaze.presentation.screens.downloads.canResume
-import org.blaze.presentation.screens.downloads.findDuplicateOf
-import org.blaze.presentation.screens.downloads.pauseLosesProgress
-import org.blaze.presentation.screens.downloads.percentDone
-import org.blaze.presentation.screens.downloads.resumeStartsOver
+import org.blaze.presentation.screens.downloads.*
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
+import org.island.ui.IslandPanel
+import org.island.ui.notifications.NotificationType
 import org.koin.compose.koinInject
 import java.io.File
 import java.nio.file.Files
@@ -67,6 +44,8 @@ fun DownloadsScreenContent(
     onSetDetailsVisible: (Boolean) -> Unit,
     onFetchMetadata: suspend (String, Map<String, String>) -> DownloadMetadata?,
     onPrepareTorrent: suspend (String, Map<String, String>) -> TorrentPreview? = { _, _ -> null },
+    onInspectHls: suspend (String, Map<String, String>) -> org.blaze.download.api.HlsInspectionDto? = { _, _ -> null },
+    onInspectArchive: suspend (String, Map<String, String>) -> org.blaze.download.api.ArchiveInspectionDto? = { _, _ -> null },
     onResolveDestinationPath: suspend (String, String, String?) -> String,
     onDetectPortable: suspend (String) -> PortableInfo?,
     onImportPortable: suspend (String, String) -> Boolean,
@@ -369,7 +348,25 @@ fun DownloadsScreenContent(
                 }
             },
             onFetchMetadata = onFetchMetadata,
-            onPrepareTorrent = onPrepareTorrent
+            onPrepareTorrent = onPrepareTorrent,
+            onInspectHls = onInspectHls,
+            onInspectArchive = onInspectArchive,
+            // A source the dialog validated by inspection (HLS variant choice / archive entry
+            // selection) is queued as a typed download straight through the repository; the engine
+            // resolves output naming and collisions for its assembled file or entry folder.
+            onAddTyped = { source, destination, name, totalSize, scheduledAt, priority, credentials ->
+                onEvent(
+                    DownloadsEvent.AddDownloadTyped(
+                        source = source,
+                        savePath = destination,
+                        name = name,
+                        totalSize = totalSize,
+                        scheduledAt = scheduledAt,
+                        priority = priority,
+                        credentials = credentials,
+                    )
+                )
+            }
         )
     }
 
@@ -640,7 +637,7 @@ fun DownloadsScreenContent(
         }
 
         val listPane: @Composable () -> Unit = {
-            Island(modifier = Modifier.fillMaxSize()) { listContent() }
+            IslandPanel(modifier = Modifier.fillMaxSize()) { listContent() }
         }
 
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) { listPane() }

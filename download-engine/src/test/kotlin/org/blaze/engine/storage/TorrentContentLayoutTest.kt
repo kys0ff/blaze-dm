@@ -61,63 +61,98 @@ class TorrentContentLayoutTest {
 
     @Test
     fun `a single-file torrent lands straight in the download's folder`() {
-        val root = Path.of("/home/user/Downloads/pause-resume")
+        // Roots are real temp directories so the assertions hold on Windows too: `Path.of("/")`
+        // is drive-relative there and gets normalised to a different absolute form by the code.
+        val base = Files.createTempDirectory("blaze-torrent-layout")
+        try {
+            val root = base.resolve("pause-resume")
 
-        assertEquals(root.resolve("movie.mkv"), torrentContentPath(root, listOf("movie.mkv")))
+            assertEquals(root.resolve("movie.mkv"), torrentContentPath(root, listOf("movie.mkv")))
+        } finally {
+            base.toFile().deleteRecursively()
+        }
     }
 
     @Test
     fun `path elements that climb out are folded back inside`() {
-        val root = Path.of("/home/user/Downloads/Big.Buck")
+        val base = Files.createTempDirectory("blaze-torrent-layout")
+        try {
+            val root = base.resolve("Big.Buck")
 
-        val escaped = torrentContentPath(root, listOf("..", "..", "etc", "passwd"))
+            val escaped = torrentContentPath(root, listOf("..", "..", "etc", "passwd"))
 
-        assertTrue(escaped.startsWith(root), "$escaped left the download's folder")
-        assertEquals(root.resolve("_/_/etc/passwd"), escaped)
+            assertTrue(escaped.startsWith(root.toAbsolutePath().normalize()), "$escaped left the download's folder")
+            assertEquals(root.resolve("_/_/etc/passwd"), escaped)
+        } finally {
+            base.toFile().deleteRecursively()
+        }
     }
 
     @Test
     fun `an absolute path element cannot redirect the write either`() {
-        val root = Path.of("/home/user/Downloads/Big.Buck")
+        val base = Files.createTempDirectory("blaze-torrent-layout")
+        try {
+            val root = base.resolve("Big.Buck")
 
-        // The library's normaliser treats a leading separator as an empty first name; the result
-        // stays under the destination either way.
-        assertEquals(root.resolve("_/etc/passwd"), torrentContentPath(root, listOf("/etc/passwd")))
+            // The library's normaliser treats a leading separator as an empty first name; the result
+            // stays under the destination either way. The pre-split on `/` is what makes this hold on
+            // Windows, where the OS separator is `\` and would otherwise leave `/etc/passwd` intact.
+            assertEquals(root.resolve("_/etc/passwd"), torrentContentPath(root, listOf("/etc/passwd")))
+        } finally {
+            base.toFile().deleteRecursively()
+        }
     }
 
     @Test
     fun `awkward names are normalised exactly the way the library normalises them`() {
-        val root = Path.of("/home/user/Downloads/torrent")
+        val base = Files.createTempDirectory("blaze-torrent-layout")
+        try {
+            val root = base.resolve("torrent")
 
-        assertEquals(root.resolve("movie.mkv"), torrentContentPath(root, listOf(" movie.mkv. ")))
-        assertEquals(root.resolve("a/_/b"), torrentContentPath(root, listOf("a//b")))
-        assertEquals(root.resolve("a/b"), torrentContentPath(root, listOf("a/b")))
-        assertEquals(root.resolve("_"), torrentContentPath(root, emptyList()))
+            assertEquals(root.resolve("movie.mkv"), torrentContentPath(root, listOf(" movie.mkv. ")))
+            assertEquals(root.resolve("a/_/b"), torrentContentPath(root, listOf("a//b")))
+            assertEquals(root.resolve("a/b"), torrentContentPath(root, listOf("a/b")))
+            assertEquals(root.resolve("_"), torrentContentPath(root, emptyList()))
+        } finally {
+            base.toFile().deleteRecursively()
+        }
     }
 
     /**
      * The table from `bt`'s file-storage documentation. Blaze reimplements those rules (the library's
      * normaliser is package-private), so the table is the contract this has to satisfy - and matching
      * it is what keeps a torrent's already-downloaded data addressable after the switch.
+     *
+     * Assertions are made against a `/`-joined form of the relativised path, because the OS separator
+     * on Windows is `\` while the contract is written in terms of `/`.
      */
     @Test
     fun `the library's documented name normalisation is reproduced`() {
-        val root = Path.of("/downloads")
+        val base = Files.createTempDirectory("blaze-torrent-layout")
+        try {
+            val root = base.resolve("downloads")
 
-        fun normalised(vararg elements: String) =
-            torrentContentPath(root, elements.toList()).toString().removePrefix("/downloads/")
+            fun normalised(vararg elements: String): String {
+                val absolute = torrentContentPath(root, elements.toList())
+                return root.toAbsolutePath().normalize()
+                    .relativize(absolute)
+                    .joinToString("/") { it.toString() }
+            }
 
-        assertEquals("a/b/c", normalised("a", "b", "c"))
-        assertEquals("a/b/c", normalised(" a", "  b ", "c"))
-        assertEquals(".a/.b", normalised(".a", ".b"))
-        assertEquals("a/.b", normalised("a.", ".b."))
-        assertEquals("_", normalised(""))
-        assertEquals("a/_/b", normalised("a//b"))
-        assertEquals("_", normalised("."))
-        assertEquals("_", normalised(".."))
-        assertEquals("_/_/etc/passwd", normalised("..", "..", "etc", "passwd"))
-        assertEquals("_/_", normalised("/"))
-        assertEquals("_/a/b/c", normalised("/a/b/c"))
+            assertEquals("a/b/c", normalised("a", "b", "c"))
+            assertEquals("a/b/c", normalised(" a", "  b ", "c"))
+            assertEquals(".a/.b", normalised(".a", ".b"))
+            assertEquals("a/.b", normalised("a.", ".b."))
+            assertEquals("_", normalised(""))
+            assertEquals("a/_/b", normalised("a//b"))
+            assertEquals("_", normalised("."))
+            assertEquals("_", normalised(".."))
+            assertEquals("_/_/etc/passwd", normalised("..", "..", "etc", "passwd"))
+            assertEquals("_/_", normalised("/"))
+            assertEquals("_/a/b/c", normalised("/a/b/c"))
+        } finally {
+            base.toFile().deleteRecursively()
+        }
     }
 
     // ---- helpers ----

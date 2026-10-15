@@ -19,6 +19,8 @@ import org.blaze.engine.api.DownloadRequest
 import org.blaze.engine.settings.DEFAULT_USER_AGENT
 import org.slf4j.LoggerFactory
 import java.net.URI
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 /**
  * Thin, allocation-light HTTP transfer primitive shared by every HTTP connection worker.
@@ -83,7 +85,23 @@ class HttpNetworkClient(
         /** The body ended before the expected number of bytes arrived. */
         data class Truncated(val received: Long, val expected: Long) : StreamResult
 
-        data class Failed(val error: DownloadError) : StreamResult
+        data class Failed(
+            val error: DownloadError,
+            /**
+             * Millis the server asked us to wait before the next request, parsed from
+             * `Retry-After` on a 429 or 503. Null when the host did not send one or the header
+             * was malformed; callers are expected to fall back to their own backoff schedule
+             * in that case.
+             */
+            val retryAfterMillis: Long? = null,
+            /**
+             * True when the response status was a throttling answer (429 Too Many Requests or
+             * 503 Service Unavailable), regardless of whether a `Retry-After` came with it.
+             * The adaptive connection window uses this to decide when to shed concurrent
+             * connections against a host that is pushing back.
+             */
+            val throttled: Boolean = false,
+        ) : StreamResult
 
         /** Internal: the request has to be replayed against another URL. Never returned by [stream]. */
         data class Redirected(val to: String) : StreamResult
@@ -193,18 +211,26 @@ class HttpNetworkClient(
     /**
      * Downloads `bytes=[start]-[end]` (open-ended when [end] is null) and hands every buffer read
      * to [sink]. Recoverable problems come back as a [StreamResult]; only cancellation throws.
+     *
+     * [ifRange] is sent as an `If-Range` validator alongside the `Range` header (RFC 9110 §14.22):
+     * a server whose representation still matches it answers the range with a 206 as usual, but one
+     * whose file has since changed ignores the range and returns the whole body with a 200. The
+     * caller uses that 200-to-a-ranged-request signal to detect a mid-transfer rotation and restart
+     * cleanly instead of stitching bytes from two different files together. Only meaningful for a
+     * ranged request; ignored for a whole-body one.
      */
     suspend fun stream(
         request: DownloadRequest.Http,
         start: Long = 0L,
         end: Long? = null,
         onHead: suspend (Head) -> Unit = {},
-        sink: suspend (ByteArray, Int) -> Unit
+        ifRange: String? = null,
+        sink: suspend (ByteArray, Int) -> Unit,
     ): StreamResult {
         var url = normalize(request.url)
         var redirects = 0
         while (true) {
-            val result = streamAt(request, url, start, end, onHead, sink)
+            val result = streamAt(request, url, start, end, onHead, ifRange, sink)
             if (result !is StreamResult.Redirected) return result
             if (redirects++ >= maxRedirects) {
                 return StreamResult.Failed(DownloadError.NetworkFailure("Too many redirects"))
@@ -220,13 +246,19 @@ class HttpNetworkClient(
         start: Long,
         end: Long?,
         onHead: suspend (Head) -> Unit,
-        sink: suspend (ByteArray, Int) -> Unit
+        ifRange: String? = null,
+        sink: suspend (ByteArray, Int) -> Unit,
     ): StreamResult {
         val expected = if (end != null && end >= start) end - start + 1 else null
         val requestedRange = start > 0 || end != null
         val statement = client.prepareGet(url) {
             applyCommonHeaders(request)
-            if (requestedRange) header(HttpHeaders.Range, buildRange(start, end))
+            if (requestedRange) {
+                header(HttpHeaders.Range, buildRange(start, end))
+                // `If-Range` is only well-defined alongside `Range`; a mismatch makes the server
+                // drop back to a whole-body 200, which the caller reads as "the file changed".
+                if (ifRange != null) header(HttpHeaders.IfRange, ifRange)
+            }
         }
 
         return try {
@@ -240,7 +272,12 @@ class HttpNetworkClient(
                         StreamResult.Redirected(next)
                     }
                 }
-                if (!isSuccess(status)) return@execute StreamResult.Failed(errorForStatus(status))
+                if (!isSuccess(status)) {
+                    val hint = parseRetryAfter(response.headers, status)
+                    val throttled = status == HttpStatusCode.TooManyRequests.value ||
+                        status == HttpStatusCode.ServiceUnavailable.value
+                    return@execute StreamResult.Failed(errorForStatus(status), hint, throttled)
+                }
                 if (requestedRange && response.status != HttpStatusCode.PartialContent) {
                     // The server ignored the range. Draining the body it offered instead would move
                     // bytes into the wrong place *and* make the capability probe download a file it
@@ -343,8 +380,41 @@ class HttpNetworkClient(
             return (to - from + 1) to total
         }
 
+        /**
+         * Parse `Retry-After` (RFC 9110 sect. 10.2.3) into milliseconds. Accepts both forms:
+         * a delta-seconds integer (`Retry-After: 120`) and an HTTP-date
+         * (`Retry-After: Wed, 21 Oct 2015 07:28:00 GMT`). Returns null on 4xx/5xx that did
+         * not carry the header, on a malformed value, or when the value is not a throttling
+         * status (only 429 and 503 are recognised by our code path).
+         *
+         * The ceiling is a defensive measure: a rogue or buggy host should not be able to park
+         * a chunk retry forever. Callers still owe the user an eventual give-up signal, which
+         * the chunk retry budget above the hint will produce.
+         */
+        fun parseRetryAfter(headers: Headers, status: Int): Long? {
+            if (status != HttpStatusCode.TooManyRequests.value &&
+                status != HttpStatusCode.ServiceUnavailable.value
+            ) return null
+            val raw = headers[HttpHeaders.RetryAfter] ?: return null
+            val trimmed = raw.trim()
+            // 1) delta-seconds.
+            trimmed.toLongOrNull()?.let { seconds ->
+                if (seconds < 0) return null
+                return (seconds * 1_000L).coerceAtMost(RETRY_AFTER_CEILING_MILLIS)
+            }
+            // 2) HTTP-date (IMF-fixdate).
+            return runCatching {
+                val when1 = ZonedDateTime.parse(trimmed, DateTimeFormatter.RFC_1123_DATE_TIME)
+                val delta = java.time.Duration.between(ZonedDateTime.now(when1.zone), when1).toMillis()
+                if (delta <= 0) 0L else delta.coerceAtMost(RETRY_AFTER_CEILING_MILLIS)
+            }.getOrNull()
+        }
+
         fun buildRange(start: Long, end: Long?): String =
             if (end != null) "bytes=$start-$end" else "bytes=$start-"
+
+        /** Cap any server hint at 15 minutes so a broken host cannot park a chunk retry forever. */
+        const val RETRY_AFTER_CEILING_MILLIS = 15L * 60L * 1000L
 
         fun errorForStatus(status: Int): DownloadError = when (status) {
             HttpStatusCode.NotFound.value,

@@ -4,7 +4,7 @@ import androidx.compose.ui.input.key.Key
 import org.blaze.data.AppSettings
 import org.blaze.data.KeymapPersistence
 import org.blaze.data.StoredKeyBinding
-import org.blaze.presentation.components.BlazeKeymap
+import org.island.ui.keymap.IslandKeyBinding
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
 class SettingsKeyBindingValidationTest {
 
     private fun stored(key: Key, ctrl: Boolean = true) =
-        KeymapPersistence.fromBinding(BlazeKeymap.Binding(key, ctrl = ctrl))
+        KeymapPersistence.fromBinding(IslandKeyBinding(key, ctrl = ctrl))
 
     private fun stateWith(bindings: Map<String, StoredKeyBinding>, unbound: List<String> = emptyList()) =
         SettingsState(appSettings = AppSettings(keyBindings = bindings, unboundShortcuts = unbound))

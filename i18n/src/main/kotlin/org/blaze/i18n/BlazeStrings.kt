@@ -338,6 +338,87 @@ interface BlazeStrings {
                 val confirm: String
             }
 
+            /**
+             * Copy for the HLS quality-review step, reached once an `.m3u8` link has been confirmed as a
+             * playable stream by inspection (never by filename).
+             */
+            val hls: Hls
+
+            interface Hls {
+                /** Heading above the list of selectable renditions from a master playlist. */
+                val qualityTitle: String
+
+                /** Label prefix for the bitrate x duration size estimate of the chosen variant. */
+                val estimatedSize: String
+
+                /** Shown in place of an estimate when bitrate or duration is unknown. */
+                val noSizeEstimate: String
+
+                /** The default (engine-picked, highest-bandwidth) rendition option. */
+                val defaultQuality: String
+
+                /** Explains that a URL that looked like a playlist turned out not to be a stream. */
+                val notAStream: String
+
+                /** Builds a variant row label from its resolution and approximate bitrate. */
+                fun variantLabel(resolution: String?, bandwidthMbps: String?): String
+            }
+
+            /**
+             * The warning raised before an HLS download whose stream shows credible signs of DRM or an
+             * uncertain protection mechanism. It informs and asks; it never blocks on suspicion alone and
+             * never offers to bypass protection.
+             */
+            val drmWarning: DrmWarning
+
+            interface DrmWarning {
+                val title: String
+
+                /** The full explanation of the risk and the user's own responsibility. */
+                val message: String
+
+                /** The plain statement that continuing does not bypass DRM or extract protected keys. */
+                val detail: String
+
+                /** Names the weaker, uncertain classification distinctly from a confirmed indicator. */
+                val uncertainNote: String
+
+                /** Points the user to the provider's own documentation or terms when none is verified. */
+                val advice: String
+
+                /** Action that records the acknowledgement and proceeds with the supported download. */
+                val continueAction: String
+            }
+
+            /**
+             * Copy for the remote-archive browser step: inspecting a ZIP through byte ranges, picking
+             * members, and the honest fallback when selective retrieval is not possible.
+             */
+            val archive: Archive
+
+            interface Archive {
+                /** Heading above the browsable entry tree. */
+                val entriesTitle: String
+
+                /** Running total of what the current selection will retrieve. */
+                fun estimatedSelected(size: String): String
+
+                /** Explains that the host will not serve ranges, so only a whole download is possible. */
+                val selectiveUnsupported: String
+
+                /** Checkbox that explicitly opts into fetching the entire archive. */
+                val downloadWholeArchive: String
+
+                /** Marks a member that cannot be extracted (encrypted or unsupported compression). */
+                val notExtractable: String
+
+                /** Short guidance shown above the tree about what selecting does. */
+                val hint: String
+
+                /** Shown when the inspected resource is not a usable archive. */
+                fun unavailable(reason: String): String
+            }
+
             val details: Details
             /** Field labels for the read-only "Download details" dialog. */
             interface Details {
@@ -662,11 +743,14 @@ interface BlazeStrings {
         val typeToSearch: String
         /** Shown when a non-empty query matches nothing. */
         val nothingFound: String
-        /** Section header over the download group in the All tab. */
+
+        /** Section header over the download group in the 'All' tab. */
         val sectionDownloads: String
-        /** Section header over the action group in the All tab. */
+
+        /** Section header over the action group in the 'All' tab. */
         val sectionActions: String
-        /** Section header over the settings group in the All tab. */
+
+        /** Section header over the settings group in the 'All' tab. */
         val sectionSettings: String
     }
 
@@ -749,6 +833,25 @@ interface BlazeStrings {
         val themeSystemOption: String
         val themeLightOption: String
         val themeDarkOption: String
+
+        /** Typography group: interface font, monospace font and interface text size. */
+        val typographyHeader: String
+        val uiFontLabel: String
+        val uiFontDesc: String
+        val monoFontLabel: String
+        val monoFontDesc: String
+        val uiTextScaleLabel: String
+        val uiTextScaleDesc: String
+
+        /** "System default" option in the interface-font radio group (family names stay untranslated). */
+        val fontSystemOption: String
+
+        /** "System monospace" option in the monospace-font radio group. */
+        val fontSystemMonoOption: String
+
+        /** Stepper button labels around the current text-size percentage. */
+        val textScaleDecreaseAction: String
+        val textScaleIncreaseAction: String
         val startupHeader: String
         val resumeOnStartupLabel: String
         val startQueuedOnStartupLabel: String

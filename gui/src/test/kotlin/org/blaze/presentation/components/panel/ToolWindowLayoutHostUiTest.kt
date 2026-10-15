@@ -11,9 +11,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.Island
-import org.blaze.presentation.theme.BlazeTheme
+import org.blaze.presentation.components.AppMetrics
+import org.island.theme.ui.IslandTheme
+import org.island.ui.IslandPanel
+import org.island.ui.toolwindow.ToolWindowLayoutHost
+import org.island.ui.toolwindow.ToolWindowMoveTo
+import org.island.ui.toolwindow.ToolWindowSpec
+import org.island.ui.toolwindow.ToolWindowViewMode
 import org.jetbrains.jewel.ui.component.Text
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -133,10 +137,10 @@ class ToolWindowLayoutHostUiTest {
         viewMode: ToolWindowViewMode,
         onClose: () -> Unit,
     ) {
-        BlazeTheme(isDark = true) {
+        IslandTheme(isDark = true) {
             ToolWindowLayoutHost(
                 mainContent = {
-                    Island(modifier = Modifier.fillMaxSize()) {
+                    IslandPanel(modifier = Modifier.fillMaxSize()) {
                         Box(modifier = Modifier.fillMaxSize().testTag(CONTENT_TAG)) {
                             Text("the workspace content")
                         }
@@ -149,7 +153,7 @@ class ToolWindowLayoutHostUiTest {
                         visible = true,
                         viewMode = viewMode,
                         moveTo = ToolWindowMoveTo.RIGHT_TOP,
-                        splitFraction = BlazeLayout.DETAILS_DEFAULT_LIST_FRACTION,
+                        splitFraction = AppMetrics.DETAILS_DEFAULT_LIST_FRACTION,
                         onClose = onClose,
                         content = {
                             Box(modifier = Modifier.fillMaxSize().testTag(PANE_TAG)) {
@@ -158,6 +162,8 @@ class ToolWindowLayoutHostUiTest {
                         },
                     ),
                 ),
+                paneMinWidth = AppMetrics.DetailsPaneMinWidth,
+                contentMinWidth = AppMetrics.ListPaneMinWidth,
             )
         }
     }

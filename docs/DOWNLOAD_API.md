@@ -201,27 +201,27 @@ FAILED, CANCELLED`
 * `COMPLETING` is reserved for a future finalize phase; clients may ignore it. `SEEDING` is torrent-only.
 
 ### `DownloadDto`
-| Field                        | Type                                               | Notes                                           |
-|------------------------------|----------------------------------------------------|-------------------------------------------------|
-| `id`                         | string                                             | Opaque download id                              |
-| `name`                       | string                                             | Filename / torrent display name                 |
-| `state`                      | DownloadState                                      |                                                 |
-| `source`                     | `SourceInfo{kind, locator, mayRequireCredentials}` | `kind` ∈ `HTTP, HTTPS, MAGNET, TORRENT_FILE`    |
-| `destination`                | string                                             |                                                 |
-| `totalBytes`                 | long?                                              | `null` if unknown                               |
-| `downloadedBytes`            | long                                               |                                                 |
-| `progress`                   | float?                                             | 0.0–1.0, `null` if size unknown                 |
-| `speedBytesPerSecond`        | long                                               | instantaneous                                   |
-| `averageSpeedBytesPerSecond` | long?                                              |                                                 |
-| `etaSeconds`                 | long?                                              |                                                 |
-| `peers`                      | int                                                | torrent peers (0 for HTTP)                      |
-| `error`                      | `ApiErrorBody`?                                    | present when failed / error-changed             |
-| `createdAtEpochMs`           | long                                               |                                                 |
-| `completedAtEpochMs`         | long?                                              |                                                 |
-| `scheduledAtEpochMs`         | long?                                              | scheduled start                                 |
-| `resumable`                  | bool                                               |                                                 |
-| `portable`                   | bool                                               | portable-download artifact present              |
-| `files`                      | `DownloadFile[]`?                                  | torrent file selection (`path, size, selected`) |
+| Field                        | Type                                               | Notes                                                                       |
+|------------------------------|----------------------------------------------------|-----------------------------------------------------------------------------|
+| `id`                         | string                                             | Opaque download id                                                          |
+| `name`                       | string                                             | Filename / torrent display name                                             |
+| `state`                      | DownloadState                                      |                                                                             |
+| `source`                     | `SourceInfo{kind, locator, mayRequireCredentials}` | `kind` ∈ `HTTP, HTTPS, MAGNET, TORRENT_FILE, TORRENT_URL, HLS, ZIP_ARCHIVE` |
+| `destination`                | string                                             |                                                                             |
+| `totalBytes`                 | long?                                              | `null` if unknown                                                           |
+| `downloadedBytes`            | long                                               |                                                                             |
+| `progress`                   | float?                                             | 0.0–1.0, `null` if size unknown                                             |
+| `speedBytesPerSecond`        | long                                               | instantaneous                                                               |
+| `averageSpeedBytesPerSecond` | long?                                              |                                                                             |
+| `etaSeconds`                 | long?                                              |                                                                             |
+| `peers`                      | int                                                | torrent peers (0 for HTTP)                                                  |
+| `error`                      | `ApiErrorBody`?                                    | present when failed / error-changed                                         |
+| `createdAtEpochMs`           | long                                               |                                                                             |
+| `completedAtEpochMs`         | long?                                              |                                                                             |
+| `scheduledAtEpochMs`         | long?                                              | scheduled start                                                             |
+| `resumable`                  | bool                                               |                                                                             |
+| `portable`                   | bool                                               | portable-download artifact present                                          |
+| `files`                      | `DownloadFile[]`?                                  | torrent file selection (`path, size, selected`)                             |
 
 ### `Capabilities` (`GET /api/v1/capabilities`)
 ```json
@@ -230,12 +230,18 @@ FAILED, CANCELLED`
   "supportsHttp": true, "supportsHttps": true, "supportsTorrent": true, "supportsMagnet": true,
   "supportsPortableDownloads": true, "supportsPauseResume": true, "supportsCancel": true,
   "supportsRetry": true, "supportsScheduling": true, "supportsEventStream": true,
+  "supportsHls": true, "supportsRemoteArchiveInspection": true,
   "bandwidthControl": "GLOBAL_ONLY",
   "prioritySupport": "FIFO_ONLY",
   "authentication": "BEARER_TOKEN",
   "requiresLocalhost": true
 }
 ```
+
+* `supportsHls` — the engine can download HLS (`.m3u8`) streams and inspect them for protection first.
+  `supportsRemoteArchiveInspection` — the engine can inspect a remote ZIP via byte ranges and selectively
+  retrieve entries. **Both are in-process capabilities** (`DownloadsApi`); the loopback HTTP transport has
+  no inspect endpoint and its create body still accepts only `url`/`magnet`/`torrentFile` (§8).
 * `authentication` ∈ `NONE, BEARER_TOKEN, PEER_CREDENTIALS`.
 * `bandwidthControl` ∈ `NONE, GLOBAL_ONLY, PER_DOWNLOAD` — currently `GLOBAL_ONLY`, so
   `bandwidthLimitBytesPerSecond` on a create is a best-effort hint; the authoritative ceiling is the global
@@ -324,10 +330,30 @@ suspend fun create(request: NewDownloadRequest): DownloadDto
 suspend fun start(id) / pause(id) / resume(id) / cancel(id) / retry(id)
 suspend fun remove(id, deleteFiles: Boolean = false)
 suspend fun probe(request): DownloadMetadataDto?          // size/name/metadata without downloading
+suspend fun prepareTorrent(url, credentials): TorrentPreviewDto?  // fetch + parse a web-served .torrent
+suspend fun inspectHls(url, variantIndex = -1, credentials): HlsInspectionDto    // read-only .m3u8 probe (no media segment)
+suspend fun inspectArchive(url, credentials): ArchiveInspectionDto              // read-only remote-ZIP central-directory probe
 suspend fun detectPortable(path): PortableInfoDto?
 suspend fun importPortable(artifactPath, destinationDir): String?
 suspend fun shutdown()
 ```
+
+### Sources & inspection (HLS / remote ZIP)
+
+`NewDownloadRequest.source` is a polymorphic `DownloadSource` (discriminator `type`): `url`, `magnet`,
+`torrentFile`, and the two added here — `hls {url, variantIndex, drmAcknowledged}` and
+`archive {url, selectedEntries}`. Declaring a source as `hls`/`archive` is what **selects the handler**;
+Blaze never routes on a file extension alone. `inspectHls` returns an `HlsInspectionDto` whose `status` is
+`Playable`, `NeedsDrmConsent`, `LiveUnsupported`, `NotAStream` or `Error`; `inspectArchive` returns a
+sealed `ArchiveInspectionDto` (`Browsable{entries, selectiveSupported}`, `FullDownloadOnly{reason}` or
+`Unavailable{reason}`). Both take **ephemeral** `credentials` that reach the transfer only and are never
+stored, echoed or logged (`§3`). `drmAcknowledged` records a user's warning choice and gates only what is *reported* —
+acknowledging never enables DRM circumvention.
+
+> **Transport note.** These two sources and the `inspectHls`/`inspectArchive` probes are **in-process only**
+> for now (used by the GUI). The loopback HTTP `POST /api/v1/downloads` body still accepts just
+> `url`/`magnet`/`torrentFile`, and there is no HTTP inspect route — a remote client passing an `.m3u8` or
+> `.zip` URL therefore gets an ordinary whole-file download. Exposing them over HTTP is deferred follow-up.
 
 All lifecycle operations are serialized behind a per-id guard, so racing `start`+`pause`, `resume`+`cancel`,
 `remove`+`completion`, or `retry`+`cancellation` can never leave inconsistent state. `move`/`rename`/

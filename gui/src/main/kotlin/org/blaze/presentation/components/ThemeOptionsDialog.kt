@@ -2,12 +2,7 @@ package org.blaze.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -17,10 +12,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
-import org.blaze.presentation.theme.toColor
-import org.blaze.theming.api.ThemeConfig
-import org.blaze.theming.api.ThemeOption
-import org.blaze.theming.api.ThemeOptionType
+import org.island.theme.api.ThemeConfig
+import org.island.theme.api.ThemeOption
+import org.island.theme.api.ThemeOptionType
+import org.island.theme.ui.toColor
+import org.island.ui.dialog.IslandDialog
+import org.island.ui.dialog.StandardDialogButtons
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.Checkbox
@@ -29,7 +26,7 @@ import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
 
 /**
- * Renders a [org.blaze.theming.api.ConfigurableBlazeThemeProvider]'s declared option descriptors as
+ * Renders a [org.island.theme.api.ConfigurableIslandThemeProvider]'s declared option descriptors as
  * a small editor form and hands the whole edited value map back on confirm — the theming twin of
  * [ResolverOptionsDialog], so neither runs plugin code to build the form: the descriptor alone picks
  * the control.
@@ -66,7 +63,7 @@ fun ThemeOptionsDialog(
         validateThemeOption(option, working[option.key] ?: option.defaultValue, msgs)
     val hasErrors = descriptors.any { errorOf(it) != null }
 
-    BaseDialog(onDismiss = onDismiss, title = title) {
+    IslandDialog(onDismiss = onDismiss, title = title) {
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -99,7 +96,18 @@ fun ThemeOptionsDialog(
                 }
             },
             onConfirm = {
-                onConfirm(descriptors.associate { it.key to (working[it.key] ?: it.defaultValue) })
+                // Only answers that differ from the descriptor's declared default are persisted. A
+                // value left at its default is an *override for neither mode* — dropping it lets the
+                // registry resolve the light/dark default per appearance instead of pinning the
+                // (dark) default across both, which is what kept a day palette from ever showing.
+                onConfirm(
+                    descriptors
+                        .mapNotNull { option ->
+                            val value = working[option.key] ?: option.defaultValue
+                            if (value != option.defaultValue) option.key to value else null
+                        }
+                        .toMap(),
+                )
             },
         )
     }

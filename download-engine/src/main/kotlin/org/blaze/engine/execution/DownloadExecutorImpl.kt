@@ -1,16 +1,17 @@
 package org.blaze.engine.execution
 
-import io.ktor.client.HttpClient
+import io.ktor.client.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
-import org.blaze.engine.api.CopyName
-import org.blaze.engine.api.DownloadError
-import org.blaze.engine.api.DownloadFileMetadata
-import org.blaze.engine.api.DownloadId
-import org.blaze.engine.api.DownloadRequest
-import org.blaze.engine.api.DownloadState
-import org.blaze.engine.api.DownloadTask
+import kotlinx.coroutines.launch
+import org.blaze.engine.api.*
+import org.blaze.engine.archive.HttpRemoteByteSource
+import org.blaze.engine.archive.RemoteZipExtractor
+import org.blaze.engine.archive.ZipCentralDirectory
+import org.blaze.engine.hls.FfmpegRemuxer
+import org.blaze.engine.hls.HlsDownloader
 import org.blaze.engine.metrics.EngineMetrics
 import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
@@ -46,7 +47,15 @@ class DownloadExecutorImpl(
 ) : DownloadExecutor {
     private val logger = LoggerFactory.getLogger(DownloadExecutorImpl::class.java)
 
+    /**
+     * Per-run scratch slot: the HTTP coordinator stashes any `Retry-After` hint here when it
+     * hands back a Failure so the task-level scheduler can widen the retry delay to match. Reset
+     * at the top of every `execute()` so a value never leaks across a pause/resume cycle.
+     */
+    private var pendingRetryHintMillis: Long? = null
+
     override fun execute(): Flow<DownloadTask> = channelFlow {
+        pendingRetryHintMillis = null
         var currentTask = initialTask
         logger.debug("Starting execution of task {} ({})", currentTask.id, currentTask.request::class.simpleName)
         send(currentTask)
@@ -55,6 +64,8 @@ class DownloadExecutorImpl(
             val flow = when (val request = currentTask.request) {
                 is DownloadRequest.Http -> executeHttp(request, currentTask)
                 is DownloadRequest.Torrent -> executeTorrent(request, currentTask)
+                is DownloadRequest.Hls -> executeHls(request, currentTask)
+                is DownloadRequest.Archive -> executeArchive(request, currentTask)
             }
 
             flow.collect { updatedTask ->
@@ -72,11 +83,25 @@ class DownloadExecutorImpl(
         }
 
         if (currentTask.state == DownloadState.Failed) {
-            val delayMs = retryPolicy.getNextDelay(currentTask.error ?: DownloadError.Unknown("Unknown error"), currentTask.retryCount)
+            val serverHint = pendingRetryHintMillis
+            val policyDelay = retryPolicy.getNextDelay(
+                currentTask.error ?: DownloadError.Unknown("Unknown error"),
+                currentTask.retryCount,
+            )
+            // Honour the server's own pacing when it gave one: `Retry-After` is the host telling us
+            // how long its queue needs; the policy's exponential schedule is the fallback when it
+            // did not answer. Taking the max keeps the retry no-earlier-than both sources ask for
+            // and never shortens what the policy already thought was sensible.
+            val delayMs = when {
+                policyDelay == null -> null
+                serverHint == null -> policyDelay
+                else -> maxOf(policyDelay, serverHint)
+            }
             if (delayMs != null) {
                 logger.info(
-                    "Scheduling retry for {} in {}ms (retry {})",
-                    currentTask.id, delayMs, currentTask.retryCount + 1
+                    "Scheduling retry for {} in {}ms (retry {}, server hint {})",
+                    currentTask.id, delayMs, currentTask.retryCount + 1,
+                    if (serverHint != null) "${serverHint}ms" else "none",
                 )
                 val retryingTask = currentTask.copy(
                     state = DownloadState.Queued,
@@ -155,6 +180,9 @@ class DownloadExecutorImpl(
             // Learned from the first response that proves it (a 206, an `Accept-Ranges` answer, an
             // ignored `Range`); carried on every update so a client can warn before it pauses.
             var resumeSupported: Boolean? = task.resumeSupported
+            // Monotonic across the run: the coordinator bumps it only when it truly discards bytes
+            // and restarts from 0, so a client can name the event without guessing from the count.
+            var restarts = task.restarts
             val progress = HttpProgress()
 
             val outcome = coordinator.download(
@@ -162,7 +190,23 @@ class DownloadExecutorImpl(
                 destination = finalDestination,
                 partial = finalPartialPath,
                 connections = connections,
-                onRangeSupport = { supported -> resumeSupported = supported }
+                onRangeSupport = { supported -> resumeSupported = supported },
+                onRestart = { restarts++ },
+                onProbing = {
+                    // A probe genuinely runs (accelerated or resuming a chunked partial); surface it so the
+                    // list reads "probing" during the HEAD/ranged-GET rather than a silent stall.
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Probing,
+                            totalBytes = totalBytes,
+                            downloadedBytes = downloadedBytes,
+                            resumeSupported = resumeSupported,
+                            restarts = restarts
+                        )
+                    )
+                },
             ) { update ->
                 totalBytes = update.totalBytes ?: totalBytes
                 downloadedBytes = update.downloadedBytes
@@ -175,7 +219,8 @@ class DownloadExecutorImpl(
                         totalBytes = totalBytes,
                         downloadedBytes = downloadedBytes,
                         speed = speed,
-                        resumeSupported = resumeSupported
+                        resumeSupported = resumeSupported,
+                        restarts = restarts
                     )
                 )
             }
@@ -194,13 +239,16 @@ class DownloadExecutorImpl(
                             totalBytes = outcome.totalBytes ?: outcome.downloadedBytes,
                             downloadedBytes = outcome.downloadedBytes,
                             progress = 1f,
-                            resumeSupported = resumeSupported
+                            resumeSupported = resumeSupported,
+                            restarts = restarts
                         )
                     )
                 }
 
                 is HttpDownloadCoordinator.Outcome.Failure -> {
                     metrics.recordFailed()
+                    // Remember any hint so the outer channelFlow can widen the retry delay.
+                    pendingRetryHintMillis = outcome.retryAfterMillis
                     send(
                         updateTask(
                             task = labelled,
@@ -209,10 +257,250 @@ class DownloadExecutorImpl(
                             totalBytes = totalBytes,
                             downloadedBytes = downloadedBytes,
                             error = outcome.error,
-                            resumeSupported = resumeSupported
+                            resumeSupported = resumeSupported,
+                            restarts = restarts
                         )
                     )
                 }
+            }
+        }
+
+    private fun executeHls(request: DownloadRequest.Hls, task: DownloadTask): Flow<DownloadTask> =
+        channelFlow {
+            val settings = settingsRepository.settings.value
+            val (finalDestination, _) = resolveDestination(request.destination, settings.fileConflictBehavior)
+            if (finalDestination == null) {
+                val sz = storage.size(request.destination)
+                send(task.copy(state = DownloadState.Completed, downloadedBytes = sz, totalBytes = sz, progress = 1f))
+                return@channelFlow
+            }
+            val resolved =
+                if (finalDestination == request.destination) request else request.copy(destination = finalDestination)
+            val labelled =
+                if (resolved.destination == request.destination) task else task.copy(name = finalDestination.fileName.toString())
+
+            val client = HttpNetworkClient(
+                client = httpClient,
+                userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+                maxRedirects = settings.maxRedirects
+            )
+            // Remuxing is strictly opt-in and off by default: no external tool is even looked for unless
+            // the user turned it on. When enabled, the remuxer is still only *used* if ffmpeg is genuinely
+            // present (checked lazily in the downloader); the pure-JVM concat path never depends on this.
+            val remuxer = if (settings.allowFfmpegRemux) FfmpegRemuxer(settings.ffmpegPath ?: "ffmpeg") else null
+            val downloader = HlsDownloader(
+                client = client,
+                storage = storage,
+                limiter = limiter,
+                maxConcurrency = settings.hlsMaxConcurrentSegments,
+                remuxer = remuxer,
+            )
+
+            // Segment progress and phase changes are emitted by callbacks running inside the downloader's
+            // own coroutine scope, not this producer's, so they are bridged through a channel drained here.
+            // The channel is UNLIMITED (not CONFLATED) so the rare Probing/Merging boundary events can never
+            // be collapsed away by conflation; progress samples are cheap and consumed as fast as produced.
+            val updates = Channel<HlsEvent>(Channel.UNLIMITED)
+            val tracker = HttpProgress()
+            var lastBytes = task.downloadedBytes
+            var lastEstimate = task.totalBytes
+            val progressJob = launch {
+                for (event in updates) when (event) {
+                    is HlsEvent.Segment -> {
+                        // The true size is only known once the last segment lands, so extrapolate the total
+                        // from the fraction already fetched; that keeps the bar, the "of ~X" label and the ETA
+                        // honest instead of showing a raw segment count ("1b, 2b") as if it were bytes. The
+                        // completion event below pins the exact size, so the estimate never reaches the record.
+                        lastBytes = event.bytes
+                        if (event.done > 0 && event.total > 0) lastEstimate = event.bytes * event.total / event.done
+                        send(
+                            updateTask(
+                                task = labelled,
+                                request = resolved,
+                                state = DownloadState.Downloading,
+                                totalBytes = lastEstimate,
+                                downloadedBytes = event.bytes,
+                                speed = tracker.sample(event.bytes),
+                                progress = if (event.total > 0) event.done.toFloat() / event.total else 0f
+                            )
+                        )
+                    }
+
+                    is HlsEvent.Phase -> send(
+                        // A boundary event carries the last known byte counts forward (0 during probing,
+                        // the fetched amount during merging) rather than inventing any number.
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = event.state,
+                            totalBytes = lastEstimate,
+                            downloadedBytes = lastBytes,
+                            speed = 0,
+                        )
+                    )
+                }
+            }
+            val outcome = downloader.download(
+                playlistUrl = resolved.playlistUrl,
+                destination = resolved.destination,
+                variantIndex = resolved.variantIndex,
+                headers = resolved.headers,
+                drmAcknowledged = resolved.drmAcknowledged,
+                onProgress = { done, total, bytes -> updates.trySend(HlsEvent.Segment(done, total, bytes)) },
+                onPhase = { phase ->
+                    val state = when (phase) {
+                        HlsDownloader.Phase.Probing -> DownloadState.Probing
+                        HlsDownloader.Phase.Merging -> DownloadState.Merging
+                    }
+                    updates.trySend(HlsEvent.Phase(state))
+                },
+            )
+            updates.close()
+            progressJob.join()
+
+            when (outcome) {
+                is HlsDownloader.Outcome.Success -> {
+                    metrics.recordCompleted()
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Completed,
+                            totalBytes = outcome.outputBytes,
+                            downloadedBytes = outcome.outputBytes,
+                            progress = 1f
+                        )
+                    )
+                }
+
+                is HlsDownloader.Outcome.NeedsDrmConsent ->
+                    // Only reached if a protected-looking stream is executed without the user's
+                    // acknowledgement. The GUI records the choice before creating the task, so this is a
+                    // safety net, not a DRM-based refusal: it asks for the confirmation that was missing.
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Failed,
+                            totalBytes = null,
+                            downloadedBytes = 0,
+                            error = DownloadError.Unknown(
+                                "this stream may be content-protected; confirm the warning to download " +
+                                        "what is legitimately accessible (Blaze never bypasses DRM)"
+                            )
+                        )
+                    )
+
+                is HlsDownloader.Outcome.Unsupported ->
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Failed,
+                            totalBytes = null,
+                            downloadedBytes = 0,
+                            error = DownloadError.Unknown(outcome.reason)
+                        )
+                    )
+
+                is HlsDownloader.Outcome.Failed -> {
+                    metrics.recordFailed()
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Failed,
+                            totalBytes = null,
+                            downloadedBytes = 0,
+                            error = outcome.error
+                        )
+                    )
+                }
+            }
+        }
+
+    private fun executeArchive(request: DownloadRequest.Archive, task: DownloadTask): Flow<DownloadTask> =
+        channelFlow {
+            val settings = settingsRepository.settings.value
+            val client = HttpNetworkClient(
+                client = httpClient,
+                userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+                maxRedirects = settings.maxRedirects
+            )
+            val selected = request.selectedEntries
+            if (selected == null) {
+                // No selection: the archive is just an ordinary ranged HTTP download of the whole file.
+                val asHttp = DownloadRequest.Http(request.name, request.url, request.destination, request.headers)
+                executeHttp(asHttp, task).collect { send(it) }
+                return@channelFlow
+            }
+            // Selective extraction writes a tree under destination; a pre-existing folder is reused, not
+            // renamed, so resuming a partially-extracted archive lands in the same place.
+            val destination = request.destination
+            val source = HttpRemoteByteSource(client, request.url, request.headers)
+            try {
+                // Reading the central directory (and checking selective support) is the probe phase: deciding
+                // which ranges to fetch before any entry byte moves.
+                send(updateTask(task, request, DownloadState.Probing, null, 0))
+                val listing = ZipCentralDirectory.inspect(source)
+                if (!listing.selectiveSupported) {
+                    send(
+                        updateTask(
+                            task, request, DownloadState.Failed, null, 0,
+                            error = DownloadError.Unknown(
+                                listing.reasonIfUnsupported ?: "server does not support selective range reads"
+                            )
+                        )
+                    )
+                    return@channelFlow
+                }
+                val entries = selected.mapNotNull { listing.entryNamed(it) }
+                if (entries.isEmpty()) {
+                    send(
+                        updateTask(
+                            task, request, DownloadState.Failed, null, 0,
+                            error = DownloadError.Unknown("none of the selected entries exist in the archive")
+                        )
+                    )
+                    return@channelFlow
+                }
+                val totalDeclared = entries.sumOf { it.uncompressedSize.coerceAtLeast(0) }
+                send(updateTask(task, request, DownloadState.Downloading, totalDeclared, 0))
+                // The compressed ranges are fetched lazily inside extract; decompressing and writing the
+                // entry tree is assembly work, so the run flips to Merging for its duration.
+                send(updateTask(task, request, DownloadState.Merging, totalDeclared, 0))
+                val extraction = RemoteZipExtractor(source).extract(entries, destination)
+                if (extraction.allSucceeded) {
+                    metrics.recordCompleted()
+                    send(
+                        updateTask(
+                            task,
+                            request,
+                            DownloadState.Completed,
+                            totalDeclared,
+                            totalDeclared,
+                            progress = 1f
+                        )
+                    )
+                } else {
+                    metrics.recordFailed()
+                    val failedNames = extraction.failures.joinToString(", ") { "${it.name}: ${it.reason}" }
+                    send(
+                        updateTask(
+                            task, request, DownloadState.Failed, totalDeclared, 0,
+                            error = DownloadError.Unknown("selected entries could not be fully retrieved: $failedNames")
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                metrics.recordFailed()
+                send(
+                    updateTask(
+                        task, request, DownloadState.Failed, null, 0,
+                        error = DownloadError.Unknown(e.message ?: "archive extraction failed")
+                    )
+                )
             }
         }
 
@@ -320,7 +608,8 @@ class DownloadExecutorImpl(
         error: DownloadError? = null,
         name: String? = null,
         files: List<DownloadFileMetadata>? = null,
-        resumeSupported: Boolean? = null
+        resumeSupported: Boolean? = null,
+        restarts: Int = task.restarts
     ): DownloadTask {
         val total = totalBytes?.takeIf { it > 0 }
         val calculatedProgress = progress ?: run {
@@ -342,7 +631,8 @@ class DownloadExecutorImpl(
             error = error,
             completedAt = if (state == DownloadState.Completed) Instant.now() else task.completedAt,
             files = files ?: task.files,
-            resumeSupported = resumeSupported ?: task.resumeSupported
+            resumeSupported = resumeSupported ?: task.resumeSupported,
+            restarts = restarts
         )
     }
 
@@ -377,6 +667,16 @@ class DownloadExecutorImpl(
                 newFile to storage.getPartialFile(newFile).toPath()
             }
         }
+    }
+
+    /**
+     * A bridged HLS lifecycle event: either a segment-completion progress sample or a coarse phase
+     * boundary (probing the playlist, merging the assembled file). Kept as one type so the two kinds
+     * are drained in the exact order the downloader produced them.
+     */
+    private sealed interface HlsEvent {
+        data class Segment(val done: Int, val total: Int, val bytes: Long) : HlsEvent
+        data class Phase(val state: DownloadState) : HlsEvent
     }
 
     /**

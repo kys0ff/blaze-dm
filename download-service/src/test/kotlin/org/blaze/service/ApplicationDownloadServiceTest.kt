@@ -18,6 +18,10 @@ import org.blaze.engine.api.PortableDownloadInfo
 import org.blaze.engine.api.PortableTransferKind
 import org.blaze.engine.api.TorrentSource
 import org.blaze.engine.api.DownloadTask
+import org.blaze.engine.api.ArchiveInspection
+import org.blaze.engine.api.HlsInspection
+import org.blaze.engine.api.HlsInspectStatus
+import org.blaze.engine.api.HlsProtectionLevel
 import org.blaze.engine.settings.EngineSettingsRepository
 import org.blaze.engine.settings.FileConflictBehavior
 import org.blaze.service.security.PathValidator
@@ -31,6 +35,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -195,6 +200,38 @@ class ApplicationDownloadServiceTest {
     }
 
     @Test
+    fun `inspectHls forwards credentials and projects the verdict`() = runBlocking {
+        val engine = FakeEngine(
+            hlsInspection = HlsInspection(
+                status = HlsInspectStatus.NeedsDrmConsent,
+                protection = HlsProtectionLevel.DrmSuspected,
+                variants = emptyList(),
+                selectedVariantIndex = -1,
+                estimatedTotalBytes = null,
+                message = "may be protected",
+            ),
+        )
+        val api = service(engine)
+        val verdict =
+            api.inspectHls("https://host/a.m3u8", variantIndex = 2, credentials = mapOf("Authorization" to "Bearer x"))
+        assertEquals(org.blaze.download.api.HlsInspectStatusDto.NeedsDrmConsent, verdict.status)
+        assertEquals(org.blaze.download.api.HlsProtectionDto.DrmSuspected, verdict.protection)
+        assertEquals(
+            Triple("https://host/a.m3u8", 2, mapOf("Authorization" to "Bearer x")),
+            engine.lastHlsInspectionRequest
+        )
+    }
+
+    @Test
+    fun `inspectArchive forwards and reports a full-download-only host`() = runBlocking {
+        val engine = FakeEngine(archiveInspection = ArchiveInspection.FullDownloadOnly("no ranges"))
+        val api = service(engine)
+        val result = api.inspectArchive("https://host/a.zip", credentials = mapOf("Cookie" to "s=1"))
+        assertIs<org.blaze.download.api.ArchiveInspectionDto.FullDownloadOnly>(result)
+        assertEquals("https://host/a.zip" to mapOf("Cookie" to "s=1"), engine.lastArchiveInspectionRequest)
+    }
+
+    @Test
     fun `prepareTorrent forwards url and credentials and maps the preview dto`() = runBlocking {
         val preview = org.blaze.engine.api.TorrentFilePreview(
             torrentFile = Path.of("/cache/abc.torrent"),
@@ -206,7 +243,9 @@ class ApplicationDownloadServiceTest {
         val dto = api.prepareTorrent("https://example.com/big.torrent", mapOf("Authorization" to "Bearer t"))
 
         assertNotNull(dto)
-        assertEquals("/cache/abc.torrent", dto.torrentFile)
+        // The DTO carries the engine's cached metainfo path verbatim; compare to the same Path so the
+        // assertion holds on any separator (Windows renders "/cache/abc.torrent" as "\cache\abc.torrent").
+        assertEquals(preview.torrentFile.toString(), dto.torrentFile)
         assertEquals("Big.Buck", dto.name)
         assertEquals(4321L, dto.totalBytes)
         assertEquals("buck.mkv", dto.files?.single()?.path)

@@ -32,7 +32,7 @@ import org.blaze.data.StoredKeyBinding
 import org.blaze.i18n.BlazeStrings
 import org.blaze.presentation.components.BlazeKeymap
 import org.blaze.presentation.screens.settings.state.SettingsState
-import org.blaze.presentation.theme.BlazeColors
+import org.island.theme.ui.IslandSemanticColors
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.OutlinedButton
@@ -154,7 +154,7 @@ private fun ShortcutRow(
             if (error != null) {
                 Text(
                     text = error,
-                    color = BlazeColors.error,
+                    color = IslandSemanticColors.error,
                     style = JewelTheme.defaultTextStyle.copy(fontSize = 12.sp)
                 )
             }

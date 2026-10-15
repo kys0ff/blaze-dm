@@ -2,50 +2,26 @@ package org.blaze.engine.core
 
 import bt.bencoding.serializers.BEParser
 import bt.metainfo.MetadataConstants
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.java.Java
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.HttpTimeoutConfig
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
+import io.ktor.client.*
+import io.ktor.client.engine.okhttp.*
+import io.ktor.client.plugins.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import org.blaze.engine.api.DownloadEngine
-import org.blaze.engine.api.DownloadError
-import org.blaze.engine.api.DownloadFileMetadata
-import org.blaze.engine.api.DownloadId
-import org.blaze.engine.api.DownloadMetadata
-import org.blaze.engine.api.DownloadPriority
-import org.blaze.engine.api.DownloadRequest
-import org.blaze.engine.api.DownloadState
-import org.blaze.engine.api.DownloadTask
-import org.blaze.engine.api.PortableDownloadInfo
-import org.blaze.engine.api.PortableTransferKind
-import org.blaze.engine.api.TorrentFilePreview
-import org.blaze.engine.api.TorrentSource
+import kotlinx.coroutines.flow.*
+import org.blaze.engine.api.*
+import org.blaze.engine.archive.HttpRemoteByteSource
+import org.blaze.engine.archive.ZipCentralDirectory
 import org.blaze.engine.execution.DownloadExecutor
 import org.blaze.engine.execution.DownloadExecutorImpl
+import org.blaze.engine.hls.HlsDownloader
+import org.blaze.engine.hls.HlsPlaylistException
+import org.blaze.engine.hls.HlsProtection
 import org.blaze.engine.metrics.EngineMetrics
 import org.blaze.engine.network.BandwidthLimiter
 import org.blaze.engine.network.HttpNetworkClient
 import org.blaze.engine.persistence.DownloadRecord
 import org.blaze.engine.persistence.DownloadRepository
-import org.blaze.engine.portable.PortableImport
-import org.blaze.engine.portable.PortableManifest
-import org.blaze.engine.portable.TorrentPortableFile
-import org.blaze.engine.portable.inspectPortableFile
-import org.blaze.engine.portable.installHttpResumeSidecar
+import org.blaze.engine.portable.*
 import org.blaze.engine.retry.DefaultRetryPolicy
 import org.blaze.engine.retry.RetryPolicy
 import org.blaze.engine.scheduler.DownloadScheduler
@@ -158,18 +134,23 @@ class DownloadManager(
         /**
          * The production HTTP client.
          *
-         * It deliberately uses the JDK's own [java.net.http.HttpClient] engine rather than Ktor's
-         * CIO engine: CIO opens a brand-new TCP connection for *every* request (verified - two
-         * sequential keep-alive GETs use two sockets), so a segmented download would pay a full
-         * TCP - and on a real host, TLS - handshake for each of its dozens of chunk requests, and
-         * the abandoned sockets pile up in TIME_WAIT. The JDK client pools and reuses keep-alive
-         * connections and speaks HTTP/2, so the workers reuse sockets instead.
+         * OkHttp is the engine chosen by `HttpEngineBenchmark` (see `docs/PROGRESS.md` Phase 3
+         * sect.1). On a 32 MiB segmented loopback workload it wins every unthrottled cell against
+         * the JDK client (1.2-2.1x throughput), matches or beats it under a per-connection cap,
+         * and does it with roughly 3x fewer threads at conn=16 and half the GC pause. CIO was
+         * rejected because it opens a fresh TCP connection per request (serverConnections=34 at
+         * conn=4), so a segmented download would pay a full TCP - and on a real host, TLS -
+         * handshake per chunk and leave the abandoned sockets in TIME_WAIT.
          *
-         * The JDK client has no per-socket read-inactivity timeout, so a stalled transfer is caught
-         * by the segmented path's watchdog (see HttpDownloadCoordinator) rather than by
-         * socketTimeoutMillis; the connect timeout still bounds dead hosts.
+         * Like the JDK engine, OkHttp pools and reuses keep-alive connections and speaks HTTP/2,
+         * which is what the segmented path assumes.
+         *
+         * `socketTimeoutMillis` on the Ktor `HttpTimeout` plugin translates to OkHttp's own
+         * read/write timeout. A stalled transfer is additionally bounded by the segmented path's
+         * watchdog (see `HttpDownloadCoordinator`), so the timeout here is a coarse backstop for
+         * dead hosts, not the primary stall detector.
          */
-        fun createDefaultHttpClient(): HttpClient = HttpClient(Java) {
+        fun createDefaultHttpClient(): HttpClient = HttpClient(OkHttp) {
             install(HttpTimeout) {
                 requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
                 connectTimeoutMillis = 15_000
@@ -248,6 +229,21 @@ class DownloadManager(
                 )
             }
 
+            "HLS" -> DownloadRequest.Hls(
+                name = record.name,
+                playlistUrl = record.url ?: error("HLS record ${record.id} missing url"),
+                destination = Path.of(record.destination),
+                variantIndex = record.variantIndex ?: -1,
+                drmAcknowledged = record.drmAcknowledged,
+            )
+
+            "ARCHIVE" -> DownloadRequest.Archive(
+                name = record.name,
+                url = record.url ?: error("ARCHIVE record ${record.id} missing url"),
+                destination = Path.of(record.destination),
+                selectedEntries = record.selectedEntries,
+            )
+
             else -> error("Unknown download type '${record.type}' for record ${record.id}")
         }
 
@@ -287,8 +283,15 @@ class DownloadManager(
                 type = when (task.request) {
                     is DownloadRequest.Http -> "HTTP"
                     is DownloadRequest.Torrent -> "TORRENT"
+                    is DownloadRequest.Hls -> "HLS"
+                    is DownloadRequest.Archive -> "ARCHIVE"
                 },
-                url = (task.request as? DownloadRequest.Http)?.url,
+                url = when (task.request) {
+                    is DownloadRequest.Http -> task.request.url
+                    is DownloadRequest.Hls -> task.request.playlistUrl
+                    is DownloadRequest.Archive -> task.request.url
+                    else -> null
+                },
                 torrentPath = (torrentSource as? TorrentSource.File)?.path?.toString(),
                 magnetUri = (effectiveOrigin as? TorrentSource.Magnet)?.uri,
                 torrentUrl = (effectiveOrigin as? TorrentSource.Url)?.url,
@@ -302,7 +305,10 @@ class DownloadManager(
                 fileIndices = (task.request as? DownloadRequest.Torrent)?.fileIndices,
                 files = task.files,
                 priority = task.priority.name,
-                resumeSupported = task.resumeSupported
+                resumeSupported = task.resumeSupported,
+                variantIndex = (task.request as? DownloadRequest.Hls)?.variantIndex,
+                drmAcknowledged = (task.request as? DownloadRequest.Hls)?.drmAcknowledged ?: false,
+                selectedEntries = (task.request as? DownloadRequest.Archive)?.selectedEntries
             )
         }
         withContext(Dispatchers.IO) {
@@ -343,6 +349,8 @@ class DownloadManager(
     private fun getCacheKey(request: DownloadRequest): String {
         val sourceString = when (request) {
             is DownloadRequest.Http -> request.url
+            is DownloadRequest.Hls -> request.playlistUrl
+            is DownloadRequest.Archive -> request.url
             is DownloadRequest.Torrent -> when (val s = request.torrentSource) {
                 is TorrentSource.Magnet -> s.uri
                 is TorrentSource.File -> s.path.toAbsolutePath().toString()
@@ -426,6 +434,110 @@ class DownloadManager(
                 )
             }
         }
+
+    override suspend fun inspectHls(
+        url: String,
+        variantIndex: Int,
+        headers: Map<String, String>,
+    ): HlsInspection = withContext(Dispatchers.IO) {
+        val settings = settingsRepository.settings.value
+        val client = HttpNetworkClient(
+            client = httpClient,
+            userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+            maxRedirects = settings.maxRedirects,
+        )
+        val downloader = HlsDownloader(client, storage, limiter)
+        val inspection = try {
+            downloader.inspect(url, variantIndex, headers)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val notAStream = e is HlsPlaylistException
+            return@withContext HlsInspection(
+                status = if (notAStream) HlsInspectStatus.NotAStream else HlsInspectStatus.Error,
+                protection = HlsProtectionLevel.None,
+                variants = emptyList(),
+                selectedVariantIndex = -1,
+                estimatedTotalBytes = null,
+                message = e.message ?: "could not read the stream",
+            )
+        }
+        val media = inspection.playlist
+        val protection = when (media.protection) {
+            HlsProtection.None -> HlsProtectionLevel.None
+            HlsProtection.OrdinaryEncryption -> HlsProtectionLevel.OrdinaryEncryption
+            HlsProtection.DrmSuspected -> HlsProtectionLevel.DrmSuspected
+            HlsProtection.Uncertain -> HlsProtectionLevel.Uncertain
+        }
+        val needsConsent = media.protection == HlsProtection.DrmSuspected || media.protection == HlsProtection.Uncertain
+        val status = when {
+            !media.isPlayableMedia -> HlsInspectStatus.NotAStream
+            needsConsent -> HlsInspectStatus.NeedsDrmConsent
+            media.isLive -> HlsInspectStatus.LiveUnsupported
+            else -> HlsInspectStatus.Playable
+        }
+        val message = when (status) {
+            HlsInspectStatus.NeedsDrmConsent ->
+                "This stream appears to be content-protected (DRM). Blaze will not bypass DRM or extract " +
+                        "protected keys; continuing only downloads what is legitimately accessible."
+
+            HlsInspectStatus.LiveUnsupported ->
+                "This is a live/event stream; only finished (VOD) streams can be saved to a file."
+
+            HlsInspectStatus.NotAStream -> "This URL is not a stream Blaze can parse."
+            else -> null
+        }
+        val selectedBandwidth =
+            inspection.variants.firstOrNull { it.index == inspection.selectedVariantIndex }?.bandwidth
+                ?: inspection.variants.maxByOrNull { it.bandwidth ?: -1L }?.bandwidth
+        val durationSeconds = media.segments.sumOf { it.durationSeconds }
+        val estimated = if (selectedBandwidth != null && selectedBandwidth > 0 && durationSeconds > 0) {
+            (selectedBandwidth.toDouble() / 8.0 * durationSeconds).toLong()
+        } else null
+        HlsInspection(
+            status = status,
+            protection = protection,
+            variants = inspection.variants.map {
+                HlsVariantInfo(it.index, it.bandwidth, it.resolution, it.codecs, it.language, it.name)
+            },
+            selectedVariantIndex = inspection.selectedVariantIndex,
+            estimatedTotalBytes = estimated,
+            message = message,
+        )
+    }
+
+    override suspend fun inspectArchive(
+        url: String,
+        headers: Map<String, String>,
+    ): ArchiveInspection = withContext(Dispatchers.IO) {
+        val settings = settingsRepository.settings.value
+        val client = HttpNetworkClient(
+            client = httpClient,
+            userAgent = settings.httpUserAgent.ifBlank { DEFAULT_USER_AGENT },
+            maxRedirects = settings.maxRedirects,
+        )
+        val source = HttpRemoteByteSource(client, url, headers)
+        try {
+            val listing = ZipCentralDirectory.inspect(source)
+            if (!source.rangeSupported) {
+                return@withContext ArchiveInspection.FullDownloadOnly(
+                    listing.reasonIfUnsupported ?: "this server does not support partial (byte-range) reads"
+                )
+            }
+            ArchiveInspection.Browsable(
+                entries = listing.entries.map {
+                    ArchiveEntryInfo(it.name, it.isDirectory, it.compressedSize, it.uncompressedSize, it.extractable)
+                },
+                totalUncompressedBytes = listing.totalUncompressedBytes,
+                selectiveSupported = listing.selectiveSupported,
+                reasonIfUnsupported = listing.reasonIfUnsupported,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ArchiveInspection.Unavailable(e.message ?: "could not read the archive")
+        }
+    }
 
     /**
      * Fetches the `.torrent` served at [url] over HTTP(S), validates it is metainfo, caches it under the

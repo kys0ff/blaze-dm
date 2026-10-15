@@ -9,7 +9,7 @@ import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import org.blaze.i18n.EnStrings
 import org.blaze.presentation.screens.settings.components.SettingsSidebar
 import org.blaze.presentation.screens.settings.state.SettingsCategory
-import org.blaze.presentation.theme.BlazeTheme
+import org.island.theme.ui.IslandTheme
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -36,7 +36,7 @@ class SettingsSearchUiTest {
     @Test
     fun `sidebar keeps only pages that host a matching option`() = runDesktopComposeUiTest(width = 800, height = 600) {
         setContent {
-            BlazeTheme(isDark = true) {
+            IslandTheme(isDark = true) {
                 SettingsSidebar(
                     selected = SettingsCategory.GENERAL,
                     hasDownloadsError = false,
@@ -74,7 +74,7 @@ class SettingsSearchUiTest {
     fun `content pane hides non-matching rows and empty group headers`() =
         runDesktopComposeUiTest(width = 800, height = 600) {
             setContent {
-                BlazeTheme(isDark = true) {
+                IslandTheme(isDark = true) {
                     CompositionLocalProvider(LocalSettingsFilter provides SettingsFilter(query)) {
                         SettingsGroup("network", EnStrings) {
                             SettingRow("downloads.userAgent") {}

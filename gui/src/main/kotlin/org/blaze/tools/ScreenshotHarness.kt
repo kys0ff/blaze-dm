@@ -1,16 +1,7 @@
 package org.blaze.tools
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -28,44 +19,29 @@ import org.blaze.domain.models.Download
 import org.blaze.domain.models.DownloadState
 import org.blaze.domain.models.SelectedFile
 import org.blaze.i18n.blazeStrings
+import org.blaze.presentation.application.AppCommandBus
 import org.blaze.presentation.components.BackgroundTasksPopup
 import org.blaze.presentation.components.BackgroundTasksStatusItem
-import org.blaze.presentation.application.AppCommandBus
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.BlazeMenu
-import org.blaze.presentation.components.MenuEntry
-import org.blaze.presentation.components.rememberMenuAnchorAt
 import org.blaze.presentation.components.DownloadsColumn
-import org.blaze.presentation.components.Island
-import org.blaze.presentation.components.SidebarItem
-import org.blaze.presentation.components.StatusBar
-import org.blaze.presentation.components.ToolWindowStripe
-import org.blaze.presentation.screens.downloads.DownloadCapabilities
-import org.blaze.presentation.screens.downloads.DownloadFilter
-import org.blaze.presentation.screens.downloads.DownloadSortField
-import org.blaze.presentation.screens.downloads.SelectionActions
-import org.blaze.presentation.screens.downloads.components.DownloadDetailsPanel
-import org.blaze.presentation.screens.downloads.components.DownloadRowActions
-import org.blaze.presentation.screens.downloads.components.buildDownloadContextMenu
-import org.blaze.presentation.screens.downloads.components.DownloadsFilterSortBar
-import org.blaze.presentation.screens.downloads.components.DownloadsList
-import org.blaze.presentation.screens.downloads.components.DownloadsToolbar
-import org.blaze.presentation.screens.downloads.components.PauseRiskDialog
-import org.blaze.presentation.screens.downloads.toCounts
-import org.blaze.presentation.screens.settings.components.SettingsButtonBar
-import org.blaze.presentation.screens.settings.SettingsFilter
+import org.blaze.presentation.screens.downloads.*
+import org.blaze.presentation.screens.downloads.components.*
 import org.blaze.presentation.screens.settings.LocalSettingsFilter
 import org.blaze.presentation.screens.settings.SettingRow
+import org.blaze.presentation.screens.settings.SettingsFilter
+import org.blaze.presentation.screens.settings.components.SettingsButtonBar
 import org.blaze.presentation.screens.settings.components.SettingsSidebar
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.search.SearchController
 import org.blaze.presentation.search.SearchIsland
 import org.blaze.presentation.search.SearchTab
-import org.blaze.presentation.theme.BlazeIslandColors
-import org.blaze.presentation.theme.BlazeTheme
-import org.blaze.presentation.theme.BlazeTypography
-import org.blaze.presentation.theme.blazeAmbientBodyFrame
-import org.blaze.presentation.theme.blazeAmbientFrame
+import org.island.theme.ui.*
+import org.island.ui.IslandPanel
+import org.island.ui.StatusBar
+import org.island.ui.menu.IslandMenu
+import org.island.ui.menu.MenuEntry
+import org.island.ui.menu.rememberMenuAnchorAt
+import org.island.ui.toolwindow.SidebarItem
+import org.island.ui.toolwindow.ToolWindowStripe
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -110,7 +86,7 @@ fun main() {
         content: @Composable () -> Unit,
     ) {
         val scene = ImageComposeScene(width, height, density) {
-            BlazeTheme(isDark = dark) {
+            IslandTheme(isDark = dark) {
                 // The offscreen scene has no window to paint a background, so supply the same surface
                 // token the real window uses; otherwise dark shots render light-on-transparent.
                 Box(modifier = Modifier.fillMaxSize().background(JewelTheme.globalColors.panelBackground)) {
@@ -295,7 +271,7 @@ fun main() {
                 strings = blazeStrings,
                 actions = noOpRowActions(),
             )
-            BlazeMenu(
+            IslandMenu(
                 entries = menuEntries,
                 anchor = rememberMenuAnchorAt(Offset(20f, 20f)),
                 onDismissRequest = {},
@@ -332,7 +308,7 @@ fun main() {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(BlazeIslandColors.island),
+                    .background(IslandChromeColors.island),
             ) {
                 Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     SettingsSidebar(
@@ -400,7 +376,7 @@ fun main() {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(BlazeIslandColors.island),
+                    .background(IslandChromeColors.island),
             ) {
                 SettingsSidebar(
                     selected = SettingsCategory.DOWNLOADS,
@@ -459,17 +435,17 @@ fun main() {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(JewelTheme.defaultTitleBarStyle.metrics.height)
-                            .blazeAmbientFrame(anchorY = 0.dp),
+                            .islandAmbientFrame(anchorY = 0.dp),
                     )
                     // Jewel's border Spacer: 1dp tall, background Color.Transparent.
-                    Spacer(modifier = Modifier.fillMaxWidth().height(BlazeLayout.TitleBarBorderHeight))
+                    Spacer(modifier = Modifier.fillMaxWidth().height(IslandLayout.TitleBarBorderHeight))
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
                             .blazeAmbientBodyFrame(),
                     ) {
-                        Row(modifier = Modifier.fillMaxSize().padding(BlazeLayout.IslandGap)) {
+                        Row(modifier = Modifier.fillMaxSize().padding(IslandLayout.IslandGap)) {
                             ToolWindowStripe(
                                 items = listOf(
                                     SidebarItem("Downloads", AllIconsKeys.Actions.Download, "downloads"),
@@ -478,8 +454,8 @@ fun main() {
                                 selectedId = "downloads",
                                 onItemSelected = {},
                             )
-                            Island(modifier = Modifier.weight(1f)) {
-                                Column(modifier = Modifier.fillMaxSize().padding(BlazeLayout.ContentPadding)) {
+                            IslandPanel(modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.fillMaxSize().padding(IslandLayout.ContentPadding)) {
                                     Text("ubuntu-24.04-desktop.iso")
                                 }
                             }
@@ -509,9 +485,9 @@ private fun DownloadsShellFixture(
 ) {
     // The chrome's text styles are resolved here and their real FontWeight printed, so the
     // "regular weight everywhere" rule is measured on every run instead of being asserted.
-    val fontReport = BlazeTypography.auditReport()
+    val fontReport = IslandTypography.auditReport()
     remember(fontReport) { fontReport.trimEnd().lines().forEach { println(it) } }
-    Column(modifier = Modifier.fillMaxSize().blazeAmbientFrame(anchorY = 0.dp)) {
+    Column(modifier = Modifier.fillMaxSize().islandAmbientFrame(anchorY = 0.dp)) {
         // The real window paints the glow behind a transparent Islands title bar, so an
         // empty strip of that exact height reproduces the reference's title band: the
         // gradient's horizontal peak lives inside it, and the stripe/gap below shows the
@@ -534,13 +510,13 @@ private fun DownloadsShellFixture(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .padding(BlazeLayout.IslandGap),
+                    .padding(IslandLayout.IslandGap),
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(BlazeLayout.IslandGap),
+                    horizontalArrangement = Arrangement.spacedBy(IslandLayout.IslandGap),
                 ) {
-                    Island(modifier = Modifier.weight(1f)) {
+                    IslandPanel(modifier = Modifier.weight(1f)) {
                         val listState = remember { LazyListState() }
                         DownloadsList(
                             downloads = samples,
@@ -562,7 +538,7 @@ private fun DownloadsShellFixture(
                         )
                     }
                     if (detailsOpen) {
-                        Island(modifier = Modifier.weight(0.45f)) {
+                        IslandPanel(modifier = Modifier.weight(0.45f)) {
                             DownloadDetailsPanel(
                                 download = samples.first { it.id == "5" },
                                 onHide = {},

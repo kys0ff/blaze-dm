@@ -1,11 +1,6 @@
 package org.blaze.service
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import org.blaze.download.api.DownloadSource
 import org.blaze.download.api.DownloadState
 import org.blaze.download.api.NewDownloadRequest
@@ -20,11 +15,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.test.AfterTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * Proves the whole vertical slice really moves bytes: `HTTP transport -> Application API -> engine`, and
@@ -102,7 +93,8 @@ class DownloadIntegrationTest {
             try {
                 val token = ApiTokenStore(ServicePaths.tokenFileFor(storage)).token()
                 val base = "http://127.0.0.1:${host.boundPort}"
-                val body = """{"url":"${source.url("/dl.bin")}","destination":"$downloads","filename":"dl.bin"}"""
+                val body =
+                    """{"url":"${source.url("/dl.bin")}","destination":"${downloads.asJsonPath()}","filename":"dl.bin"}"""
                 val created = http.send(
                     HttpRequest.newBuilder(URI.create("$base/api/v1/downloads"))
                         .header("Content-Type", "application/json")
@@ -139,7 +131,8 @@ class DownloadIntegrationTest {
             try {
                 val base = "http://127.0.0.1:${host.boundPort}"
                 val token = ApiTokenStore(ServicePaths.tokenFileFor(storage)).token()
-                val body = """{"url":"${source.url("/auth.bin")}","destination":"$downloads","filename":"auth.bin","credentials":{"Authorization":"Bearer live-secret"}}"""
+                val body =
+                    """{"url":"${source.url("/auth.bin")}","destination":"${downloads.asJsonPath()}","filename":"auth.bin","credentials":{"Authorization":"Bearer live-secret"}}"""
                 val created = http.send(
                     HttpRequest.newBuilder(URI.create("$base/api/v1/downloads"))
                         .header("Content-Type", "application/json").header("Authorization", "Bearer $token")
@@ -170,4 +163,7 @@ class DownloadIntegrationTest {
         assertEquals(expected.size, actual.size, "downloaded size differs")
         for (i in expected.indices) assertEquals(expected[i], actual[i], "byte mismatch at $i")
     }
+
+    /** The destination path rendered as valid JSON string contents (Windows separators are escaped). */
+    private fun Path.asJsonPath(): String = toString().replace("\\", "\\\\")
 }

@@ -33,8 +33,8 @@ import kotlinx.coroutines.delay
 import org.blaze.i18n.BlazeStrings
 import org.blaze.i18n.blazeStrings
 import org.blaze.logging.LogConfigurator
-import org.blaze.presentation.components.BlazeLayout
-import org.blaze.presentation.components.notifications.LocalNotifications
+import org.island.theme.ui.IslandLayout
+import org.island.ui.notifications.LocalNotifications
 import org.blaze.presentation.screens.filepicker.FilePickerDialog
 import org.blaze.presentation.screens.filepicker.model.FilePickerContext
 import org.blaze.presentation.screens.filepicker.model.FilePickerMode
@@ -45,9 +45,9 @@ import org.blaze.presentation.screens.settings.components.settingsNavCategories
 import org.blaze.presentation.screens.settings.state.SettingsCategory
 import org.blaze.presentation.screens.settings.state.SettingsState
 import org.blaze.presentation.search.SearchController
-import org.blaze.presentation.theme.BlazeIslandColors
+import org.island.theme.ui.IslandChromeColors
 import org.blaze.resolver.core.LinkResolverRegistry
-import org.blaze.theming.core.ThemeRegistry
+import org.island.theme.core.ThemeRegistry
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -172,7 +172,7 @@ class SettingsScreen : Screen {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(BlazeIslandColors.island)
+                .background(IslandChromeColors.island)
                 .onPreviewKeyEvent { event ->
                     // Escape clears an active query first and only closes the window on the second press.
                     if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
@@ -219,7 +219,7 @@ class SettingsScreen : Screen {
                                 NothingFoundPanel(strings = strings, onClear = { query = "" })
                             } else {
                                 Column(
-                                    modifier = Modifier.widthIn(max = BlazeLayout.FormMaxWidth),
+                                    modifier = Modifier.widthIn(max = IslandLayout.FormMaxWidth),
                                     verticalArrangement = Arrangement.spacedBy(24.dp)
                                 ) {
                                     SettingsContent(

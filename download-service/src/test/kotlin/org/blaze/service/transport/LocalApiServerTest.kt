@@ -82,7 +82,10 @@ class LocalApiServerTest {
     }
 
     private fun createBody(url: String, dest: String, key: String? = null) =
-        """{"url":"$url","destination":"$dest","filename":"f.bin"${key?.let { ",\"idempotencyKey\":\"$it\"" } ?: ""}}"""
+        """{"url":"$url","destination":"${dest.jsonStringLiteral()}","filename":"f.bin"${key?.let { ",\"idempotencyKey\":\"$it\"" } ?: ""}}"""
+
+    /** Renders [this] as the contents of a JSON string literal, escaping Windows path separators. */
+    private fun String.jsonStringLiteral(): String = replace("\\", "\\\\").replace("\"", "\\\"")
 
     private fun tmpDest(): String = File(System.getProperty("java.io.tmpdir"), "api-" + System.nanoTime())
         .apply { mkdirs() }.absolutePath
