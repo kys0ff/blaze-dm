@@ -156,7 +156,7 @@ Parses:
 - Attribute-list parser is quote-aware (`parseAttributeList`, lines 237–272).
 
 Missing / wrong (relative to PROMPT Phase 4):
-- **No `EXT-X-MAP` (fMP4 init segment) and no `EXT-X-BYTERANGE`.** `HlsDownloader.detectContainer` sniffs the first segment bytes and if it's fMP4 refuses with `Outcome.Unsupported` (see lines 132–138 and 371–372). So fMP4 HLS is intentionally unsupported today.
+- **fMP4 (`EXT-X-MAP`) single-track assembly and `EXT-X-BYTERANGE` are now supported** (this supersedes the original Phase-1 note that called them “intentionally unsupported”): `detectContainer` returns `Fmp4` as soon as a `#EXT-X-MAP` init segment is present, and assembly prepends that init segment to the fragments so their concatenation is a valid single-track ISOBMFF file; `#EXT-X-BYTERANGE` windows are parsed (`HlsByteRange`) and fetched as byte ranges. See §4b (`HlsFmp4Test`). Containers that genuinely need a remux (multi-track, or non-TS/non-fMP4) are still refused rather than faked.
 - **No `EXT-X-MEDIA` (audio/subtitle renditions).** `collectVariants` only handles `EXT-X-STREAM-INF`. Alternate-audio masters lose everything but video.
 - **No `EXT-X-I-FRAME-STREAM-INF`, no `EXT-X-MEDIA-SESSION`, no `EXT-X-DATERANGE`, no `EXT-X-PROGRAM-DATE-TIME`.** Fine to skip the date-range tags.
 - **Live streams are refused** at the download entry point (`isLive` short-circuits to `Outcome.Unsupported`). The PROMPT Phase 4 asks for a *simulated* live playlist with refresh, sequence tracking, no dup/skip. Not implemented, though VOD-only behaviour is defensible for a download manager.
@@ -185,7 +185,7 @@ Runtime:
 - **UDP trackers — a real gap, now closed with NO new dependency.** The audit said to add `bt-upnp-tracker-client`; **that artifact does not exist.** `bt.tracker.udp.UdpTracker` + `UdpTrackerFactory` ship inside `bt-core` (already a dependency) but are never ServiceLoader-registered, so `udp://` announces resolved to no tracker. `UdpTrackerModule` binds the factory for the `udp` scheme. Most public torrents announce over UDP, so this is the highest-value Phase-5 fix. `logTrackers` now counts `udp://` as usable.
 - **Protocol encryption (MSE) — real and now enabled.** The audit said MSE is "behind `ExtensionsModule` (may be a plugin)". Wrong: it is in `bt-core` (`Config.encryptionPolicy`, `mseDisabled`). We set `PREFER_ENCRYPTED` (encrypted handshake first, plaintext fallback) so we gain reachability/privacy without locking out legacy peers the way `REQUIRE_ENCRYPTED` would.
 - **Local Service Discovery — real and now wired.** The audit said "LSD is not in the library"; `bt.peer.lan.LocalServiceDiscoveryModule` exists in `bt-core`. It is wired; multicast-scoped (TTL 1), per-announce failures are caught and logged, so it degrades gracefully when multicast is unavailable.
-- **µTP (BEP 57), web seeds / getright (BEP 19), super seeding — genuinely absent.** `bt` 1.10 has no `WebSeed` class (the earlier `WebSeedService` mention was fabricated) and no µTP. These stay honest limitations; nothing to wire.
+- **µTP (BEP 29), web seeds / getright (BEP 19), super seeding — genuinely absent.** `bt` 1.10 has no `WebSeed` class (the earlier `WebSeedService` mention was fabricated) and no µTP. These stay honest limitations; nothing to wire. (Correction: an earlier note mislabeled µTP as BEP 57; µTP/uTP is **BEP 29**.)
 
 `applyPerformanceConfig` (lines 147–196):
 - `maxPeerConnections` from settings (default 200).
@@ -265,7 +265,7 @@ Ordered roughly by severity:
 20. **No HLS fixtures on the harness side** — `HlsDownloaderIntegrationTest` exists (278 lines) and appears to construct in-memory playlists, but per PROMPT we still need AES-128 key rotation, fMP4 (`EXT-X-MAP` / `EXT-X-BYTERANGE`), and simulated live coverage.
 21. **No local torrent seeder harness** — `TorrentSwarmBenchmark.kt` (138 lines) exists but is a benchmark, not correctness. `TorrentDownloaderTest`, `TorrentPauseResumeTest`, etc. exercise small fixtures but not restart-with-fastresume.
 22. **`BandwidthLimiter` is one global bucket**, correctly shared. But **there is no per-download limit**, no "smart" priority weighting inside the bucket, and no per-host limit.
-23. **`DownloadManager.fetchMetadata`** runs an entire executor for 30 s to *preview* a torrent. This actually starts a temporary `BtClient` on the shared runtime for a few seconds and tears it down. Works but is heavyweight; also, `getCacheKey(request)` is only ever consulted inside `cacheMetadata` from the real executor, not this preview path. Preview and real download use *different* cache keys (`id` vs `sha256(url)`), so the preview cache file is not the one the real download reads. Minor waste.
+23. **`DownloadManager.fetchMetadata`** runs an entire executor for 30 s to *preview* a torrent. This actually starts a temporary `BtClient` on the shared runtime for a few seconds and tears it down. Works but is heavyweight; also, `getCacheKey(request)` is only ever consulted inside `cacheMetadata` from the real executor, not this preview path. Preview and real download use *different* cache keys (`id` vs `sha256(url)`), so the preview cache file is not the one the real download reads. Minor waste. **Fixed in Phase 7.5** (see `docs/LIMITATIONS.md` TOR-9): preview and the real download now share one source-hash key, the real download reuses a previewed `.torrent`, and completion cleans the shared entry up; the heavyweight-preview point still stands.
 
 ### 16. Existing test coverage
 
@@ -307,7 +307,7 @@ Legend: ⭐ = must-do, 🔹 = worth doing, 💤 = defer.
 | 18 | Dynamic segment re-planning (split largest remaining on worker completion) | Tail-latency on very skewed link | L | 💤 |
 | 19 | Mirror / multi-source | Only helps a niche user set | L | 💤 |
 | 20 | Live HLS support | Big architectural change | L | 💤 |
-| 21 | fMP4 (`EXT-X-MAP`/`EXT-X-BYTERANGE`) HLS | Big architectural change | L | 💤 |
+| 21 | fMP4 (`EXT-X-MAP`/`EXT-X-BYTERANGE`) HLS | Big architectural change | L | ⭐ DONE for single-track fMP4 + BYTERANGE (see §4b); multi-track/remux still open |
 | 22 | ffmpeg remux integration | Nice-to-have | L | 💤 |
 | 23 | HTTP/2 multiplexed segmented path — measure vs multiple HTTP/1.1 keep-alives | Empirical; likely HTTP/1.1 pool wins on bulk | M | 🔹 (measure first) |
 | 24 | `download-service` layer currently reads `DownloadSettings.logLevel` and re-inits SLF4J. Not our module, but flag it. | — | — | 💤 |

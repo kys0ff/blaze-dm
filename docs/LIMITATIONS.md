@@ -30,7 +30,8 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
   concat). `PROGRESS.md:159` "fMP4 is intentionally unsupported" is **stale** (Phase-4 commit `3512d0f`).
   Evidence: `HlsDownloader.kt:162-164,189-207`, `detectContainer` at `:523`.
 - **HLS segment fetch-time truncation was fixed** in Phase-4 (`Resource.Retryable` on `Truncated`, never written
-  as success — `HlsDownloader.kt:475-479`), but the **resume-time completeness check was NOT** (see HLS-2).
+  as success — `HlsDownloader.kt:475-479`); the **resume-time completeness check** (see HLS-2) was then fixed in
+  **Phase 7.5** (temp-name + atomic rename + a `.done` length marker, verified by a crash-resume integration test).
 - The Phase-4 *plan* (`PROGRESS.md:355-356`) promised HLS assembly via `PositionedWriter` at absolute offsets.
   It was **not done** — assembly is still write-twice concat (see HLS-1).
 
@@ -92,7 +93,7 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
   `127.0.0.1:<seeder port>` with no tracker/DHT/multicast; deterministic test that transfers a few MiB across multiple
   files and verifies SHA-256. This is the yardstick for TOR-1/5/6/7.
 
-### TOR-9 — Preview vs real metadata cache key mismatch (orphan leak + no reuse) — **A**, S, risk: low
+### TOR-9 — Preview vs real metadata cache key mismatch (orphan leak + no reuse) — **A**, S, risk: low — ✅ FIXED (Phase 7.5)
 - **Evidence**: real path writes `cache/${id.value}.torrent` (`DownloadManager.kt:332`) and cleanup deletes the same
   id-key (`:373-374`); the **preview** path (`fetchMetadata`) instead writes `cache/${sha256(source)}.torrent`
   (`:416-417`). So preview and real never share an entry, and the sha256-keyed preview files are **never cleaned**
@@ -123,7 +124,7 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
   it arrives (segments are length-known from the manifest/EXTINF byte accounting), removing the temp copy and the
   second write; bounded memory.
 
-### HLS-2 — Resume trusts `Files.size > 0` → a crash-truncated `.part` is accepted as complete — **A**, M, risk: high (correctness)
+### HLS-2 — Resume trusts `Files.size > 0` → a crash-truncated `.part` is accepted as complete — **A**, M, risk: high (correctness) — ✅ FIXED (Phase 7.5)
 - **Evidence (verified current)**: `downloadSegments` skips any segment whose file size > 0 (`HlsDownloader.kt:325-330`);
   no expected-length record and no atomic rename. A crash mid-`Files.write` (`:340`) leaves a short `.part` that is
   silently concatenated. Fetch-time truncation is handled, resume-time is not.
