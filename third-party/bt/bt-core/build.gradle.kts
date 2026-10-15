@@ -20,4 +20,8 @@ dependencies {
     // Upstream runtime deps, unchanged. Guice is on bt-core's public API surface (module/injection types).
     api("com.google.inject:guice:5.0.1")
     implementation("org.slf4j:slf4j-api:2.0.20")
+    // Fork tests (each patch in PATCHES.md ships a test); upstream 1.10 ships no unit tests here.
+    // JUnit 4 — the same framework the in-repo Kotlin tests resolve to (kotlin("test")), and it needs
+    // no extra downloads on this machine.
+    testImplementation("junit:junit:4.13.2")
 }

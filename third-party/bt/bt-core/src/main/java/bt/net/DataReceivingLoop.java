@@ -128,7 +128,15 @@ public class DataReceivingLoop implements Runnable, DataReceiver {
                             LOGGER.debug("Channel disconnected", e);
                             selectedKeys.remove();
                         } catch (Exception e) {
-                            LOGGER.error("Failed to process key", e);
+                            // Fork patch (TOR-12): a peer sending an unparseable/unknown message type is
+                            // routine churn on real swarms; the connection is already down (SocketChannelHandler.read
+                            // shuts it before rethrowing), so log a one-liner instead of a scary ERROR stack trace.
+                            if (ReadLoopFailures.kindOf(e) == ReadLoopFailures.Kind.PEER_MISBEHAVIOR) {
+                                LOGGER.warn("Dropping connection to misbehaving peer: "
+                                        + ReadLoopFailures.rootMessage(e));
+                            } else {
+                                LOGGER.error("Failed to process key", e);
+                            }
                             selectedKeys.remove();
                         }
                     }

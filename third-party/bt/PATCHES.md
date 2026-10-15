@@ -18,6 +18,7 @@ imported byte-for-byte unmodified (verified by hash comparison against the Gradl
 | # | Commit | Patch | Why | Files touched | Upstreamable? |
 |---|--------|-------|-----|---------------|---------------|
 | — | *(baseline)* | None yet — tree is unmodified upstream 1.10 | — | — | — |
+| 1 | this commit | Classify read-loop failures: a cause chain containing `InvalidMessageException` (peer sent an unknown/invalid message type) is logged as a WARN one-liner instead of an ERROR stack trace. Connection handling unchanged — the socket is already shut down by `SocketChannelHandler.read` before the loop sees the exception. | TOR-12: real-swarm runs (2026-10-15, nyaa) flooded logs with `Failed to process key` traces while downloads completed correctly; routine hostile/legacy-peer churn must not read like an internal defect. | `bt/net/ReadLoopFailures.java` (new), `bt/net/DataReceivingLoop.java`, `bt-core/build.gradle.kts` (JUnit 4 test scaffolding), `bt/net/ReadLoopFailuresTest.java` (new) | Yes — small, behavior-preserving; matches upstream's own TODO-level noise complaints. |
 
 Append one row per patch commit. Each patch gets its own commit with a message scoped
 `fix(third-party/bt): …` / `feat(third-party/bt): …`, and MUST be accompanied by a test in
