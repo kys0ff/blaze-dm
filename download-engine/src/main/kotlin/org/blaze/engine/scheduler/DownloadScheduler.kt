@@ -101,7 +101,13 @@ class DownloadScheduler(
             if (fresh.state != DownloadState.Queued) continue
 
             slotsAvailable--
-            val starting = fresh.copy(state = DownloadState.Starting, error = null)
+            // A task that already has bytes on disk is continuing, not starting fresh: label the boot
+            // `Resuming` so a client can tell "picking up where it left off" apart from a cold start.
+            // The engine decides the real cursor independently (partial file / piece bitmap); this only
+            // names the observable intent, and it is honest because `downloadedBytes > 0` means bytes
+            // from a previous run are already on disk.
+            val bootState = if (fresh.downloadedBytes > 0) DownloadState.Resuming else DownloadState.Starting
+            val starting = fresh.copy(state = bootState, error = null)
             tasks.update { it + (task.id to starting) }
             onTaskUpdated(starting)
             launchLocked(starting)
@@ -170,9 +176,17 @@ class DownloadScheduler(
     }
 
     suspend fun pause(id: DownloadId) = queueMutex.withLock {
-        stopJobLocked(id)
         val task = tasks.value[id] ?: return@withLock
-        val updated = task.copy(state = DownloadState.Paused, downloadSpeed = 0)
+        // Tearing an active job down - cancelling the torrent/DHT runtime in particular - takes real
+        // time, so show `Pausing` for that window instead of appearing frozen; a queued/paused task has
+        // nothing to unwind and goes straight to `Paused`.
+        if (task.state.isActive) {
+            val pausing = task.copy(state = DownloadState.Pausing)
+            tasks.update { it + (id to pausing) }
+            onTaskUpdated(pausing)
+        }
+        stopJobLocked(id)
+        val updated = (tasks.value[id] ?: task).copy(state = DownloadState.Paused, downloadSpeed = 0)
         tasks.update { it + (id to updated) }
         onTaskUpdated(updated)
         processQueueLocked()

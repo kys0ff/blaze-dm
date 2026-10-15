@@ -13,11 +13,14 @@ import org.blaze.engine.api.DownloadState as EngineState
 fun EngineState.toPublic(): PublicState = when (this) {
     EngineState.Queued -> PublicState.QUEUED
     EngineState.Starting -> PublicState.STARTING
+    EngineState.Probing -> PublicState.PROBING
     EngineState.Downloading -> PublicState.DOWNLOADING
+    EngineState.Merging -> PublicState.MERGING
     EngineState.Pausing -> PublicState.PAUSING
     EngineState.Paused -> PublicState.PAUSED
     EngineState.Resuming -> PublicState.RESUMING
     EngineState.Verifying -> PublicState.VERIFYING
+    EngineState.Completing -> PublicState.COMPLETING
     EngineState.ResolvingMetadata -> PublicState.RESOLVING_METADATA
     EngineState.Completed -> PublicState.COMPLETED
     EngineState.Seeding -> PublicState.SEEDING

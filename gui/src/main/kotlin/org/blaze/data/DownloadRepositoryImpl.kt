@@ -227,7 +227,8 @@ class DownloadRepositoryImpl(
 
     private fun ApiState.toGuiState(): GuiState = when (this) {
         ApiState.QUEUED -> GuiState.QUEUED
-        ApiState.STARTING, ApiState.DOWNLOADING, ApiState.RESUMING,
+        ApiState.STARTING, ApiState.PROBING, ApiState.DOWNLOADING, ApiState.MERGING,
+        ApiState.RESUMING,
         ApiState.VERIFYING, ApiState.RESOLVING_METADATA, ApiState.COMPLETING -> GuiState.DOWNLOADING
         ApiState.PAUSED, ApiState.PAUSING -> GuiState.PAUSED
         ApiState.COMPLETED -> GuiState.COMPLETED
@@ -237,6 +238,7 @@ class DownloadRepositoryImpl(
 
     private fun ApiState.isGuiActive(): Boolean =
         this == ApiState.DOWNLOADING || this == ApiState.QUEUED || this == ApiState.STARTING ||
+            this == ApiState.PROBING || this == ApiState.MERGING ||
             this == ApiState.RESUMING || this == ApiState.VERIFYING || this == ApiState.RESOLVING_METADATA
 
     companion object {

@@ -96,6 +96,10 @@ class HttpDownloadCoordinator(
      * bytes already on disk - the *genuine* restarts (a refused range, an unusable resume record).
      * It is deliberately not fired for a transient chunk retry or a pause/resume re-anchor, so a
      * client can tell a real lost-progress event apart from a dip that self-corrects.
+     *
+     * [onProbing] hears once, just before a capability probe (HEAD / ranged GET) actually runs, so the
+     * caller can surface the pre-transfer "deciding how to fetch" phase. It is not fired on the plain
+     * single-stream path that never probes, so the phase is only claimed when the work is genuinely done.
      */
     suspend fun download(
         request: DownloadRequest.Http,
@@ -104,6 +108,7 @@ class HttpDownloadCoordinator(
         connections: Int,
         onRangeSupport: suspend (Boolean) -> Unit = {},
         onRestart: suspend () -> Unit = {},
+        onProbing: suspend () -> Unit = {},
         onProgress: suspend (Progress) -> Unit
     ): Outcome = withContext(Dispatchers.IO) {
         val support = RangeSupportReporter(onRangeSupport)
@@ -115,6 +120,7 @@ class HttpDownloadCoordinator(
         val statePath = storage.getResumeStateFile(destination).toPath()
 
         if (settings.httpAccelerationEnabled && connections > 1) {
+            onProbing()
             val probe = client.probe(request)
             support.note(probe.rangeSupport)
             if (probe.status == RANGE_NOT_SATISFIABLE && resumeFrom > 0) {
@@ -142,6 +148,7 @@ class HttpDownloadCoordinator(
             // contiguous prefix and finalize a corrupt file. The sidecar is the only trustworthy
             // record of which bytes really exist, so honor the chunk map even though the caller now
             // asked for a single connection: run the segmented path with however many workers fit.
+            onProbing()
             val probe = client.probe(request)
             support.note(probe.rangeSupport)
             if (probe.status == RANGE_NOT_SATISFIABLE && resumeFrom > 0) {

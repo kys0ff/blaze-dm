@@ -191,7 +191,22 @@ class DownloadExecutorImpl(
                 partial = finalPartialPath,
                 connections = connections,
                 onRangeSupport = { supported -> resumeSupported = supported },
-                onRestart = { restarts++ }
+                onRestart = { restarts++ },
+                onProbing = {
+                    // A probe genuinely runs (accelerated or resuming a chunked partial); surface it so the
+                    // list reads "probing" during the HEAD/ranged-GET rather than a silent stall.
+                    send(
+                        updateTask(
+                            task = labelled,
+                            request = resolved,
+                            state = DownloadState.Probing,
+                            totalBytes = totalBytes,
+                            downloadedBytes = downloadedBytes,
+                            resumeSupported = resumeSupported,
+                            restarts = restarts
+                        )
+                    )
+                },
             ) { update ->
                 totalBytes = update.totalBytes ?: totalBytes
                 downloadedBytes = update.downloadedBytes
@@ -281,26 +296,46 @@ class DownloadExecutorImpl(
                 remuxer = remuxer,
             )
 
-            // Segment progress is emitted by a callback running inside the downloader's own coroutine
-            // scope, not this producer's, so it is bridged through a conflated channel drained here.
-            val updates = Channel<Triple<Int, Int, Long>>(Channel.CONFLATED)
+            // Segment progress and phase changes are emitted by callbacks running inside the downloader's
+            // own coroutine scope, not this producer's, so they are bridged through a channel drained here.
+            // The channel is UNLIMITED (not CONFLATED) so the rare Probing/Merging boundary events can never
+            // be collapsed away by conflation; progress samples are cheap and consumed as fast as produced.
+            val updates = Channel<HlsEvent>(Channel.UNLIMITED)
             val tracker = HttpProgress()
+            var lastBytes = task.downloadedBytes
+            var lastEstimate = task.totalBytes
             val progressJob = launch {
-                for ((done, total, bytes) in updates) {
-                    // The true size is only known once the last segment lands, so extrapolate the total
-                    // from the fraction already fetched; that keeps the bar, the "of ~X" label and the ETA
-                    // honest instead of showing a raw segment count ("1b, 2b") as if it were bytes. The
-                    // completion event below pins the exact size, so the estimate never reaches the record.
-                    val estimate = if (done > 0 && total > 0) bytes * total / done else null
-                    send(
+                for (event in updates) when (event) {
+                    is HlsEvent.Segment -> {
+                        // The true size is only known once the last segment lands, so extrapolate the total
+                        // from the fraction already fetched; that keeps the bar, the "of ~X" label and the ETA
+                        // honest instead of showing a raw segment count ("1b, 2b") as if it were bytes. The
+                        // completion event below pins the exact size, so the estimate never reaches the record.
+                        lastBytes = event.bytes
+                        if (event.done > 0 && event.total > 0) lastEstimate = event.bytes * event.total / event.done
+                        send(
+                            updateTask(
+                                task = labelled,
+                                request = resolved,
+                                state = DownloadState.Downloading,
+                                totalBytes = lastEstimate,
+                                downloadedBytes = event.bytes,
+                                speed = tracker.sample(event.bytes),
+                                progress = if (event.total > 0) event.done.toFloat() / event.total else 0f
+                            )
+                        )
+                    }
+
+                    is HlsEvent.Phase -> send(
+                        // A boundary event carries the last known byte counts forward (0 during probing,
+                        // the fetched amount during merging) rather than inventing any number.
                         updateTask(
                             task = labelled,
                             request = resolved,
-                            state = DownloadState.Downloading,
-                            totalBytes = estimate,
-                            downloadedBytes = bytes,
-                            speed = tracker.sample(bytes),
-                            progress = if (total > 0) done.toFloat() / total else 0f
+                            state = event.state,
+                            totalBytes = lastEstimate,
+                            downloadedBytes = lastBytes,
+                            speed = 0,
                         )
                     )
                 }
@@ -311,7 +346,15 @@ class DownloadExecutorImpl(
                 variantIndex = resolved.variantIndex,
                 headers = resolved.headers,
                 drmAcknowledged = resolved.drmAcknowledged,
-            ) { done, total, bytes -> updates.trySend(Triple(done, total, bytes)) }
+                onProgress = { done, total, bytes -> updates.trySend(HlsEvent.Segment(done, total, bytes)) },
+                onPhase = { phase ->
+                    val state = when (phase) {
+                        HlsDownloader.Phase.Probing -> DownloadState.Probing
+                        HlsDownloader.Phase.Merging -> DownloadState.Merging
+                    }
+                    updates.trySend(HlsEvent.Phase(state))
+                },
+            )
             updates.close()
             progressJob.join()
 
@@ -396,6 +439,9 @@ class DownloadExecutorImpl(
             val destination = request.destination
             val source = HttpRemoteByteSource(client, request.url, request.headers)
             try {
+                // Reading the central directory (and checking selective support) is the probe phase: deciding
+                // which ranges to fetch before any entry byte moves.
+                send(updateTask(task, request, DownloadState.Probing, null, 0))
                 val listing = ZipCentralDirectory.inspect(source)
                 if (!listing.selectiveSupported) {
                     send(
@@ -420,6 +466,9 @@ class DownloadExecutorImpl(
                 }
                 val totalDeclared = entries.sumOf { it.uncompressedSize.coerceAtLeast(0) }
                 send(updateTask(task, request, DownloadState.Downloading, totalDeclared, 0))
+                // The compressed ranges are fetched lazily inside extract; decompressing and writing the
+                // entry tree is assembly work, so the run flips to Merging for its duration.
+                send(updateTask(task, request, DownloadState.Merging, totalDeclared, 0))
                 val extraction = RemoteZipExtractor(source).extract(entries, destination)
                 if (extraction.allSucceeded) {
                     metrics.recordCompleted()
@@ -618,6 +667,16 @@ class DownloadExecutorImpl(
                 newFile to storage.getPartialFile(newFile).toPath()
             }
         }
+    }
+
+    /**
+     * A bridged HLS lifecycle event: either a segment-completion progress sample or a coarse phase
+     * boundary (probing the playlist, merging the assembled file). Kept as one type so the two kinds
+     * are drained in the exact order the downloader produced them.
+     */
+    private sealed interface HlsEvent {
+        data class Segment(val done: Int, val total: Int, val bytes: Long) : HlsEvent
+        data class Phase(val state: DownloadState) : HlsEvent
     }
 
     /**

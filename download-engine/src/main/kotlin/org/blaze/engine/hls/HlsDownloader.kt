@@ -70,6 +70,13 @@ class HlsDownloader(
     }
 
     /**
+     * The coarse lifecycle phase a run is in, reported through [download]'s `onPhase` so the caller can
+     * label the pre-fetch playlist walk and the post-fetch assembly distinctly from segment transfer.
+     * [Downloading] is implied by the byte/segment progress callback and is not signalled here.
+     */
+    enum class Phase { Probing, Merging }
+
+    /**
      * Download the HLS resource [playlistUrl] into [destination].
      *
      * @param variantIndex the master-playlist variant to select; -1 means "highest available bandwidth".
@@ -86,6 +93,7 @@ class HlsDownloader(
         variantIndex: Int,
         headers: Map<String, String>,
         drmAcknowledged: Boolean,
+        onPhase: (Phase) -> Unit = {},
         onProgress: (completedSegments: Int, totalSegments: Int, completedBytes: Long) -> Unit = { _, _, _ -> },
     ): Outcome {
         val request = DownloadRequest.Http(
@@ -94,6 +102,9 @@ class HlsDownloader(
             destination = destination,
             headers = headers,
         )
+        // Resolving master -> variant -> media is genuine pre-transfer work; surface it as probing so the
+        // list is not blank while the playlist walk runs, before a single segment byte is fetched.
+        onPhase(Phase.Probing)
         val media = try {
             resolveMediaPlaylist(request, variantIndex, headers)
         } catch (e: Exception) {
@@ -127,6 +138,9 @@ class HlsDownloader(
                 cleanup(tempDir)
                 return Outcome.Failed(downloadResult.error)
             }
+            // Every segment is now on disk; from here the work is putting them together (container sniff,
+            // init-segment prepend, byte-concat or the opt-in remux), which is assembly, not transfer.
+            onPhase(Phase.Merging)
             // Decide the container from real downloaded bytes, not a filename guess.
             val container = detectContainer(tempDir, segments.size, media)
             // Only a scheme Blaze genuinely cannot decrypt stops assembly — never the warning label.

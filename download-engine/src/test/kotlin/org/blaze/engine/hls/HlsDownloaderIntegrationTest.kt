@@ -258,6 +258,38 @@ class HlsDownloaderIntegrationTest {
         }
     }
 
+    @Test
+    fun `download signals probing before the segments and merging after them`(): Unit = runBlocking {
+        // The executor leans on these boundary signals to show the Probing/Merging phases; the downloader
+        // must fire each exactly once, in order, with the segment fetch bracketed between them.
+        TestStaticServer(
+            mapOf(
+                "/master.m3u8" to master,
+                "/media.m3u8" to plainMedia(),
+                "/seg0.ts" to seg0Plain,
+                "/seg1.ts" to seg1Plain,
+            )
+        ).use { server ->
+            val dest = Files.createTempFile("hls-phase", ".ts")
+            val phases = mutableListOf<HlsDownloader.Phase>()
+            try {
+                val outcome = downloader(server).download(
+                    server.url("/master.m3u8"), dest, -1, emptyMap(), false,
+                    onProgress = { _, _, _ -> },
+                    onPhase = { phases.add(it) },
+                )
+                assertIs<HlsDownloader.Outcome.Success>(outcome, "expected success, got $outcome")
+                assertEquals(
+                    listOf(HlsDownloader.Phase.Probing, HlsDownloader.Phase.Merging),
+                    phases.toList(),
+                    "the run must signal exactly probing-then-merging around the segment fetch",
+                )
+            } finally {
+                Files.deleteIfExists(dest)
+            }
+        }
+    }
+
     private fun downloader(server: TestStaticServer): HlsDownloader {
         val http = HttpClient(CIO)
         return HlsDownloader(HttpNetworkClient(http), DefaultFileStorage(), BandwidthLimiter())

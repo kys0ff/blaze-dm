@@ -132,6 +132,23 @@ class DownloadApiContractTest {
         assertTrue(DownloadState.CANCELLED.isTerminal)
         assertFalse(DownloadState.PAUSED.isActive)
         assertFalse(DownloadState.QUEUED.isActive)
+        // The phases a client must keep polling for, and the reserved ones that still read as active.
+        assertTrue(DownloadState.PROBING.isActive)
+        assertTrue(DownloadState.MERGING.isActive)
+        assertTrue(DownloadState.COMPLETING.isActive)
+        assertFalse(DownloadState.PROBING.isTerminal)
+        assertFalse(DownloadState.MERGING.isTerminal)
+    }
+
+    @Test
+    fun `the new lifecycle states encode by name and round-trip`() {
+        // Wire compatibility depends on the name, not the ordinal, so inserting PROBING/MERGING mid-enum
+        // must not change how any value is (de)serialized.
+        for (state in listOf(DownloadState.PROBING, DownloadState.MERGING)) {
+            val text = json.encodeToString(DownloadDto.serializer(), baseDto().copy(state = state))
+            assertTrue("\"state\":\"$state\"" in text, "must serialize as its name: $text")
+            assertEquals(state, json.decodeFromString(DownloadDto.serializer(), text).state)
+        }
     }
 
     @Test
