@@ -100,6 +100,13 @@ class DefaultClient<C extends ProcessingContext> implements BtClient {
         ensureRuntimeStarted();
         attachToRuntime();
 
+        // A brand-new session is starting for this torrent (first start, resume, or retry) - lift the
+        // registry's finalizing guard so this session's own registration is accepted. Only a genuinely
+        // new client reaches here, so it is the correct point to distinguish a fresh session from a
+        // late register() by the previous, now-stopped, session's executor (fork patch #9, TOR-7).
+        context.getTorrentId().ifPresent(torrentId ->
+                runtime.service(TorrentRegistry.class).beginSession(torrentId));
+
         CompletableFuture<?> future = processor.process(context, listenerSource);
 
         future.whenComplete((r, t) -> notifyListener())

@@ -21,19 +21,28 @@ import bt.metainfo.Torrent;
 import bt.processor.ProcessingStage;
 import bt.processor.TerminateOnErrorProcessingStage;
 import bt.processor.listener.ProcessingEvent;
+import bt.torrent.TorrentRegistry;
 
 public class FetchTorrentStage extends TerminateOnErrorProcessingStage<TorrentContext> {
 
     private EventSink eventSink;
+    private final TorrentRegistry torrentRegistry;
 
-    public FetchTorrentStage(ProcessingStage<TorrentContext> next, EventSink eventSink) {
+    public FetchTorrentStage(ProcessingStage<TorrentContext> next, EventSink eventSink,
+                             TorrentRegistry torrentRegistry) {
         super(next);
         this.eventSink = eventSink;
+        this.torrentRegistry = torrentRegistry;
     }
 
     @Override
     protected void doExecute(TorrentContext context) {
         Torrent torrent = context.getTorrentSupplier().get();
+        // This is the first point a file/URL session learns its torrent ID - and the earliest hook that
+        // only a genuinely new session reaches (a session being paused has already run past here before
+        // its metadata event could reach the caller). Lift any finalizing guard from a previous session
+        // so this session's registration below is accepted (fork patch #9, TOR-7).
+        torrentRegistry.beginSession(torrent.getTorrentId());
         context.setTorrentId(torrent.getTorrentId());
         context.setTorrent(torrent);
         eventSink.fireMetadataAvailable(torrent.getTorrentId(), torrent);

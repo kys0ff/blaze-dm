@@ -18,6 +18,7 @@ package bt.torrent;
 
 import bt.data.IDataDescriptorFactory;
 import bt.data.Storage;
+import bt.event.EventSink;
 import bt.event.EventSource;
 import bt.metainfo.Torrent;
 import bt.metainfo.TorrentId;
@@ -34,6 +35,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Simple in-memory torrent registry, that creates new descriptors upon request.
@@ -45,17 +47,45 @@ public class AdhocTorrentRegistry implements TorrentRegistry {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AdhocTorrentRegistry.class);
 
+    /** Fixed lock-stripe count guarding the register/finalize check-then-act; bounded, never grows. */
+    private static final int TEARDOWN_LOCK_STRIPES = 64;
+
     private IDataDescriptorFactory dataDescriptorFactory;
+    private final EventSink eventSink;
 
     private Set<TorrentId> torrentIds;
     private ConcurrentMap<TorrentId, Torrent> torrents;
     private ConcurrentMap<TorrentId, DefaultTorrentDescriptor> descriptors;
 
+    /**
+     * Torrents whose session is being torn down. While an ID is present, {@code register()} refuses to
+     * re-insert it, so a late registration from the dying session's executor cannot orphan a descriptor
+     * after {@link #finalizeSession} removed it. Lifted by {@link #beginSession} when a genuinely new
+     * session starts. Fixed-size lock stripes guard the check-then-act against {@link #finalizeSession}
+     * without leaking one lock per torrent in the process-wide shared runtime.
+     */
+    private final Set<TorrentId> finalizing = ConcurrentHashMap.newKeySet();
+    private final ReentrantLock[] teardownLocks = newStripes();
+
+    private static ReentrantLock[] newStripes() {
+        ReentrantLock[] locks = new ReentrantLock[TEARDOWN_LOCK_STRIPES];
+        for (int i = 0; i < locks.length; i++) {
+            locks[i] = new ReentrantLock();
+        }
+        return locks;
+    }
+
+    private ReentrantLock lockFor(TorrentId torrentId) {
+        return teardownLocks[Math.floorMod(torrentId.hashCode(), TEARDOWN_LOCK_STRIPES)];
+    }
+
     @Inject
     public AdhocTorrentRegistry(IDataDescriptorFactory dataDescriptorFactory,
-                                EventSource eventSource) {
+                                EventSource eventSource,
+                                EventSink eventSink) {
 
         this.dataDescriptorFactory = dataDescriptorFactory;
+        this.eventSink = eventSink;
 
         this.torrentIds = ConcurrentHashMap.newKeySet();
         this.torrents = new ConcurrentHashMap<>();
@@ -101,33 +131,86 @@ public class AdhocTorrentRegistry implements TorrentRegistry {
                                       FileDownloadCompleteCallback completedFileCallbacks) {
         TorrentId torrentId = torrent.getTorrentId();
 
-        DefaultTorrentDescriptor descriptor = descriptors.computeIfAbsent(torrentId, k -> new DefaultTorrentDescriptor());
-        if (descriptor.getDataDescriptor() != null) {
-            throw new IllegalStateException(
-                    "Torrent already registered and data descriptor created: " + torrent.getTorrentId());
+        ReentrantLock lock = lockFor(torrentId);
+        lock.lock();
+        try {
+            rejectIfFinalizing(torrentId);
+
+            DefaultTorrentDescriptor descriptor = descriptors.computeIfAbsent(torrentId, k -> new DefaultTorrentDescriptor());
+            if (descriptor.getDataDescriptor() != null) {
+                throw new IllegalStateException(
+                        "Torrent already registered and data descriptor created: " + torrent.getTorrentId());
+            }
+            descriptor.setDataDescriptor(dataDescriptorFactory.createDescriptor(torrent, storage, completedFileCallbacks));
+
+            torrentIds.add(torrentId);
+            torrents.putIfAbsent(torrentId, torrent);
+
+            return descriptor;
+        } finally {
+            lock.unlock();
         }
-        descriptor.setDataDescriptor(dataDescriptorFactory.createDescriptor(torrent, storage, completedFileCallbacks));
-
-        torrentIds.add(torrentId);
-        torrents.putIfAbsent(torrentId, torrent);
-
-        return descriptor;
     }
 
     @Override
     public TorrentDescriptor register(TorrentId torrentId) {
-        return getDescriptor(torrentId).orElseGet(() -> {
-            DefaultTorrentDescriptor descriptor = new DefaultTorrentDescriptor();
+        ReentrantLock lock = lockFor(torrentId);
+        lock.lock();
+        try {
+            rejectIfFinalizing(torrentId);
+            return getDescriptor(torrentId).orElseGet(() -> {
+                DefaultTorrentDescriptor descriptor = new DefaultTorrentDescriptor();
 
-            DefaultTorrentDescriptor existing = descriptors.putIfAbsent(torrentId, descriptor);
-            if (existing != null) {
-                descriptor = existing;
-            } else {
-                torrentIds.add(torrentId);
-            }
+                DefaultTorrentDescriptor existing = descriptors.putIfAbsent(torrentId, descriptor);
+                if (existing != null) {
+                    descriptor = existing;
+                } else {
+                    torrentIds.add(torrentId);
+                }
 
-            return descriptor;
-        });
+                return descriptor;
+            });
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void rejectIfFinalizing(TorrentId torrentId) {
+        if (finalizing.contains(torrentId)) {
+            // The session for this torrent is being finalized; a register() reaching here belongs to
+            // the dying session's executor. Refuse it so it cannot re-insert a descriptor behind the
+            // teardown - the terminated processing chain is the correct outcome for that thread.
+            throw new IllegalStateException("Torrent session is being finalized: " + torrentId);
+        }
+    }
+
+    @Override
+    public void beginSession(TorrentId torrentId) {
+        // A brand-new client is starting (DefaultClient#startAsync) - lift any leftover finalizing
+        // guard so this session's registration is accepted. The dying session never re-enters here.
+        finalizing.remove(torrentId);
+    }
+
+    @Override
+    public boolean finalizeSession(TorrentId torrentId) {
+        Objects.requireNonNull(torrentId, "Missing torrent ID");
+        ReentrantLock lock = lockFor(torrentId);
+        lock.lock();
+        try {
+            // Gate first, so a register() racing with this teardown is rejected rather than orphaning;
+            // then fire the stop event. EventBus delivers it synchronously in this thread, running our
+            // own onTorrentStopped -> unregister (see the constructor) plus the other per-torrent
+            // services, so there is nothing to poll: the descriptor is gone by the time we return.
+            finalizing.add(torrentId);
+            eventSink.fireTorrentStopped(torrentId);
+            return isFinalized(torrentId);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private boolean isFinalized(TorrentId torrentId) {
+        return !descriptors.containsKey(torrentId) && !torrentIds.contains(torrentId);
     }
 
     @Override

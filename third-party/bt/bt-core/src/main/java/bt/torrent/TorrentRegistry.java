@@ -115,4 +115,41 @@ public interface TorrentRegistry {
     TorrentDescriptor register(TorrentId torrentId);
 
     boolean isSupportedAndActive(TorrentId torrentId);
+
+    /**
+     * Announce that a brand-new session is about to start for the given torrent, so the registry must
+     * accept a fresh registration for it. A torn-down session ({@link #finalizeSession}) records that
+     * torrent as finalizing so that a late {@code register()} from the *dying* session's executor can
+     * no longer orphan a descriptor in the map; this call lifts that guard, and is made only by a
+     * client that is genuinely starting a new transfer.
+     *
+     * <p>The default implementation is a no-op, for registries that do not track finalizing state.
+     *
+     * @param torrentId the torrent whose next registration should be allowed
+     * @since 1.10 (blaze fork)
+     */
+    default void beginSession(TorrentId torrentId) {
+        // no-op by default
+    }
+
+    /**
+     * Synchronously tear down the session for the given torrent and report whether it is fully
+     * unregistered by the time this method returns.
+     *
+     * <p>Unlike merely signalling a stop, this is a *completion* signal: when it returns
+     * {@code true} the descriptor is provably gone from the registry and no in-flight registration
+     * from the dying session will resurrect it, so the caller can start the next session for the same
+     * torrent without polling the registry or waiting on a timer.
+     *
+     * <p>The default implementation performs no teardown and returns {@code false}, telling the
+     * caller that a synchronous finalization is not available and it must fall back to its own
+     * polling. Registries that can finalize inline (the in-memory one) override this.
+     *
+     * @param torrentId the torrent to finalize
+     * @return {@code true} if the session is fully unregistered on return
+     * @since 1.10 (blaze fork)
+     */
+    default boolean finalizeSession(TorrentId torrentId) {
+        return false;
+    }
 }

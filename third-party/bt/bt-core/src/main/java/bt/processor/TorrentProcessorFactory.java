@@ -125,7 +125,7 @@ public class TorrentProcessorFactory implements ProcessorFactory {
         ProcessingStage<TorrentContext> stage1 = new CreateSessionStage<>(stage2, torrentRegistry, eventSource,
                 connectionSource, messageDispatcher, messagingAgents, config);
 
-        ProcessingStage<TorrentContext> stage0 = new FetchTorrentStage(stage1, eventSink);
+        ProcessingStage<TorrentContext> stage0 = new FetchTorrentStage(stage1, eventSink, torrentRegistry);
 
         return new ChainProcessor<>(stage0, executor, new TorrentContextFinalizer<>(torrentRegistry, eventSink));
     }
