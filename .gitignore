@@ -5,3 +5,6 @@ out/
 *.iml
 .kotlin/
 local.properties
+
+# Bundled font binaries are supplied locally (via the font download task), not tracked.
+island-theme-ui/src/main/resources/fonts/bundled/
