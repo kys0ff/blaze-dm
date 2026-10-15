@@ -124,7 +124,7 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
 - **Action (Phase 8b.8)**: test whether it works over loopback `[::1]`; implement only if broken and the fix is small.
   Until proven, it is stated as **unverified**, not as "supported".
 
-### TOR-12 — Real-swarm ERROR noise: unknown message types and resets logged as full stack traces — **C**, S, risk: low
+### TOR-12 — Real-swarm ERROR noise: unknown message types and resets logged as full stack traces — **C**, S, risk: low — ✅ FIXED (Phase 8b.7)
 - **Evidence (real run, 2026-10-15, nyaa swarm)**: a download completed with correct content while the log showed
   repeating `ERROR bt.net.DataReceivingLoop - Failed to process key` with `InvalidMessageException: Unknown message
   type ID: 70 / -59 / 29` and `SocketException: Connection reset`, plus `ERROR b.t.m.PieceConsumer - Failed to verify
@@ -136,9 +136,13 @@ These Phase-1 statements are **wrong against today's code/spec** and are fixed i
   **logging** is wrong: routine hostile/legacy-peer churn is logged at ERROR with full stack traces
   (`DataReceivingLoop.java:130-132`), which reads like a defect to users. Piece-verify failures are the same churn
   (`PieceConsumer.java:121-123`); final content is hash-gated, so correctness is unaffected.
-- **Fix (fork, Phase 8b.7)**: classify per-connection read failures — unknown message type → WARN one-liner with the
-  message (peer still dropped, behavior unchanged); `SocketException`/`EOFException` churn → DEBUG. Keep genuine
-  I/O-worker errors at ERROR. No protocol behavior change.
+- **Fix (fork, Phase 8b.7, done)**: patches #1–#2 add `bt/net/ReadLoopFailures` classification in
+  `DataReceivingLoop` — unknown/invalid peer messages → WARN one-liner (peer still dropped),
+  `SocketException`/`EOFException`/`ClosedChannelException` churn → DEBUG, everything else keeps
+  ERROR+trace; connection handling is untouched (the socket was already closed upstream). 12 unit
+  tests in `bt-core`. Bonus #3: guava 30.1→33.4.8 removes the `sun.misc.Unsafe` startup WARNING
+  seen in the same log (measured probe: 30.1 reproduces it, 33.4.8 doesn't). Piece-verify ERRORs
+  stay — they report real wasted bandwidth, and completion remains hash-gated.
 
 ---
 
